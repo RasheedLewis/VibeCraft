@@ -143,6 +143,19 @@ Visit `http://localhost:5173` to confirm the scaffolded app loads.
 
 ---
 
+### 5.1 Frontend Linting & Formatting
+
+```bash
+npm run lint         # ESLint (TS/React) with Prettier rules enforced
+npm run lint:fix     # ESLint with --fix
+npm run format       # Prettier check
+npm run format:write # Prettier write
+```
+
+> These commands rely on the workspace-level `.prettierrc.json` and `.prettierignore` settings.
+
+---
+
 ## 6. Optional: Docker Compose Flow
 
 Later (when /infra exists)...

@@ -39,3 +39,22 @@ def upload_bytes_to_s3(
         raise RuntimeError(f"Failed to upload object {key} to bucket {bucket_name}") from exc
 
 
+def generate_presigned_get_url(
+    *,
+    bucket_name: str,
+    key: str,
+    expires_in: int = 3600,
+) -> str:
+    client = _get_s3_client()
+    try:
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket_name, "Key": key},
+            ExpiresIn=expires_in,
+        )
+    except (BotoCoreError, ClientError) as exc:
+        raise RuntimeError(
+            f"Failed to generate presigned URL for object {key} in bucket {bucket_name}"
+        ) from exc
+
+

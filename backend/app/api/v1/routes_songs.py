@@ -15,7 +15,7 @@ from app.api.deps import get_db
 from app.core.config import get_settings
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.song import SongRead, SongUploadResponse
-from app.services.storage import upload_bytes_to_s3
+from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
 
 try:
     import librosa
@@ -149,7 +149,24 @@ async def upload_song(
     db.commit()
     db.refresh(song)
 
-    return SongUploadResponse(song_id=song.id, s3_key=s3_key, status="uploaded")
+    try:
+        audio_url = await asyncio.to_thread(
+            generate_presigned_get_url,
+            bucket_name=settings.s3_bucket_name,
+            key=s3_key,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to generate access URL for uploaded audio.",
+        ) from exc
+
+    return SongUploadResponse(
+        song_id=song.id,
+        audio_url=audio_url,
+        s3_key=s3_key,
+        status="uploaded",
+    )
 
 
 @router.get("/{song_id}", response_model=SongRead, summary="Get song")

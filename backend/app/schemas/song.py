@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SongRead(BaseModel):
@@ -25,7 +25,10 @@ class SongRead(BaseModel):
 
 
 class SongUploadResponse(BaseModel):
-    song_id: UUID
-    s3_key: str
+    song_id: UUID = Field(serialization_alias="songId")
+    audio_url: str = Field(serialization_alias="audioUrl")
+    s3_key: str = Field(serialization_alias="s3Key")
     status: str
+
+    model_config = {"populate_by_name": True}
 

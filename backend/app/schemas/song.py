@@ -9,6 +9,8 @@ class SongBase(BaseModel):
     audio_url: HttpUrl
     description: Optional[str] = None
     duration_sec: Optional[float] = None
+    # Attribution (optional, for royalty-free music credits)
+    attribution: Optional[str] = None
 
     @field_validator("duration_sec")
     @classmethod
@@ -26,6 +28,7 @@ class SongUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     duration_sec: Optional[float] = None
+    attribution: Optional[str] = None
 
 
 class SongRead(SongBase):

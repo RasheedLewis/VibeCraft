@@ -7,6 +7,7 @@ import {
   SectionCard,
   TemplatePill,
   VideoPreviewCard,
+  Attribution,
 } from '../components/vibecraft'
 
 const templates = [
@@ -156,6 +157,9 @@ export const SongProfilePage: React.FC = () => {
             onUseInFull={() => {}}
           />
         </section>
+
+        {/* Attribution - only shows if attribution text exists */}
+        <Attribution text='"Electrodoodle" by Kevin MacLeod (Incompetech) • CC BY 4.0' />
       </div>
     </VCAppShell>
   )

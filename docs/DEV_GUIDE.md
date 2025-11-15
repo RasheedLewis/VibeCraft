@@ -273,6 +273,23 @@ npm run format:write # Prettier write
 
 ---
 
+### 5.2 VibeCraft Design System
+
+- Tailwind config: `frontend/tailwind.config.ts` (design tokens from `DESIGN_SYSTEM.md`)
+- Global theme file: `frontend/src/styles/vibecraft-theme.css` (imported via `src/index.css`)
+- Component library: `frontend/src/components/vibecraft/`
+- Example screen: `frontend/src/pages/SongProfilePage.tsx` rendered via `App.tsx`
+
+Run the dev server to explore the themed UI:
+
+```bash
+npm run dev -- --host
+```
+
+If you add new tokens or components, update the Tailwind config and keep docs in sync with `DESIGN_SYSTEM.md`.
+
+---
+
 ## 6. Optional: Docker Compose Flow
 
 Later (when /infra exists)...

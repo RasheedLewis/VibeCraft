@@ -1,0 +1,214 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────
+   Base: global app look
+   ──────────────────────────────────────── */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-vc-bg text-vc-text-primary font-sans antialiased;
+  }
+
+  /* Headings */
+
+  h1,
+  .vc-h1 {
+    @apply font-display text-4xl md:text-5xl font-semibold tracking-tight;
+  }
+
+  h2,
+  .vc-h2 {
+    @apply font-display text-3xl md:text-4xl font-semibold tracking-tight;
+  }
+
+  h3,
+  .vc-h3 {
+    @apply font-display text-2xl font-semibold tracking-tight;
+  }
+
+  h4,
+  .vc-h4 {
+    @apply font-display text-lg font-medium;
+  }
+
+  .vc-label {
+    @apply text-[11px] uppercase tracking-[0.16em] text-vc-text-muted;
+  }
+
+  .vc-body {
+    @apply text-sm text-vc-text-secondary;
+  }
+}
+
+/* ─────────────────────────────────────────
+   Components: semantic building blocks
+   ──────────────────────────────────────── */
+
+@layer components {
+  /* App chrome */
+
+  .vc-app {
+    @apply min-h-screen flex bg-vc-bg text-vc-text-primary;
+  }
+
+  .vc-app-main {
+    @apply flex-1 flex flex-col mx-auto w-full max-w-6xl px-4 py-6;
+  }
+
+  .vc-panel {
+    @apply rounded-lg bg-vc-surface border border-vc-border shadow-vc1;
+  }
+
+  .vc-panel-raised {
+    @apply vc-panel shadow-vc2;
+  }
+
+  /* Buttons */
+
+  .vc-btn {
+    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-vc-accent-primary focus:ring-offset-vc-bg disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+
+  .vc-btn-primary {
+    @apply vc-btn bg-vc-accent-primary text-white shadow-vc2 hover:shadow-vc3 hover:bg-[#7A76FF] active:scale-[0.98];
+  }
+
+  .vc-btn-secondary {
+    @apply vc-btn border border-vc-border bg-vc-surface text-vc-text-primary hover:bg-vc-surfaceAlt;
+  }
+
+  .vc-btn-ghost {
+    @apply vc-btn bg-transparent text-vc-text-secondary hover:text-white hover:bg-[rgba(255,255,255,0.04)];
+  }
+
+  .vc-btn-sm {
+    @apply h-8 px-3 text-xs;
+  }
+
+  .vc-icon-btn {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-[rgba(255,255,255,0.04)] text-vc-text-secondary hover:text-white hover:border-vc-border focus:outline-none focus:ring-2 focus:ring-vc-accent-primary;
+  }
+
+  .vc-icon-btn-selected {
+    @apply vc-icon-btn bg-vc-accent-primary text-white shadow-vc2;
+  }
+
+  /* Cards */
+
+  .vc-card {
+    @apply vc-panel p-4 transition-shadow hover:shadow-vc2;
+  }
+
+  .vc-card-tight {
+    @apply vc-panel p-3;
+  }
+
+  .vc-card-header {
+    @apply flex items-center justify-between gap-3 mb-2;
+  }
+
+  .vc-card-title {
+    @apply font-display text-sm text-white tracking-tight;
+  }
+
+  .vc-card-subtitle {
+    @apply text-xs text-vc-text-muted;
+  }
+
+  /* Badges / Chips */
+
+  .vc-badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.08em] bg-[rgba(255,255,255,0.04)] text-vc-text-secondary;
+  }
+
+  .vc-badge-success {
+    @apply vc-badge bg-[rgba(0,225,217,0.12)] text-vc-accent-tertiary;
+  }
+
+  .vc-badge-warning {
+    @apply vc-badge bg-[rgba(255,189,89,0.12)] text-vc-state-warning;
+  }
+
+  .vc-badge-danger {
+    @apply vc-badge bg-[rgba(255,90,117,0.12)] text-vc-state-error;
+  }
+
+  /* Template pill */
+
+  .vc-template-pill {
+    @apply flex flex-col items-start rounded-3xl border px-5 py-3 text-left bg-[rgba(12,12,18,0.9)] border-vc-border hover:border-vc-accent-primary/70 transition-all gap-1.5;
+  }
+
+  .vc-template-pill-selected {
+    @apply vc-template-pill border-vc-accent-primary bg-[radial-gradient(circle_at_top,_#6E6BFF33,_transparent_60%)] shadow-vc2;
+  }
+
+  /* Timeline & section-specific */
+
+  .vc-section-card {
+    @apply vc-card flex flex-col gap-3;
+  }
+
+  .vc-section-timeline {
+    @apply flex items-center gap-1 h-1.5 rounded-full bg-[rgba(255,255,255,0.04)];
+  }
+
+  .vc-section-timeline-fill {
+    @apply h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary;
+  }
+
+  /* Progress / status */
+
+  .vc-status-panel {
+    @apply vc-panel p-4 flex items-center justify-between gap-4 bg-[radial-gradient(circle_at_top,_#6E6BFF22,_#0C0C12)];
+  }
+
+  .vc-pulse-bars {
+    @apply flex items-end gap-1 h-7;
+  }
+
+  .vc-pulse-bar {
+    @apply w-1.5 rounded-full bg-vc-accent-secondary;
+  }
+}
+
+/* ─────────────────────────────────────────
+   Utilities: custom animations
+   ──────────────────────────────────────── */
+
+@layer utilities {
+  @keyframes vcPulse {
+    0% {
+      transform: scaleY(0.4);
+      opacity: 0.6;
+    }
+    50% {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+    100% {
+      transform: scaleY(0.4);
+      opacity: 0.6;
+    }
+  }
+
+  .vc-pulse-animate {
+    animation: vcPulse 1.2s ease-in-out infinite;
+  }
+
+  .vc-pulse-animate-delay-1 {
+    animation: vcPulse 1.35s ease-in-out infinite;
+  }
+
+  .vc-pulse-animate-delay-2 {
+    animation: vcPulse 1.5s ease-in-out infinite;
+  }
+}

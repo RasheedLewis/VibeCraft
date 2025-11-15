@@ -48,3 +48,12 @@ frontend/.vite/
 storage/
 tmp/
 
+# Sample audio files (large files - add your own samples)
+samples/audio/**/*.mp3
+samples/audio/**/*.wav
+samples/audio/**/*.m4a
+samples/audio/**/*.flac
+# Keep metadata and README files
+!samples/README.md
+!samples/metadata/
+

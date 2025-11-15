@@ -1,0 +1,29 @@
+{
+  "filename": "track-name.mp3",
+  "source": "Pixabay Music | Free Music Archive | Incompetech | etc.",
+  "license": "CC0 | CC BY 4.0 | Pixabay License | etc.",
+  "licenseUrl": "https://...",
+  "artist": "Artist Name",
+  "title": "Track Title",
+  "sourceUrl": "https://...",
+  "genre": "Electronic | Pop | Rock | Hip-Hop | Ambient",
+  "subGenres": ["EDM", "House"],
+  "expectedBPM": 128,
+  "expectedDuration": 210,
+  "expectedSections": [
+    {
+      "type": "intro",
+      "startSec": 0,
+      "endSec": 16
+    },
+    {
+      "type": "verse",
+      "startSec": 16,
+      "endSec": 48
+    }
+  ],
+  "notes": "Good for testing beat detection and section segmentation",
+  "downloadedAt": "2024-01-15",
+  "attribution": "\"Track Title\" by Artist Name (Source) • License"
+}
+

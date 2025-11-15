@@ -12,26 +12,35 @@ This guide walks new contributors through setting up the AI Music Video project 
 - Docker Desktop (for Postgres/Redis containers or future Compose flow)
 - `ffmpeg` installed locally (`brew install ffmpeg`)
 
-> Tip: Run everything from the repo root at `/Users/rasheedlewis/Workspace/gauntlet/ai-music-video`.
+> Tip: Run everything from the repo root (`ai-music-video/`).
 
 ---
 
 ## 2. Repository Bootstrap
 
-Create the monorepo layout and initialize runtime environments.
+Run these from the repository root (`ai-music-video/`) to stand up the Python and Node environments.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install fastapi "uvicorn[standard]" sqlmodel sqlalchemy pydantic ffmpeg-python librosa python-dotenv # or pipx
-cd ./frontend && npm install @tanstack/react-query axios
+pip install -r backend/requirements.txt
+npm --prefix frontend install
 ```
+
+> `npm --prefix frontend install` keeps the command runnable from the repo root. `npm install` inside `frontend/` works the same if you prefer to `cd` first.
+
+---
+
+## 2.1 Optional Package Managers (Poetry / pnpm)
+
+- **Poetry**: `poetry install` from `backend/` (after generating a `pyproject.toml`) creates an isolated virtualenv automatically. Activate with `poetry shell` before running backend commands.
+- **pnpm**: `pnpm install --dir frontend` installs frontend dependencies with pnpm’s content-addressable store. Add `.npmrc` / `.pnpmfile.cjs` as needed to share settings with the team.
+
+Stick with the pip + npm defaults unless your team standardizes on these alternatives.
 
 ---
 
 ## 3. Local Infrastructure
-
-Can probably skip Postgres? need Redis for rq
 
 Spin up Postgres and Redis the backend expects.
 

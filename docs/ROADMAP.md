@@ -1,10 +1,8 @@
+# **🚀 AI Music Video Generation Roadmap — With Numbered Subtasks**
+
 Absolutely — here is the **fully numbered PR roadmap**, where **every subtask has its own unique number** for tracking in GitHub Projects, Jira, Linear, etc.
 
 I kept all ordering logical and sequential.
-
----
-
-# **🚀 AI Music Video Generation Roadmap — With Numbered Subtasks**
 
 ---
 
@@ -23,205 +21,204 @@ I kept all ordering logical and sequential.
 
 # **PR-02 — Audio Upload Service**
 
-9. Create `/api/songs` POST endpoint
-10. Implement audio file validation (type, duration)
-11. Implement multipart file handling
-12. Upload audio file to object storage (S3/Supabase)
-13. Generate and store metadata (filename, size, MIME type)
-14. Return `songId` and `audioUrl`
-15. Build Upload UI screen
-16. Show upload success + waveform placeholder UI
+1. Create `/api/songs` POST endpoint
+2. Implement audio file validation (type, duration)
+3. Implement multipart file handling
+4. Upload audio file to object storage (S3/Supabase)
+5. Generate and store metadata (filename, size, MIME type)
+6. Return `songId` and `audioUrl`
+7. Build Upload UI screen
+8. Show upload success + waveform placeholder UI
 
 ---
 
 # **PR-03 — Audio Preprocessing Pipeline**
 
-17. Implement mono downmix (stereo → mono)
-18. Implement resampling to 44.1kHz
-19. Extract waveform JSON via librosa
-20. Store processed audio file
-21. Link processed file to database record
-22. Add preprocessing stage to backend analysis job
+1. Implement mono downmix (stereo → mono)
+2. Implement resampling to 44.1kHz
+3. Extract waveform JSON via librosa
+4. Store processed audio file
+5. Link processed file to database record
+6. Add preprocessing stage to backend analysis job
 
 ---
 
 # **PR-04 — Music Analysis Engine (BPM, Beats, Sections)**
 
-23. Implement BPM detection module
-24. Implement beat onset detection
-25. Build beat grid time array
-26. Implement novelty curve calculation
-27. Detect structural boundaries
-28. Group repeated segments to identify chorus/verse
-29. Implement `/api/songs/:id/analyze` orchestration endpoint
-30. Store `SongAnalysis` results in DB
-31. Add frontend loading steps for analysis progress
+1. Implement BPM detection module
+2. Implement beat onset detection
+3. Build beat grid time array
+4. Implement novelty curve calculation
+5. Detect structural boundaries
+6. Group repeated segments to identify chorus/verse
+7. Implement `/api/songs/:id/analyze` orchestration endpoint
+8. Store `SongAnalysis` results in DB
+9. Add frontend loading steps for analysis progress
 
 ---
 
 # **PR-05 — Genre & Mood Classification**
 
-32. Compute mood features: energy, valence, tension
-33. Build genre classifier (CLAP / embedding model)
-34. Map classification outputs to standardized genres
-35. Compute `moodTags` and `moodVector`
-36. Integrate genre/mood outputs into analysis object
-37. Add genre/mood display UI badges
+1. Compute mood features: energy, valence, tension
+2. Build genre classifier (CLAP / embedding model)
+3. Map classification outputs to standardized genres
+4. Compute `moodTags` and `moodVector`
+5. Integrate genre/mood outputs into analysis object
+6. Add genre/mood display UI badges
 
 ---
 
 # **PR-06 — Lyric Extraction & Section Alignment**
 
-38. Integrate track recognition (optional)
-39. Call lyrics API when recognized
-40. Implement Whisper ASR for unrecognized tracks
-41. Extract vocal stem (Demucs/Spleeter)
-42. Segment ASR output into timed lines
-43. Align lyrics to section timestamps
-44. Add `sectionLyrics[]` to analysis
-45. Display lyric previews inside section cards
+1. Integrate track recognition (optional)
+2. Call lyrics API when recognized
+3. Implement Whisper ASR for unrecognized tracks
+4. Extract vocal stem (Demucs/Spleeter)
+5. Segment ASR output into timed lines
+6. Align lyrics to section timestamps
+7. Add `sectionLyrics[]` to analysis
+8. Display lyric previews inside section cards
 
 ---
 
 # **PR-07 — Song Profile UI**
 
-46. Build timeline segmented into intro/verse/chorus/etc
-47. Create SectionCard component
-48. Render mood tags inside section card
-49. Render lyric snippet inside section card
-50. Add Generate/Regenerate buttons
-51. Add waveform visual under header
-52. Display genre + mood summary
+1. Build timeline segmented into intro/verse/chorus/etc
+2. Create SectionCard component
+3. Render mood tags inside section card
+4. Render lyric snippet inside section card
+5. Add Generate/Regenerate buttons
+6. Add waveform visual under header
+7. Display genre + mood summary
 
 ---
 
 # **PR-08 — Section Scene Planner (Template + Prompt Builder)**
 
-53. Implement template definitions (Abstract first)
-54. Map mood to intensity + color palette
-55. Map genre to camera motion presets
-56. Map section type to shot patterns
-57. Build function `buildSceneSpec(sectionId)`
-58. Implement prompt builder combining all features
-59. Add internal endpoint `/build-scene` for debugging
+1. Implement template definitions (Abstract first)
+2. Map mood to intensity + color palette
+3. Map genre to camera motion presets
+4. Map section type to shot patterns
+5. Build function `buildSceneSpec(sectionId)`
+6. Implement prompt builder combining all features
+7. Add internal endpoint `/build-scene` for debugging
 
 ---
 
 # **PR-09 — Section Video Generation Pipeline**
 
-60. Connect backend to Replicate API
-61. Build `generateSectionVideo(sceneSpec)` function
-62. Implement AI job polling utility
-63. Persist `SectionVideo` record on completion
-64. Save seed, prompts, duration, resolution metadata
-65. Build frontend loading spinner for generation
-66. Build video preview player UI
-67. Build “Regenerate Section Video” button
+1. Connect backend to Replicate API
+2. Build `generateSectionVideo(sceneSpec)` function
+3. Implement AI job polling utility
+4. Persist `SectionVideo` record on completion
+5. Save seed, prompts, duration, resolution metadata
+6. Build frontend loading spinner for generation
+7. Build video preview player UI
+8. Build "Regenerate Section Video" button
 
 ---
 
 # **PR-10 — Section Clip Management**
 
-68. Allow “approve” clip for a section
-69. Add ability to store selected clipId in section mapping
-70. Show approved clip badge in UI
-71. Add “Use in Full Video” button
-72. Prevent overwrite when clip is approved (unless explicitly regenerated)
-73. Allow viewing all generated clips per section
+1. Allow "approve" clip for a section
+2. Add ability to store selected clipId in section mapping
+3. Show approved clip badge in UI
+4. Add "Use in Full Video" button
+5. Prevent overwrite when clip is approved (unless explicitly regenerated)
+6. Allow viewing all generated clips per section
 
 ---
 
 # **PR-11 — Full Song Scene Planner**
 
-74. Build `buildFullScenePlan(songId)`
-75. Evaluate each section for approved clip
-76. Insert approved clips into plan
-77. Queue generation for missing clips
-78. Validate timing across entire track
-79. Store scene array in DB for final render
+1. Build `buildFullScenePlan(songId)`
+2. Evaluate each section for approved clip
+3. Insert approved clips into plan
+4. Queue generation for missing clips
+5. Validate timing across entire track
+6. Store scene array in DB for final render
 
 ---
 
 # **PR-12 — Full-Length Video Generation**
 
-80. Implement parallel execution for all section generation tasks
-81. Track clip generation jobs and pipe into completion aggregator
-82. Force global style consistency (seed inheritance, shared style tokens)
-83. Normalize all clips to same aspect ratio
-84. Save raw section clips for composition stage
+1. Implement parallel execution for all section generation tasks
+2. Track clip generation jobs and pipe into completion aggregator
+3. Force global style consistency (seed inheritance, shared style tokens)
+4. Normalize all clips to same aspect ratio
+5. Save raw section clips for composition stage
 
 ---
 
 # **PR-13 — Video Composition Engine**
 
-85. Concatenate video clips in correct timeline order
-86. Insert beat-matched transitions (cut, zoom, flare)
-87. Normalize resolution to 1080p
-88. Normalize FPS to 30+
-89. Apply color grading LUT
-90. Mux original song audio with video timeline
-91. Export MP4/WebM
-92. Upload final output to cloud storage
+1. Concatenate video clips in correct timeline order
+2. Insert beat-matched transitions (cut, zoom, flare)
+3. Normalize resolution to 1080p
+4. Normalize FPS to 30+
+5. Apply color grading LUT
+6. Mux original song audio with video timeline
+7. Export MP4/WebM
+8. Upload final output to cloud storage
 
 ---
 
 # **PR-14 — Full Video Generation API**
 
-93. Endpoint: `POST /api/songs/:id/generate-full-video`
-94. Create job entry
-95. Trigger:
-
-    * Scene planning
-    * Section generation
-    * Composition engine
-96. Add job status polling endpoint
-97. Add progress UI (“Generating”, “Compositing”, “Finalizing”)
+1. Endpoint: `POST /api/songs/:id/generate-full-video`
+2. Create job entry
+3. Trigger:
+   - Scene planning
+   - Section generation
+   - Composition engine
+4. Add job status polling endpoint
+5. Add progress UI ("Generating", "Compositing", "Finalizing")
 
 ---
 
 # **PR-15 — Deployment (MVP Release)**
 
-98. Deploy backend API
-99. Deploy frontend app
-100. Configure environment variables (Replicate keys, S3, etc.)
-101. Add HTTPS/SSL configuration
-102. Add logging + request tracing
-103. Add basic rate limiting
-104. Test upload → analysis → generation end-to-end in production
+1. Deploy backend API
+2. Deploy frontend app
+3. Configure environment variables (Replicate keys, S3, etc.)
+4. Add HTTPS/SSL configuration
+5. Add logging + request tracing
+6. Add basic rate limiting
+7. Test upload → analysis → generation end-to-end in production
 
 ---
 
 # **PR-16 — Sample Videos & Showcase**
 
-105. Generate high-energy music video example
-106. Generate slow emotional music video example
-107. Generate complex transition-heavy example
-108. Create demo gallery page in frontend
-109. Add sample outputs to README
-110. Ensure all samples meet 1080p + beat-sync requirements
+1. Generate high-energy music video example
+2. Generate slow emotional music video example
+3. Generate complex transition-heavy example
+4. Create demo gallery page in frontend
+5. Add sample outputs to README
+6. Ensure all samples meet 1080p + beat-sync requirements
 
 ---
 
 # **PR-17 — Cost Optimization & Caching**
 
-111. Add caching for analysis results
-112. Cache scene prompts to avoid reconstruction
-113. Cache embeddings for genre/mood
-114. Avoid duplicate generation of approved section videos
-115. Add per-video cost tracking utilities
-116. Reduce calls to expensive models via shared seeds/style tokens
+1. Add caching for analysis results
+2. Cache scene prompts to avoid reconstruction
+3. Cache embeddings for genre/mood
+4. Avoid duplicate generation of approved section videos
+5. Add per-video cost tracking utilities
+6. Reduce calls to expensive models via shared seeds/style tokens
 
 ---
 
 # **PR-18 — Final Polish & Bugfixes**
 
-117. Improve frontend loading indicators
-118. Add error toast notifications
-119. Improve retry logic for AI inference failures
-120. Fix lyric misalignment edge cases
-121. Smooth out transition timing
-122. Apply final performance tuning (async optimizations, concurrency)
-123. Final UX review and cleanup
+1. Improve frontend loading indicators
+2. Add error toast notifications
+3. Improve retry logic for AI inference failures
+4. Fix lyric misalignment edge cases
+5. Smooth out transition timing
+6. Apply final performance tuning (async optimizations, concurrency)
+7. Final UX review and cleanup
 
 ---
 
@@ -229,12 +226,12 @@ I kept all ordering logical and sequential.
 
 If you'd like next:
 
-### **⬜ Generate MERMAID diagrams for PR flow**
+## **⬜ Generate MERMAID diagrams for PR flow**
 
-### **⬜ Turn each PR & subtask into GitHub Issues (ready to paste)**
+## **⬜ Turn each PR & subtask into GitHub Issues (ready to paste)**
 
-### **⬜ Create project folder structure**
+## **⬜ Create project folder structure**
 
-### **⬜ Add estimated time per PR (48h MVP version)**
+## **⬜ Add estimated time per PR (48h MVP version)**
 
 Tell me which you want.

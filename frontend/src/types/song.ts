@@ -66,4 +66,3 @@ export interface SongAnalysis {
   lyricsAvailable: boolean
   sectionLyrics?: SectionLyrics[]
 }
-

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import Column, String, Text
+from sqlalchemy import Column, Text
 from sqlmodel import Field, SQLModel
 
 

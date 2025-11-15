@@ -163,12 +163,12 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
         duration = float(librosa.get_duration(y=y, sr=sr))
 
         tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
-        beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
+        # beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()  # Not used yet
 
         _update_job_progress(job_id, 25)
 
-        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-        novelty_curve = _normalize_list(onset_env.tolist())
+        # onset_env = librosa.onset.onset_strength(y=y, sr=sr)  # Not used yet
+        # novelty_curve = _normalize_list(onset_env.tolist())  # Not used yet
 
         sections = _detect_sections(y, sr, duration)
 

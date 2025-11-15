@@ -150,11 +150,13 @@ This document outlines how to split the first 9 PRs (67 subtasks) between two de
 - ✅ Whisper ASR for unrecognized tracks
 - ✅ Vocal stem extraction (Demucs/Spleeter)
 - ✅ Segment ASR output into timed lines
-- ✅ Align lyrics to section timestamps
+- ✅ Align lyrics to section timestamps *(can use mock sections initially)*
 - ✅ Add `sectionLyrics[]` to analysis
 - ✅ Display lyric previews inside section cards
 
 **Deliverable:** Complete lyrics feature with UI display
+
+**Note:** Can start immediately - lyric extraction is independent. Section alignment (subtask 43) can use mock sections until PR-04 is complete.
 
 ---
 
@@ -166,11 +168,13 @@ This document outlines how to split the first 9 PRs (67 subtasks) between two de
 - ✅ Mood → intensity + color palette mapping
 - ✅ Genre → camera motion presets
 - ✅ Section type → shot patterns
-- ✅ `buildSceneSpec(sectionId)` function
+- ✅ `buildSceneSpec(sectionId)` function *(can use mock sections initially)*
 - ✅ Prompt builder combining all features
 - ✅ Internal `/build-scene` debugging endpoint
 
 **Deliverable:** Scene planning service that generates prompts
+
+**Note:** Can start immediately - templates, mappings, and prompt builder logic are independent. The `buildSceneSpec(sectionId)` function can use mock sections until PR-04 is complete.
 
 ---
 
@@ -276,10 +280,23 @@ This allows both developers to work on their UI features independently before in
 ### **Parallel Work Opportunities:**
 
 - **Person A** can work on PR-02, PR-03, PR-04 completely independently
-- **Person B** can work on PR-05, PR-06, PR-08 independently (uses Person A's analysis results, but can mock them)
+- **Person B** can start PR-05, PR-06, PR-08 **immediately** - no blockers:
+  - **PR-05 (Genre/Mood):** ✅ Completely independent - takes audio directly
+  - **PR-06 (Lyrics):** ✅ Can do lyric extraction independently; section alignment (subtask 43) can use mock sections initially
+  - **PR-08 (Scene Planner):** ✅ Can build templates, mappings, and prompt builder logic with mock sections; `buildSceneSpec(sectionId)` integration happens when PR-04 is done
 - **Person A** builds PR-07 UI with mock genre/mood/lyrics data
 - **Person B** completes PR-05 & PR-06, then Person A integrates real data into PR-07
 - **Person B** can start PR-09 with mock section data, integrates real data when Person A completes PR-04
+
+### **✅ Confirmation for Person B:**
+
+**You can start PR-05, PR-06, and PR-08 right away!**
+
+- **PR-05:** No dependencies - works directly with audio
+- **PR-06:** Can do 90% independently (extraction, ASR, vocal stem); only section alignment needs real sections (use mocks for now)
+- **PR-08:** Can do 80% independently (templates, mappings, prompt builder); only the final `buildSceneSpec()` integration needs real sections (use mocks for now)
+
+Even though Person A will start PR-04 before you start PR-09, you don't need to wait - you can work on all three PRs in parallel and integrate the section data later.
 
 ---
 

@@ -1,7 +1,7 @@
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import Field, HttpUrl, field_validator
+from pydantic import AnyUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     rq_worker_queue: str = Field(default="ai_music_video", alias="RQ_WORKER_QUEUE")
 
-    s3_endpoint_url: Optional[HttpUrl] = Field(default=None, alias="S3_ENDPOINT_URL")
+    s3_endpoint_url: Optional[AnyUrl] = Field(default=None, alias="S3_ENDPOINT_URL")
     s3_bucket_name: str = Field(default="ai-music-video", alias="S3_BUCKET_NAME")
     s3_access_key_id: Optional[str] = Field(default=None, alias="S3_ACCESS_KEY_ID")
     s3_secret_access_key: Optional[str] = Field(default=None, alias="S3_SECRET_ACCESS_KEY")
@@ -41,13 +41,21 @@ class Settings(BaseSettings):
     ffmpeg_bin: str = Field(default="ffmpeg", alias="FFMPEG_BIN")
     librosa_cache_dir: str = Field(default=".cache/librosa", alias="LIBROSA_CACHE_DIR")
 
-    @field_validator("s3_endpoint_url", mode="before")
+    @field_validator(
+        "s3_endpoint_url",
+        "s3_access_key_id",
+        "s3_secret_access_key",
+        "s3_region",
+        "replicate_api_token",
+        "whisper_api_token",
+        "lyrics_api_key",
+        mode="before",
+    )
     @classmethod
-    def empty_str_to_none(cls, v):
-        """Convert empty strings to None for optional URL fields."""
-        if v == "" or v is None:
+    def empty_string_to_none(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
             return None
-        return v
+        return value
 
 
 @lru_cache

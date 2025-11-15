@@ -1,7 +1,7 @@
-import { SongProfilePage } from './pages/SongProfilePage'
+import { UploadPage } from './pages/UploadPage'
 
 function App() {
-  return <SongProfilePage />
+  return <UploadPage />
 }
 
 export default App

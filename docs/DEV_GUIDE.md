@@ -40,6 +40,19 @@ Stick with the pip + npm defaults unless your team standardizes on these alterna
 
 ---
 
+## 2.2 Environment Templates
+
+Copy the provided samples before running the apps:
+
+```bash
+cp docs/backend.env.example backend/.env
+cp docs/frontend.env.example frontend/.env
+```
+
+Populate the blanks with your own credentials (S3, Replicate, etc.).
+
+---
+
 ## 3. Local Infrastructure
 
 Spin up Postgres and Redis the backend expects.

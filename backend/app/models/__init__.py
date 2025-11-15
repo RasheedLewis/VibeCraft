@@ -1,4 +1,5 @@
-from app.models.song import Song
+from app.models.song import DEFAULT_USER_ID, Song
+from app.models.user import User
 
-__all__ = ["Song"]
+__all__ = ["Song", "User", "DEFAULT_USER_ID"]
 

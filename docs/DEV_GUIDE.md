@@ -307,6 +307,8 @@ The FastAPI app lives under `backend/app/`:
 - `services/` – pipeline logic (audio analysis, scene planning, etc.)
 - `workers/` – background task entrypoints (RQ/Celery)
 
+> **Note:** Until authentication is implemented, uploaded songs are associated with a placeholder user record whose ID is `default-user`. The default user is created automatically on startup (`init_db()`); replace this once real auth is wired up.
+
 `init_db()` currently auto-creates tables via SQLModel metadata on startup; swap for Alembic migrations once schemas stabilize.
 
 ---
@@ -319,8 +321,8 @@ With the server running, use `curl` to verify health and the initial `/songs` ro
 curl http://localhost:8000/healthz
 
 curl -X POST http://localhost:8000/api/v1/songs \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Demo Song","audio_url":"https://example.com/audio.mp3"}'
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@/path/to/your/audio.mp3"
 
 curl http://localhost:8000/api/v1/songs
 ```

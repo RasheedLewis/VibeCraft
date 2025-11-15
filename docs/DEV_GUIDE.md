@@ -96,6 +96,40 @@ rq worker ai_music_video
 
 ---
 
+### 4.1 Backend Project Structure
+
+The FastAPI app lives under `backend/app/`:
+
+- `main.py` – application factory, CORS, router registration
+- `core/` – configuration, logging, database session helpers
+- `api/v1/` – versioned routers (`/health`, `/songs`, etc.)
+- `models/` – SQLModel ORM tables (e.g., `Song`)
+- `schemas/` – Pydantic request/response models
+- `services/` – pipeline logic (audio analysis, scene planning, etc.)
+- `workers/` – background task entrypoints (RQ/Celery)
+
+`init_db()` currently auto-creates tables via SQLModel metadata on startup; swap for Alembic migrations once schemas stabilize.
+
+---
+
+### 4.2 Smoke-Test the API
+
+With the server running, use `curl` to verify health and the initial `/songs` routes:
+
+```bash
+curl http://localhost:8000/healthz
+
+curl -X POST http://localhost:8000/api/v1/songs \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Demo Song","audio_url":"https://example.com/audio.mp3"}'
+
+curl http://localhost:8000/api/v1/songs
+```
+
+> Rerun `pip install -r backend/requirements.txt` whenever backend dependencies change (e.g., new services or integrations).
+
+---
+
 ## 5. Frontend Runtime
 
 Start the Vite dev server for the React + TypeScript UI.

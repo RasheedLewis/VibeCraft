@@ -7,12 +7,47 @@ This guide walks new contributors through setting up the AI Music Video project 
 ## 1. Prerequisites
 
 - macOS or Linux with a recent POSIX shell
-- Python 3.10+ with `venv`
+- Python 3.10, 3.11, or 3.12 (3.13+ may have compatibility issues with some packages)
 - Node.js 20+ and npm 10+
 - Docker Desktop (for Postgres/Redis containers or future Compose flow)
 - `ffmpeg` installed locally (`brew install ffmpeg`)
 
 > Tip: Run everything from the repo root (`ai-music-video/`).
+
+### 1.1 Python Version Check & Installation
+
+**Check your current Python version:**
+
+```bash
+python3 --version
+```
+
+**If you have Python 3.13 or newer**, you'll need to install a compatible version (3.10-3.12):
+
+**On macOS (using Homebrew):**
+
+```bash
+# Install Python 3.12 (recommended)
+brew install python@3.12
+
+# Verify installation
+python3.12 --version
+```
+
+**On Linux:**
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install python3.12 python3.12-venv python3.12-dev
+
+# Or use pyenv for version management
+curl https://pyenv.run | bash
+pyenv install 3.12.12
+pyenv local 3.12.12
+```
+
+**If you have Python 3.10, 3.11, or 3.12**, you're all set! Proceed to the next section.
 
 ---
 
@@ -20,12 +55,27 @@ This guide walks new contributors through setting up the AI Music Video project 
 
 Run these from the repository root (`ai-music-video/`) to stand up the Python and Node environments.
 
+**Important:** Use the specific Python version you installed (e.g., `python3.12` instead of `python3` if your default `python3` is 3.13+):
+
 ```bash
-python3 -m venv .venv
+# Use python3.12 (or python3.11/python3.10) if your default python3 is too new
+python3.12 -m venv .venv
 source .venv/bin/activate
+
+# Note: If you see double parentheses like ((.venv) ) in your prompt, that's normal.
+# It means you have another environment active (e.g., conda base). The venv is still active.
+
+# Verify you're using the correct Python version in the venv
+python --version  # Should show 3.10, 3.11, or 3.12
+
+# Install backend dependencies
 pip install -r backend/requirements.txt
+
+# Install frontend dependencies
 npm --prefix frontend install
 ```
+
+**Troubleshooting:** If `python3.12` isn't found, make sure you installed it via Homebrew and that `/opt/homebrew/bin` is in your PATH. You can also use the full path: `/opt/homebrew/bin/python3.12 -m venv .venv`
 
 > `npm --prefix frontend install` keeps the command runnable from the repo root. `npm install` inside `frontend/` works the same if you prefer to `cd` first.
 
@@ -33,10 +83,53 @@ npm --prefix frontend install
 
 ## 2.1 Optional Package Managers (Poetry / pnpm)
 
-- **Poetry**: `poetry install` from `backend/` (after generating a `pyproject.toml`) creates an isolated virtualenv automatically. Activate with `poetry shell` before running backend commands.
-- **pnpm**: `pnpm install --dir frontend` installs frontend dependencies with pnpm’s content-addressable store. Add `.npmrc` / `.pnpmfile.cjs` as needed to share settings with the team.
+### Poetry (Python)
 
-Stick with the pip + npm defaults unless your team standardizes on these alternatives.
+**Installation:**
+
+The recommended way to install Poetry is using `pipx` (which installs it in an isolated environment):
+
+```bash
+pipx install poetry
+```
+
+Alternatively, you can use the official installer:
+
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+```
+
+Or on macOS with Homebrew:
+
+```bash
+brew install poetry
+```
+
+**Usage:**
+
+Once installed, `poetry install` from `backend/` (after generating a `pyproject.toml`) creates an isolated virtualenv automatically. Activate with `poetry shell` before running backend commands.
+
+### pnpm (Node.js)
+
+**Installation:**
+
+```bash
+npm install -g pnpm
+```
+
+Or on macOS with Homebrew:
+
+```bash
+brew install pnpm
+```
+
+**Usage:**
+
+`pnpm install --dir frontend` installs frontend dependencies with pnpm's content-addressable store. Add `.npmrc` / `.pnpmfile.cjs` as needed to share settings with the team.
+
+---
+
+**Note:** Stick with the pip + npm defaults unless your team standardizes on these alternatives.
 
 ---
 
@@ -57,6 +150,22 @@ Populate the blanks with your own credentials (S3, Replicate, etc.).
 
 Spin up Postgres and Redis the backend expects.
 
+**Important:** If containers with these names already exist, remove them first:
+
+```bash
+docker rm -f ai-music-video-postgres ai-music-video-redis 2>/dev/null || true
+```
+
+**Check if port 5432 is already in use:**
+
+```bash
+lsof -i :5432
+```
+
+If another Postgres instance is using port 5432, either stop it or use a different port (e.g., `-p 5433:5432` and update `DATABASE_URL` in your `.env` file to use `127.0.0.1:5433` instead of `localhost:5432`).
+
+**Start the containers:**
+
 ```bash
 docker run --name ai-music-video-postgres \
   -e POSTGRES_PASSWORD=postgres \
@@ -69,6 +178,14 @@ docker run --name ai-music-video-redis \
   -p 6379:6379 \
   -d redis:7
 ```
+
+**Verify containers are running:**
+
+```bash
+docker ps | grep -E "(ai-music-video-postgres|ai-music-video-redis)"
+```
+
+**Note:** If you experience connection issues with psycopg3, use `127.0.0.1` instead of `localhost` in your `DATABASE_URL` (e.g., `postgresql+psycopg://postgres:postgres@127.0.0.1:5432/ai_music_video`).
 
 > You can replace these single containers with the `infra/compose.yml` workflow once it exists.
 
@@ -176,4 +293,3 @@ docker compose up --build
 3. Implement frontend pages and components per the roadmap (Upload, Song Profile, Section cards, Gallery).
 
 Refer back to `PRD.md` and `ROADMAP.md` for task-level details once your environment boots cleanly.
-

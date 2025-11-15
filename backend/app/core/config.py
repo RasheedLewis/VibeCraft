@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, HttpUrl
+from pydantic import Field, HttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,6 +40,14 @@ class Settings(BaseSettings):
 
     ffmpeg_bin: str = Field(default="ffmpeg", alias="FFMPEG_BIN")
     librosa_cache_dir: str = Field(default=".cache/librosa", alias="LIBROSA_CACHE_DIR")
+
+    @field_validator("s3_endpoint_url", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """Convert empty strings to None for optional URL fields."""
+        if v == "" or v is None:
+            return None
+        return v
 
 
 @lru_cache

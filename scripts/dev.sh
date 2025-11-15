@@ -119,9 +119,22 @@ npm run dev -- --host &
 FRONTEND_PID=$!
 cd ..
 
+# Start Trigger.dev (optional - only if ENABLE_TRIGGER_DEV is set)
+if [ "${ENABLE_TRIGGER_DEV}" = "1" ]; then
+  echo -e "${GREEN}Starting Trigger.dev dev server${NC}"
+  npx trigger.dev@latest dev &
+  TRIGGER_PID=$!
+  echo -e "${YELLOW}Note: Trigger.dev started (set ENABLE_TRIGGER_DEV=1 to enable)${NC}"
+else
+  echo -e "${YELLOW}Trigger.dev skipped (set ENABLE_TRIGGER_DEV=1 to enable)${NC}"
+fi
+
 echo -e "\n${GREEN}All services started!${NC}"
 echo -e "Backend: http://localhost:8000"
 echo -e "Frontend: http://localhost:5173"
+if [ "${ENABLE_TRIGGER_DEV}" = "1" ]; then
+  echo -e "Trigger.dev: Running (see dashboard for URL)"
+fi
 echo -e "\nPress Ctrl+C to stop all services"
 
 # Wait for all background jobs

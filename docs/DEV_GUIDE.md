@@ -213,7 +213,89 @@ rq worker ai_music_video
 
 ---
 
-### 4.1 Backend Project Structure
+## 4.1 Trigger.dev Background Tasks
+
+Trigger.dev is configured for running background tasks and workflows. Triggers are defined in `backend/triggers/` and can be used alongside or instead of RQ workers.
+
+### 4.1.1 Setup
+
+Trigger.dev dependencies are installed in the root `package.json`. Make sure you've installed root dependencies:
+
+```bash
+npm install
+```
+
+### 4.1.2 Configuration
+
+The Trigger.dev configuration is in `trigger.config.ts` at the project root:
+- Triggers are loaded from `backend/triggers/` directory
+- Project ID is configured in the config file
+- See `trigger.config.ts` for retry policies and other settings
+
+### 4.1.3 Running Triggers in Development
+
+**Option 1: Include in dev script (optional)**
+
+You can start Trigger.dev automatically with the dev script:
+
+```bash
+ENABLE_TRIGGER_DEV=1 make dev
+# or
+ENABLE_TRIGGER_DEV=1 bash scripts/dev.sh
+```
+
+**Option 2: Run manually (recommended for most cases)**
+
+Start the Trigger.dev dev server in a separate terminal:
+
+```bash
+npx trigger.dev@latest dev
+```
+
+This will:
+- Watch for changes in `backend/triggers/`
+- Connect to your Trigger.dev project
+- Allow you to test triggers locally
+
+**Test the hello-world example trigger:**
+
+The example trigger is located at `backend/triggers/example.ts`. Once the dev server is running, you can trigger it via the Trigger.dev dashboard or by calling it programmatically.
+
+**When to use Trigger.dev:**
+
+- Only needed when working on trigger-based workflows
+- For most development, RQ workers are sufficient
+- Use Trigger.dev when you need complex workflows, better observability, or cloud deployment features
+
+### 4.1.4 Creating New Triggers
+
+1. Create a new TypeScript file in `backend/triggers/`
+2. Import the Trigger.dev SDK:
+   ```typescript
+   import { logger, task, wait } from "@trigger.dev/sdk/v3";
+   ```
+3. Define your task:
+   ```typescript
+   export const myTask = task({
+     id: "my-task-id",
+     run: async (payload: any, { ctx }) => {
+       // Your task logic here
+       return { result: "success" };
+     },
+   });
+   ```
+4. The dev server will automatically pick up the new trigger
+
+### 4.1.5 Trigger.dev vs RQ Workers
+
+- **Trigger.dev**: Better for complex workflows, retries, observability, and cloud deployment
+- **RQ Workers**: Simpler, good for basic background jobs, runs locally with Redis
+
+You can use both systems in parallel - Trigger.dev for complex workflows, RQ for simple background tasks.
+
+---
+
+### 4.2 Backend Project Structure
 
 The FastAPI app lives under `backend/app/`:
 

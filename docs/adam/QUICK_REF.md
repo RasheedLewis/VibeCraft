@@ -18,6 +18,10 @@ cd frontend && npm run dev -- --host
 cd backend && source ../.venv/bin/activate && uvicorn app.main:app --reload
 # Terminal 3: RQ Worker
 cd backend && source ../.venv/bin/activate && rq worker ai_music_video
+# Terminal 4: Trigger.dev (optional - only when working on trigger workflows)
+npx trigger.dev@latest dev
+# Or include Trigger.dev in dev script:
+ENABLE_TRIGGER_DEV=1 make dev
 ```
 
 ## More Notes

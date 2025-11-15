@@ -57,3 +57,5 @@ samples/audio/**/*.flac
 !samples/README.md
 !samples/metadata/
 
+
+.trigger

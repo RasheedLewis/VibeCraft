@@ -13,6 +13,12 @@ from app.schemas.scene import (
     ShotPattern,
     TemplateType,
 )
+from app.schemas.section_video import (
+    SectionVideoCreate,
+    SectionVideoGenerateRequest,
+    SectionVideoGenerateResponse,
+    SectionVideoRead,
+)
 from app.schemas.song import SongRead, SongUploadResponse
 
 __all__ = [
@@ -30,5 +36,9 @@ __all__ = [
     "SceneSpec",
     "ShotPattern",
     "TemplateType",
+    "SectionVideoRead",
+    "SectionVideoCreate",
+    "SectionVideoGenerateRequest",
+    "SectionVideoGenerateResponse",
 ]
 

@@ -26,6 +26,47 @@ npx trigger.dev@latest dev
 ENABLE_TRIGGER_DEV=1 make dev
 ```
 
+## 🔴 TODO / Questions to Resolve
+
+### 1. Background Job Architecture
+
+- **Where does the lyrics code run?** (Whisper extraction)
+- **Where does the librosa code run?** (BPM, sections, analysis)
+- **Decision needed:** Should both go with song analysis background job?
+- **Current status:** Lyrics extraction exists but not enqueued to background job yet
+
+### 2. UI/UX - Lyrics Display
+
+- **Where should lyrics be shown in the UI?**
+- **Options to consider:**
+
+  - Section cards (already has `lyricSnippet` prop support)
+  - Full lyrics view/page
+  - Timeline overlay
+  - Side panel
+
+- **Current status:** Frontend has `SectionCard` component with lyric snippet support, but needs decision on full implementation
+
+### 3. Song Analysis - Data Persistence & Display
+
+- **Which aspects of song analysis should be persisted to DB?**
+  - Decision needed: Full `SongAnalysis` object vs. selected fields only
+  - Consider: Storage costs, query performance, future extensibility
+  - Current: Analysis computed on-demand, not persisted (PR-04 will add persistence)
+
+- **Which aspects should be shown to the user?**
+  - Decision needed: What analysis data to display in UI
+  - Considerations:
+    - **Mood tags:** Ensure at least 1 mood tag is always generated (currently `compute_mood_tags()` can return empty list)
+    - Genre: Show primary + sub-genres, or primary only?
+    - Mood vector: Show raw numbers (energy, valence, etc.) or just tags?
+    - Sections: Show all sections or filter by confidence threshold?
+    - Lyrics: Show full lyrics or snippets only?
+
+- **Current status:** Analysis services exist (PR-05, PR-06), but display decisions pending
+
+---
+
 ## Scratchpad
 
 ### HIGH PRIORITY: Video APIs Research

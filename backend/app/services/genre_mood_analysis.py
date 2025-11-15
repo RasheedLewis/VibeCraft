@@ -243,10 +243,44 @@ def compute_mood_tags(mood_vector: MoodVector) -> tuple[str, list[str]]:
     elif mood_vector.tension < 0.3:
         tags.append("relaxed")
 
-    # Determine primary mood
+    # Ensure at least 1 tag is always generated (for UI display)
     if not tags:
-        primary_mood = "neutral"
-    elif "energetic" in tags and "upbeat" in tags:
+        # Fallback: only add tags if there's a clear signal, otherwise use neutral/un-label-able
+        # Use thresholds that indicate a meaningful deviation from middle-ground
+        energy_threshold = 0.6  # More conservative than 0.5
+        valence_threshold = 0.6
+        
+        # Check if values are truly middle-ground (within 0.4-0.6 range)
+        is_middle_energy = 0.4 <= mood_vector.energy <= 0.6
+        is_middle_valence = 0.4 <= mood_vector.valence <= 0.6
+        
+        if mood_vector.energy >= energy_threshold:
+            tags.append("energetic")
+        elif mood_vector.energy <= (1.0 - energy_threshold):
+            tags.append("calm")
+        
+        if mood_vector.valence >= valence_threshold:
+            tags.append("upbeat")
+        elif mood_vector.valence <= (1.0 - valence_threshold):
+            tags.append("melancholic")
+        
+        # If still no tags, it's truly middle-ground
+        if not tags:
+            # Use "un-label-able" if all values are very close to 0.5 (truly ambiguous)
+            # Otherwise use "neutral" for middle-ground cases
+            all_middle = (
+                is_middle_energy
+                and is_middle_valence
+                and 0.4 <= mood_vector.danceability <= 0.6
+                and 0.4 <= mood_vector.tension <= 0.6
+            )
+            if all_middle:
+                tags.append("un-label-able")
+            else:
+                tags.append("neutral")
+
+    # Determine primary mood
+    if "energetic" in tags and "upbeat" in tags:
         primary_mood = "energetic"
     elif "calm" in tags and "relaxed" in tags:
         primary_mood = "calm"

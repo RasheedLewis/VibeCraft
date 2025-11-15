@@ -78,7 +78,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-## **PR-06 — Lyric Extraction & Section Alignment**
+## **PR-06 — Lyric Extraction & Section Alignment** ✅ DONE
 
 1. Implement Whisper ASR via Replicate API (MVP: Whisper-only approach)
 2. Segment ASR output into timed lines
@@ -109,7 +109,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-## **PR-08 — Section Scene Planner (Template + Prompt Builder)**
+## **PR-08 — Section Scene Planner (Template + Prompt Builder)** ✅ DONE
 
 1. Implement template definitions (Abstract first)
 2. Map mood to intensity + color palette

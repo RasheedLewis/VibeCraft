@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 
 import {
   VCAppShell,
@@ -10,6 +10,12 @@ import {
   Attribution,
   ThemeToggle,
 } from '../components/vibecraft'
+import { apiClient } from '../lib/apiClient'
+import type {
+  SectionVideoGenerateRequest,
+  SectionVideoGenerateResponse,
+  SectionVideoRead,
+} from '../types/sectionVideo'
 
 const templates = [
   {
@@ -31,28 +37,28 @@ const templates = [
 
 const demoSections = [
   {
+    id: 'section-1',
     name: 'Intro',
     startSec: 0,
     endSec: 18,
     mood: 'chill' as const,
-    lyricSnippet: 'Floating through the city lights…',
-    hasVideo: false,
+    lyricSnippet: 'Floating through the city lights...',
   },
   {
+    id: 'section-2',
     name: 'Verse 1',
     startSec: 18,
     endSec: 45,
     mood: 'dark' as const,
-    lyricSnippet: 'Echoes in the stairwell call your name…',
-    hasVideo: true,
+    lyricSnippet: 'Echoes in the stairwell call your name...',
   },
   {
+    id: 'section-4',
     name: 'Chorus',
     startSec: 45,
     endSec: 75,
     mood: 'energetic' as const,
-    lyricSnippet: 'Turn the volume up, don’t let go…',
-    hasVideo: true,
+    lyricSnippet: "Turn the volume up, don't let go...",
   },
 ] as const
 
@@ -62,6 +68,87 @@ export const SongProfilePage: React.FC = () => {
   )
   const [selectedTemplate, setSelectedTemplate] =
     useState<(typeof templates)[number]['id']>('abstract')
+  const [sectionVideos, setSectionVideos] = useState<Map<string, SectionVideoRead>>(
+    new Map(),
+  )
+  const [, setGeneratingSections] = useState<Set<string>>(new Set())
+
+  const fetchSectionVideo = useCallback(async (sectionId: string) => {
+    try {
+      const response = await apiClient.get<SectionVideoRead>(
+        `/sections/${sectionId}/video`,
+      )
+      setSectionVideos((prev) => {
+        const next = new Map(prev)
+        next.set(sectionId, response.data)
+        return next
+      })
+    } catch (error) {
+      // Video doesn't exist yet, that's okay
+      if ((error as { response?: { status?: number } }).response?.status !== 404) {
+        console.error('Error fetching section video:', error)
+      }
+    }
+  }, [])
+
+  const generateSectionVideo = useCallback(
+    async (sectionId: string) => {
+      setGeneratingSections((prev) => new Set(prev).add(sectionId))
+      setStage('generatingSections')
+
+      try {
+        const request: SectionVideoGenerateRequest = {
+          sectionId,
+          template: selectedTemplate,
+        }
+        const response = await apiClient.post<SectionVideoGenerateResponse>(
+          `/sections/${sectionId}/generate`,
+          request,
+        )
+
+        // Poll for completion (in production, use WebSocket or polling endpoint)
+        if (response.data.status === 'completed') {
+          await fetchSectionVideo(sectionId)
+        } else {
+          // Poll until completed
+          const pollInterval = setInterval(async () => {
+            try {
+              await fetchSectionVideo(sectionId)
+              const video = sectionVideos.get(sectionId)
+              if (video?.status === 'completed' || video?.status === 'failed') {
+                clearInterval(pollInterval)
+                setGeneratingSections((prev) => {
+                  const next = new Set(prev)
+                  next.delete(sectionId)
+                  return next
+                })
+              }
+            } catch {
+              // Keep polling
+            }
+          }, 3000) // Poll every 3 seconds
+
+          // Stop polling after 5 minutes
+          setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000)
+        }
+      } catch (error) {
+        console.error('Error generating section video:', error)
+        setGeneratingSections((prev) => {
+          const next = new Set(prev)
+          next.delete(sectionId)
+          return next
+        })
+      }
+    },
+    [selectedTemplate, fetchSectionVideo, sectionVideos],
+  )
+
+  // Fetch existing videos on mount
+  useEffect(() => {
+    demoSections.forEach((section) => {
+      fetchSectionVideo(section.id)
+    })
+  }, [fetchSectionVideo])
 
   return (
     <VCAppShell
@@ -138,28 +225,43 @@ export const SongProfilePage: React.FC = () => {
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
-          {demoSections.map((section) => (
-            <SectionCard
-              key={section.name}
-              {...section}
-              onGenerate={() => setStage('generatingSections')}
-              onRegenerate={() => setStage('generatingSections')}
-              onUseInFull={() => setStage('generatingSections')}
-            />
-          ))}
+          {demoSections.map((section) => {
+            const video = sectionVideos.get(section.id)
+            const hasVideo = video?.status === 'completed' && !!video.videoUrl
+
+            return (
+              <SectionCard
+                key={section.id}
+                name={section.name}
+                startSec={section.startSec}
+                endSec={section.endSec}
+                mood={section.mood}
+                lyricSnippet={section.lyricSnippet}
+                hasVideo={hasVideo}
+                onGenerate={() => generateSectionVideo(section.id)}
+                onRegenerate={() => generateSectionVideo(section.id)}
+                onUseInFull={() => {}}
+              />
+            )
+          })}
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
-          <VideoPreviewCard
-            label="Chorus - Take 02"
-            videoUrl=""
-            thumbnailUrl="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80"
-          />
-          <VideoPreviewCard
-            label="Verse 1 - Approved"
-            videoUrl="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
-            onUseInFull={() => {}}
-          />
+          {demoSections
+            .filter((section) => {
+              const video = sectionVideos.get(section.id)
+              return video?.status === 'completed' && video.videoUrl
+            })
+            .map((section) => {
+              const video = sectionVideos.get(section.id)!
+              return (
+                <VideoPreviewCard
+                  key={section.id}
+                  label={`${section.name} - Generated`}
+                  videoUrl={video.videoUrl}
+                />
+              )
+            })}
         </section>
 
         {/* Attribution - only shows if attribution text exists */}

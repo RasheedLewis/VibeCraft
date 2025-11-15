@@ -143,20 +143,28 @@ This document outlines how to split the first 9 PRs (67 subtasks) between two de
 
 #### **PR-06: Lyric Extraction & Section Alignment** (Full Stack)
 
-**Subtasks 38-45:**
+**Subtasks 38-45 (MVP - Whisper-only approach):**
 
-- ✅ Track recognition (optional)
-- ✅ Lyrics API integration
-- ✅ Whisper ASR for unrecognized tracks
-- ✅ Vocal stem extraction (Demucs/Spleeter)
+- ✅ Implement Whisper ASR via Replicate API
 - ✅ Segment ASR output into timed lines
 - ✅ Align lyrics to section timestamps *(can use mock sections initially)*
 - ✅ Add `sectionLyrics[]` to analysis
 - ✅ Display lyric previews inside section cards
 
+**Future enhancements (not in MVP):**
+- Track recognition API (Shazam/ACRCloud) → fetch lyrics from lyrics API for known tracks
+- Lyrics API integration (Musixmatch/Genius) for higher-quality pre-formatted lyrics
+- Vocal stem extraction (Demucs/Spleeter) → run Whisper on isolated vocals for better accuracy
+
 **Deliverable:** Complete lyrics feature with UI display
 
-**Note:** Can start immediately - lyric extraction is independent. Section alignment (subtask 43) can use mock sections until PR-04 is complete.
+**Note:** Can start immediately - lyric extraction is independent. Section alignment can use mock sections until PR-04 is complete.
+
+**Integration with Person A (PR-04):**
+When Person A implements the analysis orchestration endpoint (`/api/songs/:id/analyze`), they should:
+1. Call `extract_and_align_lyrics(audio_path, sections)` from `app.services.lyric_extraction`
+2. Pass the returned `sectionLyrics` list to the `SongAnalysis` object
+3. The frontend `SectionCard` component already supports `lyricSnippet` prop and will automatically display lyrics when provided
 
 ---
 
@@ -234,7 +242,53 @@ interface JobStatus {
 
 ---
 
-### **2. Mock Data Strategy (Both Developers)**
+### **2. Person A Integration: Using Person B's Services (PR-04, PR-07)**
+
+**When Person A implements the analysis orchestration endpoint (`/api/songs/:id/analyze` in PR-04):**
+
+1. **Genre/Mood Analysis (from PR-05):**
+   - Call `compute_mood_features(audio_path, bpm)` from `app.services.genre_mood_analysis`
+   - Call `compute_mood_tags(mood_vector)` to get mood tags
+   - Call `compute_genre(audio_path, bpm, mood_vector)` to get genre classification
+   - Add results to `SongAnalysis` object
+
+2. **Lyric Extraction (from PR-06):**
+   - Call `extract_and_align_lyrics(audio_path, sections)` from `app.services.lyric_extraction`
+   - Pass the returned `sectionLyrics` list to the `SongAnalysis` object
+   - Set `lyricsAvailable=True` if lyrics were extracted
+
+3. **Frontend Integration (PR-07):**
+   - The `SectionCard` component already supports `lyricSnippet` prop
+   - Map `sectionLyrics[].text` to `SectionCard.lyricSnippet` for each section
+   - Lyrics will automatically display in section cards when provided
+
+**Example integration code:**
+```python
+from app.services.genre_mood_analysis import compute_mood_features, compute_mood_tags, compute_genre
+from app.services.lyric_extraction import extract_and_align_lyrics
+
+# In analysis orchestration endpoint:
+mood_vector = compute_mood_features(audio_path, bpm)
+primary_mood, mood_tags = compute_mood_tags(mood_vector)
+primary_genre, sub_genres, genre_confidence = compute_genre(audio_path, bpm, mood_vector)
+
+lyrics_available, section_lyrics = extract_and_align_lyrics(audio_path, sections)
+
+analysis = SongAnalysis(
+    # ... other fields ...
+    mood_vector=mood_vector,
+    mood_primary=primary_mood,
+    mood_tags=mood_tags,
+    primary_genre=primary_genre,
+    sub_genres=sub_genres,
+    lyrics_available=lyrics_available,
+    section_lyrics=section_lyrics,
+)
+```
+
+---
+
+### **3. Mock Data Strategy (Both Developers)**
 
 Each developer creates mock data for features they don't own yet:
 

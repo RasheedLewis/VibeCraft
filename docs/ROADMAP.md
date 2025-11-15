@@ -74,20 +74,22 @@ I kept all ordering logical and sequential.
 5. Integrate genre/mood outputs into analysis object
 6. Add genre/mood display UI badges
 
-**Testing:** Run `pytest backend/tests/test_genre_mood_analysis.py -v` and `python backend/test_genre_mood.py` with sample audio. Verify analysis response includes `primaryGenre`, `moodTags`, and `moodVector` fields.
+**Testing:** Run `pytest backend/tests/unit/test_genre_mood_analysis.py -v` (unit tests) and `python backend/tests/test_genre_mood.py` (integration test) with sample audio. Verify analysis response includes `primaryGenre`, `moodTags`, and `moodVector` fields.
 
 ---
 
 ## **PR-06 — Lyric Extraction & Section Alignment**
 
-1. Integrate track recognition (optional)
-2. Call lyrics API when recognized
-3. Implement Whisper ASR for unrecognized tracks
-4. Extract vocal stem (Demucs/Spleeter)
-5. Segment ASR output into timed lines
-6. Align lyrics to section timestamps
-7. Add `sectionLyrics[]` to analysis
-8. Display lyric previews inside section cards
+1. Implement Whisper ASR via Replicate API (MVP: Whisper-only approach)
+2. Segment ASR output into timed lines
+3. Align lyrics to section timestamps *(can use mock sections until PR-04 complete)*
+4. Add `sectionLyrics[]` to analysis
+5. Display lyric previews inside section cards
+
+**Future enhancements (not in MVP):**
+- Track recognition API (Shazam/ACRCloud) → fetch lyrics from lyrics API for known tracks
+- Lyrics API integration (Musixmatch/Genius) for higher-quality pre-formatted lyrics
+- Vocal stem extraction (Demucs/Spleeter) → run Whisper on isolated vocals for better accuracy
 
 **Testing:** Run analysis on song with vocals. Verify `sectionLyrics[]` array is populated with timed text aligned to sections. Check lyric previews appear in section cards.
 

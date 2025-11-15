@@ -1,13 +1,19 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
 
 from pydantic import AnyUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Find backend directory (where .env file is located)
+# This file is at backend/app/core/config.py, so go up 2 levels
+BACKEND_DIR = Path(__file__).parent.parent.parent
+ENV_FILE = (BACKEND_DIR / ".env").resolve()  # Use absolute path
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
     )

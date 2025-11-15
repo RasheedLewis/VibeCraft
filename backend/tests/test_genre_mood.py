@@ -5,17 +5,22 @@ Tests full pipeline with real audio files - exercises compute_mood_features()
 (requires librosa to load audio). End-to-end: audio → mood features → tags → genre.
 Human-readable output for manual verification.
 
-Complementary to test_genre_mood_analysis.py: This verifies full pipeline works
-with real audio; test_genre_mood_analysis.py verifies rules/logic work correctly.
+Complementary to tests/unit/test_genre_mood_analysis.py: This verifies full pipeline works
+with real audio; unit tests verify rules/logic work correctly.
+
+Run with: python backend/tests/test_genre_mood.py
+Or from backend/: python tests/test_genre_mood.py
 """
 
 import sys
 from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Add backend directory to path
+backend_dir = Path(__file__).parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
 
-from app.services.genre_mood_analysis import (
+from app.services.genre_mood_analysis import (  # noqa: E402
     compute_genre,
     compute_mood_features,
     compute_mood_tags,
@@ -29,7 +34,8 @@ if __name__ == "__main__":
     ]
 
     for audio_path in sample_files:
-        path = Path(__file__).parent.parent / audio_path
+        # samples/ is at repo root, not backend/
+        path = Path(__file__).parent.parent.parent / audio_path
         if not path.exists():
             print(f"⚠️  File not found: {path}")
             continue

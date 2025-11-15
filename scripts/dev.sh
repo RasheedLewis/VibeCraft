@@ -80,10 +80,10 @@ else
 fi
 
 cd backend
-if pytest tests/ 2>/dev/null; then
-    echo -e "${GREEN}✓ Backend tests passed${NC}"
+if pytest tests/unit/ 2>/dev/null; then
+    echo -e "${GREEN}✓ Backend unit tests passed${NC}"
 else
-    echo -e "${YELLOW}⚠ No backend tests found (skipping)${NC}"
+    echo -e "${YELLOW}⚠ No backend unit tests found (skipping)${NC}"
 fi
 cd ..
 

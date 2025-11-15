@@ -60,7 +60,7 @@ build:
 test:
 	@echo "Running tests..."
 	@npm --prefix frontend test 2>/dev/null || echo "No frontend tests yet"
-	@bash -c "source .venv/bin/activate && pytest backend/tests/ 2>/dev/null || echo 'No backend tests yet'; deactivate"
+	@bash -c "source .venv/bin/activate && pytest backend/tests/unit/ 2>/dev/null || echo 'No backend unit tests yet'; deactivate"
 	@echo "✓ Tests complete"
 
 stop:

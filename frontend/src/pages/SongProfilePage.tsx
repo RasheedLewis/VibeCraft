@@ -8,6 +8,7 @@ import {
   TemplatePill,
   VideoPreviewCard,
   Attribution,
+  ThemeToggle,
 } from '../components/vibecraft'
 
 const templates = [
@@ -70,35 +71,38 @@ export const SongProfilePage: React.FC = () => {
             Project
           </p>
           <div className="space-y-2">
-            <button className="w-full rounded-md border border-vc-border bg-vc-surface px-3 py-2 text-left text-white">
+            <button className="w-full rounded-md border border-vc-border bg-vc-surface px-3 py-2 text-left text-vc-text-primary">
               Aurora Skies EP
             </button>
-            <button className="w-full rounded-md border border-transparent px-3 py-2 text-left hover:border-vc-border">
+            <button className="w-full rounded-md border border-transparent px-3 py-2 text-left text-vc-text-primary hover:border-vc-border">
               Demo Gallery
             </button>
           </div>
         </div>
       }
       header={
-        <>
+        <div className="flex w-full items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.12em] text-vc-text-muted">
               Song Profile
             </p>
-            <h1 className="font-display text-lg text-white">“Aurora Skies”</h1>
+            <h1 className="font-display text-lg text-vc-text-primary">“Aurora Skies”</h1>
           </div>
-          <VCButton
-            variant="secondary"
-            size="sm"
-            onClick={() =>
-              setStage((prev) =>
-                prev === 'analyzing' ? 'generatingSections' : 'analyzing',
-              )
-            }
-          >
-            Toggle Stage
-          </VCButton>
-        </>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <VCButton
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                setStage((prev) =>
+                  prev === 'analyzing' ? 'generatingSections' : 'analyzing',
+                )
+              }
+            >
+              Toggle Stage
+            </VCButton>
+          </div>
+        </div>
       }
     >
       <div className="space-y-6">
@@ -106,13 +110,13 @@ export const SongProfilePage: React.FC = () => {
           stage={stage === 'generatingSections' ? 'generatingSections' : 'analyzing'}
         />
 
-        <section className="rounded-lg border border-vc-border bg-vc-surface/60 p-4 shadow-vc1 backdrop-blur">
+        <section className="vc-panel backdrop-blur p-4 space-y-3">
           <header className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.12em] text-vc-text-muted">
                 Visual Template
               </p>
-              <h2 className="font-display text-base text-white">
+              <h2 className="font-display text-base text-vc-text-primary">
                 Choose how this song should feel
               </h2>
             </div>

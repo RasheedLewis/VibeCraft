@@ -359,6 +359,7 @@ npm run format:write # Prettier write
 
 - Tailwind config: `frontend/tailwind.config.ts` (design tokens from `DESIGN_SYSTEM.md`)
 - Global theme file: `frontend/src/styles/vibecraft-theme.css` (imported via `src/index.css`)
+- Light mode palette supported via `html.light` (or `data-theme="light"`) — defaults to OS preference when no class is set
 - Component library: `frontend/src/components/vibecraft/`
 - Example screen: `frontend/src/pages/SongProfilePage.tsx` rendered via `App.tsx`
 
@@ -369,6 +370,8 @@ npm run dev -- --host
 ```
 
 If you add new tokens or components, update the Tailwind config and keep docs in sync with `DESIGN_SYSTEM.md`.
+
+To preview light mode explicitly, add the `light` class to the root HTML element (e.g. `document.documentElement.classList.add('light')`). Use `dark` to force the night-studio palette. Removing both classes reverts to the default dark experience.
 
 ---
 

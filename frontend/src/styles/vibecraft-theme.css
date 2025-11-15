@@ -151,6 +151,14 @@
     @apply vc-template-pill border-vc-accent-primary bg-[radial-gradient(circle_at_top,_#6E6BFF33,_transparent_60%)] shadow-vc2;
   }
 
+  .vc-sidebar {
+    background-color: rgba(10, 10, 16, 0.94);
+  }
+
+  .vc-header-bar {
+    background-color: rgba(12, 12, 18, 0.92);
+  }
+
   /* Timeline & section-specific */
 
   .vc-section-card {
@@ -178,6 +186,206 @@
   .vc-pulse-bar {
     @apply w-1.5 rounded-full bg-vc-accent-secondary;
   }
+}
+
+/* ─────────────────────────────────────────
+   Light theme overrides (html.light or data-theme="light")
+   ──────────────────────────────────────── */
+
+:where(html.light, html[data-theme='light']) {
+  color-scheme: light;
+}
+
+:where(html.light, html[data-theme='light']) body {
+  background-color: #f6f4ff;
+  color: #0e0e13;
+}
+
+:where(html.light, html[data-theme='light']) a {
+  color: #6e5bff;
+  transition: color 150ms ease;
+}
+
+:where(html.light, html[data-theme='light']) a:hover {
+  color: #ff6ff5;
+}
+
+:where(html.light, html[data-theme='light']) .vc-app {
+  background-color: #f6f4ff;
+  color: #0e0e13;
+}
+
+:where(html.light, html[data-theme='light']) .vc-app-main {
+  color: #0e0e13;
+}
+
+:where(html.light, html[data-theme='light']) .vc-panel {
+  background-color: #ffffff;
+  border-color: #d9d5e7;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+:where(html.light, html[data-theme='light']) .vc-panel-raised {
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+
+:where(html.light, html[data-theme='light']) .vc-card,
+:where(html.light, html[data-theme='light']) .vc-card-tight,
+:where(html.light, html[data-theme='light']) .vc-section-card {
+  background-color: #ffffff;
+  border-color: #d9d5e7;
+}
+
+:where(html.light, html[data-theme='light']) .vc-card-title {
+  color: #0e0e13;
+}
+
+:where(html.light, html[data-theme='light']) .vc-card-subtitle {
+  color: #9a98a9;
+}
+
+:where(html.light, html[data-theme='light']) .vc-sidebar {
+  background-color: rgba(255, 255, 255, 0.92);
+  border-color: #d9d5e7;
+}
+
+:where(html.light, html[data-theme='light']) .vc-header-bar {
+  background-color: rgba(255, 255, 255, 0.85);
+  border-color: #d9d5e7;
+  color: #0e0e13;
+}
+
+:where(html.light, html[data-theme='light']) .text-vc-text-primary {
+  color: #0e0e13;
+}
+
+:where(html.light, html[data-theme='light']) .text-vc-text-secondary {
+  color: #636274;
+}
+
+:where(html.light, html[data-theme='light']) .text-vc-text-muted {
+  color: #9a98a9;
+}
+
+:where(html.light, html[data-theme='light']) .bg-vc-bg {
+  background-color: #f6f4ff;
+}
+
+:where(html.light, html[data-theme='light']) .bg-vc-surface {
+  background-color: #ffffff;
+}
+
+:where(html.light, html[data-theme='light']) .bg-vc-surfaceAlt {
+  background-color: #f1ecff;
+}
+
+:where(html.light, html[data-theme='light']) .border-vc-border {
+  border-color: #d9d5e7;
+}
+
+:where(html.light, html[data-theme='light']) .vc-btn {
+  --tw-ring-color: #6e5bff;
+  --tw-ring-offset-color: #f6f4ff;
+}
+
+:where(html.light, html[data-theme='light']) .vc-btn-primary {
+  background-color: #6e5bff;
+  color: #ffffff;
+}
+
+:where(html.light, html[data-theme='light']) .vc-btn-primary:hover {
+  background-color: #7b6cff;
+}
+
+:where(html.light, html[data-theme='light']) .vc-btn-secondary {
+  background-color: #ffffff;
+  border-color: #d9d5e7;
+  color: #0e0e13;
+}
+
+:where(html.light, html[data-theme='light']) .vc-btn-secondary:hover {
+  background-color: #f1ecff;
+}
+
+:where(html.light, html[data-theme='light']) .vc-btn-ghost {
+  color: #636274;
+}
+
+:where(html.light, html[data-theme='light']) .vc-btn-ghost:hover {
+  color: #0e0e13;
+  background-color: rgba(110, 91, 255, 0.08);
+}
+
+:where(html.light, html[data-theme='light']) .vc-icon-btn {
+  background-color: rgba(110, 91, 255, 0.08);
+  color: #636274;
+  border-color: transparent;
+}
+
+:where(html.light, html[data-theme='light']) .vc-icon-btn:hover {
+  border-color: #d9d5e7;
+  color: #0e0e13;
+}
+
+:where(html.light, html[data-theme='light']) .vc-icon-btn-selected {
+  background-color: #6e5bff;
+  color: #ffffff;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+
+:where(html.light, html[data-theme='light']) .vc-badge {
+  background-color: rgba(14, 14, 19, 0.05);
+  color: #636274;
+}
+
+:where(html.light, html[data-theme='light']) .vc-badge-success {
+  background-color: rgba(0, 198, 192, 0.16);
+  color: #00c6c0;
+}
+
+:where(html.light, html[data-theme='light']) .vc-badge-warning {
+  background-color: rgba(217, 154, 50, 0.16);
+  color: #d99a32;
+}
+
+:where(html.light, html[data-theme='light']) .vc-badge-danger {
+  background-color: rgba(224, 58, 86, 0.16);
+  color: #e03a56;
+}
+
+:where(html.light, html[data-theme='light']) .vc-template-pill {
+  background-color: #f1ecff;
+  border-color: #d9d5e7;
+}
+
+:where(html.light, html[data-theme='light']) .vc-template-pill-selected {
+  border-color: #6e5bff;
+  background-image: radial-gradient(circle at top, #e7e3ff, #f6f4ff 70%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12);
+}
+
+:where(html.light, html[data-theme='light']) .vc-status-panel {
+  background-image: radial-gradient(circle at top, #e7e3ff, #f6f4ff);
+}
+
+:where(html.light, html[data-theme='light']) .vc-section-timeline {
+  background-color: rgba(110, 91, 255, 0.08);
+}
+
+:where(html.light, html[data-theme='light']) .vc-section-timeline-fill {
+  background: linear-gradient(90deg, #6e5bff 0%, #ff6ff5 50%, #00c6c0 100%);
+}
+
+:where(html.light, html[data-theme='light']) .vc-pulse-bar {
+  background-color: #ff6ff5;
+}
+
+:where(html.light, html[data-theme='light']) .vc-label {
+  color: #9a98a9;
+}
+
+:where(html.light, html[data-theme='light']) .vc-body {
+  color: #636274;
 }
 
 /* ─────────────────────────────────────────

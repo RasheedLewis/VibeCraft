@@ -31,7 +31,7 @@ export const GenerationProgress: React.FC<GenerationProgressProps> = ({ stage })
         <p className="mb-1 text-xs uppercase tracking-[0.16em] text-vc-text-muted">
           Status
         </p>
-        <p className="text-sm text-white">{stageLabel[stage]}</p>
+        <p className="text-sm text-vc-text-primary">{stageLabel[stage]}</p>
       </div>
       <div className="vc-pulse-bars">
         {[0, 1, 2].map((index) => (

@@ -5,6 +5,13 @@ from app.schemas.analysis import (
     SongSection,
     SongSectionType,
 )
+from app.schemas.scene import (
+    CameraMotion,
+    ColorPalette,
+    SceneSpec,
+    ShotPattern,
+    TemplateType,
+)
 from app.schemas.song import SongRead, SongUploadResponse
 
 __all__ = [
@@ -15,5 +22,10 @@ __all__ = [
     "SongSectionType",
     "SectionLyrics",
     "SongAnalysis",
+    "CameraMotion",
+    "ColorPalette",
+    "SceneSpec",
+    "ShotPattern",
+    "TemplateType",
 ]
 

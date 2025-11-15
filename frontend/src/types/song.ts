@@ -4,5 +4,3 @@ export interface SongUploadResponse {
   s3Key: string
   status: 'uploaded' | 'processing' | 'failed' | string
 }
-
-

@@ -4,6 +4,8 @@
 
 `make dev`
 
+^ or `make start`
+
 `make stop`
 
 ```bash
@@ -97,3 +99,106 @@ Shazam → determine whether known/unknown track
   - RQ workers (or migrate to Trigger.dev for production)
   - Needs: Postgres (RDS), Redis (ElastiCache), S3 access
   - Dependencies: ffmpeg, librosa, Python packages
+
+---
+
+## PR-08 Summary: Section Scene Planner
+
+**Status:** ✅ Complete
+
+### What Was Built
+
+PR-08 implements the scene planning service that converts song analysis data (mood, genre, section type) into visual specifications for video generation.
+
+### Key Components
+
+1. **SceneSpec Schema** (`backend/app/schemas/scene.py`)
+   - `SceneSpec`: Complete scene specification with prompt, colors, camera motion, shot patterns
+   - `ColorPalette`: Primary/secondary/accent colors + mood description
+   - `CameraMotion`: Motion type, intensity, speed
+   - `ShotPattern`: Pattern type, pacing, transitions
+   - `TemplateType`: Visual style templates (abstract, environment, character, minimal)
+
+2. **Scene Planner Service** (`backend/app/services/scene_planner.py`)
+   - `build_scene_spec(section_id, analysis, template)`: Main function to build scene specs
+   - `map_mood_to_color_palette()`: Maps mood tags → color palettes (vibrant, calm, intense, muted)
+   - `map_genre_to_camera_motion()`: Maps genre → camera motion presets (fast_zoom, slow_pan, quick_cuts, etc.)
+   - `map_section_type_to_shot_pattern()`: Maps section type → shot patterns (wide, medium, close_up, etc.)
+   - `build_prompt()`: Combines all features into video generation prompt
+
+3. **API Endpoint** (`backend/app/api/v1/routes_scenes.py`)
+   - `POST /api/v1/scenes/build-scene`: Debugging endpoint to test scene planning
+   - Request: `{ "sectionId": "section-4", "template": "abstract" }`
+   - Response: Complete `SceneSpec` object
+
+### Mappings Implemented
+
+**Mood → Color Palette:**
+- Energetic + high valence → Vibrant (pink, yellow, green)
+- Energetic + low valence → Intense (dark red, orange, gold)
+- Calm/Relaxed → Soft blues
+- Melancholic/Sad → Muted grays/greens
+- Intense → High contrast (crimson, black, deep pink)
+
+**Genre → Camera Motion:**
+- Electronic/EDM → fast_zoom (intensity 0.8, fast)
+- Rock/Metal → quick_cuts (intensity 0.9, fast)
+- Hip-Hop → slow_pan (intensity 0.6, medium)
+- Pop → medium_pan (intensity 0.7, medium)
+- Country/Folk → slow_pan (intensity 0.4, slow)
+- Ambient → static (intensity 0.2, slow)
+
+**Section Type → Shot Pattern:**
+- Intro → wide, slow, fade_in
+- Verse → medium, medium, cut
+- Chorus → close_up_to_wide, fast, zoom/cut/flash
+- Pre-chorus → medium_to_close, medium, zoom_in/cut
+- Bridge → wide, slow, fade/crossfade
+- Solo → close_up, fast, quick_cut/flash
+- Drop → close_up, very_fast, strobe/quick_cut/flash
+- Outro → wide, slow, fade_out
+
+### Testing
+
+**Quick Test:**
+```bash
+cd backend && source ../.venv/bin/activate
+python -c "from app.services.scene_planner import build_scene_spec; spec = build_scene_spec('section-4'); print(f'Section: {spec.section_id}, Colors: {spec.color_palette.primary}, Camera: {spec.camera_motion.type}')"
+```
+
+**API Test:**
+```bash
+curl -X POST http://localhost:8000/api/v1/scenes/build-scene \
+  -H "Content-Type: application/json" \
+  -d '{"sectionId": "section-4", "template": "abstract"}'
+```
+
+### Data Flow
+
+```
+Input: section_id (+ optional analysis, template)
+  ↓
+1. Lookup section from SongAnalysis (or use mock data)
+  ↓
+2. Extract: mood_primary, mood_tags, mood_vector, primary_genre, bpm, section.type, section_lyrics
+  ↓
+3. Map inputs to visual parameters:
+   - mood_primary + mood_vector → ColorPalette
+   - primary_genre + bpm → CameraMotion
+   - section.type → ShotPattern
+   - mood_vector → intensity (energy + tension) / 2
+  ↓
+4. Build prompt: combine template + colors + mood + genre + shot pattern + camera motion + lyrics motifs
+  ↓
+5. Calculate duration: section.end_sec - section.start_sec
+  ↓
+Output: SceneSpec (prompt, color_palette, camera_motion, shot_pattern, intensity, duration_sec)
+```
+
+### Integration Notes
+
+- Uses mock `SongAnalysis` data from `app.services.mock_analysis` (until PR-04 complete)
+- Prompt builder injects lyrics motifs when available
+- Intensity calculated from mood vector (energy + tension) / 2
+- Duration derived from section timestamps
+- Ready for PR-09 (Section Video Generation Pipeline)

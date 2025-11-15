@@ -13,3 +13,9 @@
 **Unit tests:** `pytest backend/tests/unit/test_lyric_extraction.py -v` (fast, no audio files or API calls)
 
 **Integration test:** `source .venv/bin/activate && python backend/tests/test_lyrics.py` with sample audio (requires Replicate API token). Verify `sectionLyrics[]` array is populated with timed text aligned to sections. Check lyric previews appear in section cards.
+
+## PR-08 — Section Scene Planner (Template + Prompt Builder)
+
+**Unit tests:** `pytest backend/tests/unit/test_scene_planner.py -v` (fast, no audio files needed)
+
+**API test:** `curl -X POST http://localhost:8000/api/v1/scenes/build-scene -H "Content-Type: application/json" -d '{"sectionId": "section-4"}'`. Verify response includes scene spec with prompt, color palette, camera motion, and shot pattern derived from section's mood/genre/type.

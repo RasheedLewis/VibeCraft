@@ -6,7 +6,7 @@ from sqlalchemy import inspect, text
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.core.config import get_settings
-from app.models import DEFAULT_USER_ID, User, Song
+from app.models import DEFAULT_USER_ID, User
 
 settings = get_settings()
 engine = create_engine(settings.database_url, echo=False)

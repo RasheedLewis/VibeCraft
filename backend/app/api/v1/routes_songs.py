@@ -15,14 +15,8 @@ from app.api.deps import get_db
 from app.core.config import get_settings
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.song import SongRead, SongUploadResponse
+from app.services import preprocess_audio
 from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
-
-try:
-    import librosa
-except ImportError as exc:  # pragma: no cover
-    raise RuntimeError(
-        "librosa is required for audio processing. Ensure it is installed in the backend environment."
-    ) from exc
 
 ALLOWED_CONTENT_TYPES = {
     "audio/mpeg",
@@ -47,10 +41,6 @@ def _sanitize_filename(filename: str) -> str:
     if not candidate or candidate in {".", ".."}:
         return "audio_upload"
     return candidate
-
-
-async def _get_audio_duration_seconds(file_path: str) -> float:
-    return await asyncio.to_thread(librosa.get_duration, path=file_path)
 
 
 router = APIRouter()
@@ -88,24 +78,19 @@ async def upload_song(
     if not contents:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp_path = tmp.name
-        tmp.write(contents)
-
     try:
-        duration_sec = await _get_audio_duration_seconds(tmp_path)
-    except Exception as exc:  # noqa: BLE001
+        preprocess_result = await asyncio.to_thread(
+            preprocess_audio,
+            file_bytes=contents,
+            original_suffix=suffix,
+        )
+    except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unable to determine audio duration. Please upload a valid audio file.",
+            detail="Unable to preprocess audio. Please upload a valid audio file.",
         ) from exc
-    finally:
-        try:
-            os.remove(tmp_path)
-        except FileNotFoundError:
-            pass
 
-    if duration_sec > MAX_DURATION_SECONDS:
+    if preprocess_result.duration_sec > MAX_DURATION_SECONDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Audio duration must be 7 minutes or less.",
@@ -120,21 +105,33 @@ async def upload_song(
         original_filename=sanitized_filename,
         original_file_size=len(contents),
         original_content_type=file.content_type,
-        duration_sec=duration_sec,
+        duration_sec=preprocess_result.duration_sec,
         original_s3_key="",
+        processed_s3_key=None,
+        processed_sample_rate=preprocess_result.sample_rate,
+        waveform_json=preprocess_result.waveform_json,
     )
     db.add(song)
     db.commit()
     db.refresh(song)
 
-    s3_key = f"songs/{song.id}/original{suffix}"
+    original_s3_key = f"songs/{song.id}/original{suffix}"
+    processed_s3_key = f"songs/{song.id}/processed{preprocess_result.processed_extension}"
+
     try:
         await asyncio.to_thread(
             upload_bytes_to_s3,
             bucket_name=settings.s3_bucket_name,
-            key=s3_key,
+            key=original_s3_key,
             data=contents,
             content_type=file.content_type,
+        )
+        await asyncio.to_thread(
+            upload_bytes_to_s3,
+            bucket_name=settings.s3_bucket_name,
+            key=processed_s3_key,
+            data=preprocess_result.processed_bytes,
+            content_type=preprocess_result.content_type,
         )
     except Exception as exc:  # noqa: BLE001
         db.delete(song)
@@ -144,7 +141,9 @@ async def upload_song(
             detail="Failed to store audio file. Please try again later.",
         ) from exc
 
-    song.original_s3_key = s3_key
+    song.original_s3_key = original_s3_key
+    song.processed_s3_key = processed_s3_key
+    song.duration_sec = preprocess_result.duration_sec
     db.add(song)
     db.commit()
     db.refresh(song)
@@ -153,7 +152,7 @@ async def upload_song(
         audio_url = await asyncio.to_thread(
             generate_presigned_get_url,
             bucket_name=settings.s3_bucket_name,
-            key=s3_key,
+            key=original_s3_key,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
@@ -164,7 +163,7 @@ async def upload_song(
     return SongUploadResponse(
         song_id=song.id,
         audio_url=audio_url,
-        s3_key=s3_key,
+        s3_key=original_s3_key,
         status="uploaded",
     )
 

@@ -15,6 +15,9 @@ class SongRead(BaseModel):
     original_file_size: int
     original_content_type: Optional[str] = None
     original_s3_key: str
+    processed_s3_key: Optional[str] = None
+    processed_sample_rate: Optional[int] = None
+    waveform_json: Optional[str] = None
     duration_sec: Optional[float] = None
     description: Optional[str] = None
     attribution: Optional[str] = None

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useId, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { apiClient } from '../lib/apiClient'
 import { VCButton } from '../components/vibecraft'
@@ -22,6 +22,20 @@ const ACCEPTED_MIME_TYPES = [
 ] as const
 
 const MAX_DURATION_SECONDS = 7 * 60
+
+const WAVEFORM_BASE_PATTERN = [0.25, 0.6, 0.85, 0.4, 0.75, 0.35, 0.9, 0.5, 0.65, 0.3]
+const WAVEFORM_BARS = Array.from({ length: 72 }, (_, index) => {
+  const patternValue = WAVEFORM_BASE_PATTERN[index % WAVEFORM_BASE_PATTERN.length]
+  const pulseBoost = ((index + 3) % 11 === 0 ? 0.15 : 0) + ((index + 7) % 17 === 0 ? 0.1 : 0)
+  return Math.min(1, patternValue + pulseBoost)
+})
+
+const getFileTypeLabel = (fileName?: string | null) => {
+  if (!fileName) return 'Audio'
+  const parts = fileName.split('.')
+  if (parts.length <= 1) return 'Audio'
+  return parts.pop()?.toUpperCase() ?? 'Audio'
+}
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes)) return '—'
@@ -49,6 +63,7 @@ interface UploadMetadata {
 }
 
 export const UploadPage: React.FC = () => {
+  const fileInputId = useId()
   const [stage, setStage] = useState<UploadStage>('idle')
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<number>(0)
@@ -71,6 +86,9 @@ export const UploadPage: React.FC = () => {
     setProgress(0)
     setMetadata(null)
     setResult(null)
+    if (inputRef.current) {
+      inputRef.current.value = ''
+    }
   }, [])
 
   const computeDuration = useCallback(async (file: File): Promise<number | null> => {
@@ -140,7 +158,7 @@ export const UploadPage: React.FC = () => {
       formData.append('file', file)
 
       try {
-        const response = await apiClient.post<SongUploadResponse>('/songs', formData, {
+        const response = await apiClient.post<SongUploadResponse>('/songs/', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
@@ -176,7 +194,7 @@ export const UploadPage: React.FC = () => {
   )
 
   const onDrop = useCallback(
-    async (event: React.DragEvent<HTMLDivElement>) => {
+    async (event: React.DragEvent<HTMLElement>) => {
       event.preventDefault()
       event.stopPropagation()
       setStage((current) => (current === 'dragging' ? 'idle' : current))
@@ -188,7 +206,7 @@ export const UploadPage: React.FC = () => {
     [handleFilesSelected],
   )
 
-  const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+  const onDragOver = useCallback((event: React.DragEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
     event.dataTransfer.dropEffect = 'copy'
@@ -197,7 +215,7 @@ export const UploadPage: React.FC = () => {
     }
   }, [stage])
 
-  const onDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+  const onDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
     if (stage === 'dragging') {
@@ -272,45 +290,80 @@ export const UploadPage: React.FC = () => {
 
   const renderUploadedCard = () => (
     <div className="rounded-3xl border border-vc-accent-primary/40 bg-[rgba(12,12,18,0.9)] p-8 shadow-vc3">
-      <div className="flex flex-col gap-5">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-vc-accent-primary/20">
-            <CheckIcon className="h-6 w-6 text-vc-accent-primary" />
+      <div className="flex flex-col gap-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-vc-accent-primary/15">
+            <CheckIcon className="h-5 w-5 text-vc-accent-primary" />
           </div>
-          <div>
-            <p className="font-medium text-white">{metadata?.fileName}</p>
+          <div className="text-left">
+            <p className="text-sm font-semibold text-white">Track uploaded successfully</p>
             <p className="text-xs text-vc-text-muted">
-              {formatSeconds(metadata?.durationSeconds ?? null)} • {formatBytes(metadata?.fileSize ?? 0)}
+              We’ll listen for tempo, sections, lyrics, and mood to set up your visual journey.
             </p>
           </div>
         </div>
-        <div className="rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.02)] p-4">
-          <p className="text-sm text-vc-text-secondary">
-            Song uploaded successfully. We’ll begin analyzing the vibe as soon as you continue.
-          </p>
-          {result?.songId && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-vc-text-muted">
-              <span className="rounded-md bg-[rgba(255,255,255,0.04)] px-2 py-1 font-mono tracking-tight text-[11px] uppercase text-vc-text-secondary">
-                ID {result.songId.slice(0, 8)}…
-              </span>
-              <a
-                href={result.audioUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-vc-accent-primary transition-colors hover:text-vc-accent-secondary"
-              >
-                Preview audio URL
-              </a>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vc-border/40 bg-[rgba(255,255,255,0.02)] px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(255,255,255,0.05)]">
+              <MusicNoteIcon className="h-5 w-5 text-vc-accent-primary" />
             </div>
+            <div className="overflow-hidden text-left">
+              <p className="truncate text-sm font-medium text-white">{metadata?.fileName}</p>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-vc-text-muted">
+                {getFileTypeLabel(metadata?.fileName)} • {formatSeconds(metadata?.durationSeconds ?? null)} •{' '}
+                {formatBytes(metadata?.fileSize ?? 0)}
+              </p>
+            </div>
+          </div>
+          {result?.songId && (
+            <span className="rounded-md border border-vc-border/30 bg-[rgba(255,255,255,0.03)] px-3 py-1 font-mono text-[11px] tracking-tight text-vc-text-secondary">
+              ID {result.songId.slice(0, 8)}…
+            </span>
           )}
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <VCButton variant="ghost" onClick={resetState}>
-            Upload another track
-          </VCButton>
-          <VCButton variant="primary" iconRight={<ArrowRightIcon />}>
-            Continue to analysis
-          </VCButton>
+
+        <WaveformPlaceholder />
+
+        <div className="space-y-2 text-left">
+          <p className="vc-label text-[11px] text-vc-text-muted">Analyzing your track…</p>
+          <ul className="space-y-1 text-xs text-vc-text-secondary">
+            <li className="flex items-start gap-2">
+              <span className="mt-1 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-vc-accent-primary" />
+              <span>Detecting tempo and beat grid fidelity</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-vc-accent-secondary" />
+              <span>Identifying intro, verses, and choruses</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-vc-accent-tertiary" />
+              <span>Extracting and aligning lyrics (if vocals detected)</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-vc-text-muted/80" />
+              <span>Mapping mood, genre, and visual palette</span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <a
+            href={result?.audioUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-vc-accent-primary transition-colors hover:text-vc-accent-secondary"
+          >
+            Preview uploaded audio
+          </a>
+          <div className="flex gap-2">
+            <VCButton variant="ghost" onClick={resetState}>
+              Upload another track
+            </VCButton>
+            <VCButton variant="primary" iconRight={<ArrowRightIcon />}>
+              Continue to analysis
+            </VCButton>
+          </div>
         </div>
       </div>
     </div>
@@ -350,6 +403,7 @@ export const UploadPage: React.FC = () => {
         </div>
 
         <input
+          id={fileInputId}
           ref={inputRef}
           type="file"
           accept={ACCEPTED_MIME_TYPES.join(',')}
@@ -357,10 +411,12 @@ export const UploadPage: React.FC = () => {
           onChange={(event) => handleFilesSelected(event.target.files)}
         />
 
-        <div
-          className="group w-full"
-          role="presentation"
-          onClick={() => (stage === 'idle' || stage === 'dragging') && inputRef.current?.click()}
+        <label
+          htmlFor={fileInputId}
+          className={clsx(
+            'group block w-full',
+            stage === 'uploading' ? 'pointer-events-none cursor-default' : 'cursor-pointer',
+          )}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
@@ -374,7 +430,7 @@ export const UploadPage: React.FC = () => {
           ) : (
             renderErrorCard()
           )}
-        </div>
+        </label>
 
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-vc-text-muted">
           <RequirementPill icon={<WaveformIcon />} label={`Accepted: ${requirementsCopy.formats}`} />
@@ -390,6 +446,22 @@ const RequirementPill: React.FC<{ icon: React.ReactNode; label: string }> = ({ i
   <div className="inline-flex items-center gap-2 rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.02)] px-3 py-1.5 text-xs text-vc-text-secondary shadow-vc1">
     <span className="text-vc-accent-primary">{icon}</span>
     <span>{label}</span>
+  </div>
+)
+
+const WaveformPlaceholder: React.FC = () => (
+  <div className="relative flex h-20 w-full items-center overflow-hidden rounded-2xl border border-vc-border/50 bg-[rgba(255,255,255,0.03)]">
+    <div className="absolute inset-0 vc-shimmer opacity-70" />
+    <div className="relative z-10 flex w-full items-center justify-between gap-[3px] px-4">
+      {WAVEFORM_BARS.map((height, index) => (
+        <span
+          // eslint-disable-next-line react/no-array-index-key
+          key={index}
+          className="w-[3px] rounded-full bg-gradient-to-t from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary"
+          style={{ height: `${Math.max(0.16, height) * 100}%`, opacity: 0.85 }}
+        />
+      ))}
+    </div>
   </div>
 )
 

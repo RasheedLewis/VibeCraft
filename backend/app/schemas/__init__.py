@@ -5,12 +5,11 @@ from app.schemas.analysis import (
     SongSection,
     SongSectionType,
 )
-from app.schemas.song import SongCreate, SongRead, SongUpdate
+from app.schemas.song import SongRead, SongUploadResponse
 
 __all__ = [
-    "SongCreate",
     "SongRead",
-    "SongUpdate",
+    "SongUploadResponse",
     "MoodVector",
     "SongSection",
     "SongSectionType",

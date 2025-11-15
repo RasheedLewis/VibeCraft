@@ -6,7 +6,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-01 — Project Initialization & Repo Setup**
+## **PR-01 — Project Initialization & Repo Setup**
 
 1. Initialize monorepo or backend+frontend repos
 2. Set up package managers (pnpm / pip / poetry / npm)
@@ -19,7 +19,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-02 — Audio Upload Service**
+## **PR-02 — Audio Upload Service**
 
 1. Create `/api/songs` POST endpoint
 2. Implement audio file validation (type, duration)
@@ -32,7 +32,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-03 — Audio Preprocessing Pipeline**
+## **PR-03 — Audio Preprocessing Pipeline**
 
 1. Implement mono downmix (stereo → mono)
 2. Implement resampling to 44.1kHz
@@ -43,7 +43,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-04 — Music Analysis Engine (BPM, Beats, Sections)**
+## **PR-04 — Music Analysis Engine (BPM, Beats, Sections)**
 
 1. Implement BPM detection module
 2. Implement beat onset detection
@@ -57,7 +57,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-05 — Genre & Mood Classification**
+## **PR-05 — Genre & Mood Classification**
 
 1. Compute mood features: energy, valence, tension
 2. Build genre classifier (CLAP / embedding model)
@@ -68,7 +68,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-06 — Lyric Extraction & Section Alignment**
+## **PR-06 — Lyric Extraction & Section Alignment**
 
 1. Integrate track recognition (optional)
 2. Call lyrics API when recognized
@@ -81,7 +81,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-07 — Song Profile UI**
+## **PR-07 — Song Profile UI**
 
 1. Build timeline segmented into intro/verse/chorus/etc
 2. Create SectionCard component
@@ -93,7 +93,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-08 — Section Scene Planner (Template + Prompt Builder)**
+## **PR-08 — Section Scene Planner (Template + Prompt Builder)**
 
 1. Implement template definitions (Abstract first)
 2. Map mood to intensity + color palette
@@ -105,7 +105,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-09 — Section Video Generation Pipeline**
+## **PR-09 — Section Video Generation Pipeline**
 
 1. Connect backend to Replicate API
 2. Build `generateSectionVideo(sceneSpec)` function
@@ -118,7 +118,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-10 — Section Clip Management**
+## **PR-10 — Section Clip Management**
 
 1. Allow "approve" clip for a section
 2. Add ability to store selected clipId in section mapping
@@ -129,7 +129,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-11 — Full Song Scene Planner**
+## **PR-11 — Full Song Scene Planner**
 
 1. Build `buildFullScenePlan(songId)`
 2. Evaluate each section for approved clip
@@ -140,7 +140,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-12 — Full-Length Video Generation**
+## **PR-12 — Full-Length Video Generation**
 
 1. Implement parallel execution for all section generation tasks
 2. Track clip generation jobs and pipe into completion aggregator
@@ -150,7 +150,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-13 — Video Composition Engine**
+## **PR-13 — Video Composition Engine**
 
 1. Concatenate video clips in correct timeline order
 2. Insert beat-matched transitions (cut, zoom, flare)
@@ -163,7 +163,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-14 — Full Video Generation API**
+## **PR-14 — Full Video Generation API**
 
 1. Endpoint: `POST /api/songs/:id/generate-full-video`
 2. Create job entry
@@ -176,7 +176,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-15 — Deployment (MVP Release)**
+## **PR-15 — Deployment (MVP Release)**
 
 1. Deploy backend API
 2. Deploy frontend app
@@ -188,7 +188,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-16 — Sample Videos & Showcase**
+## **PR-16 — Sample Videos & Showcase**
 
 1. Generate high-energy music video example
 2. Generate slow emotional music video example
@@ -199,7 +199,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-17 — Cost Optimization & Caching**
+## **PR-17 — Cost Optimization & Caching**
 
 1. Add caching for analysis results
 2. Cache scene prompts to avoid reconstruction
@@ -210,7 +210,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **PR-18 — Final Polish & Bugfixes**
+## **PR-18 — Final Polish & Bugfixes**
 
 1. Improve frontend loading indicators
 2. Add error toast notifications
@@ -222,7 +222,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-# **Done — Complete Numbered Roadmap**
+## **Done — Complete Numbered Roadmap**
 
 If you'd like next:
 

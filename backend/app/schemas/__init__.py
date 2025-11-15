@@ -5,6 +5,7 @@ from app.schemas.analysis import (
     SongSection,
     SongSectionType,
 )
+from app.schemas.job import JobStatusResponse, SongAnalysisJobResponse
 from app.schemas.scene import (
     CameraMotion,
     ColorPalette,
@@ -17,6 +18,8 @@ from app.schemas.song import SongRead, SongUploadResponse
 __all__ = [
     "SongRead",
     "SongUploadResponse",
+    "SongAnalysisJobResponse",
+    "JobStatusResponse",
     "MoodVector",
     "SongSection",
     "SongSectionType",

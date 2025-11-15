@@ -1,6 +1,5 @@
-from collections.abc import Generator
-
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
+from contextlib import contextmanager
 
 from sqlalchemy import inspect, text
 from sqlmodel import Session, SQLModel, create_engine
@@ -48,6 +47,15 @@ def init_db() -> None:
 def get_session() -> Generator[Session, None, None]:
     with Session(engine) as session:
         yield session
+
+
+@contextmanager
+def session_scope() -> Generator[Session, None, None]:
+    session = Session(engine)
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 def _ensure_song_schema() -> None:

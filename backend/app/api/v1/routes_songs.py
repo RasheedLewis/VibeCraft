@@ -12,8 +12,11 @@ from sqlmodel import Session, select
 from app.api.deps import get_db
 from app.core.config import get_settings
 from app.models.song import DEFAULT_USER_ID, Song
+from app.schemas.analysis import SongAnalysis
+from app.schemas.job import SongAnalysisJobResponse
 from app.schemas.song import SongRead, SongUploadResponse
 from app.services import preprocess_audio
+from app.services.song_analysis import enqueue_song_analysis, get_latest_analysis
 from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
 
 ALLOWED_CONTENT_TYPES = {
@@ -164,6 +167,46 @@ async def upload_song(
         s3_key=original_s3_key,
         status="uploaded",
     )
+
+
+@router.post(
+    "/{song_id}/analyze",
+    response_model=SongAnalysisJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Enqueue song analysis job",
+)
+def analyze_song(song_id: UUID, db: Session = Depends(get_db)) -> SongAnalysisJobResponse:
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    if not song.processed_s3_key:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Song is missing processed audio; please re-upload.",
+        )
+
+    return enqueue_song_analysis(song_id)
+
+
+@router.get(
+    "/{song_id}/analysis",
+    response_model=SongAnalysis,
+    summary="Get latest song analysis",
+)
+def get_song_analysis(song_id: UUID, db: Session = Depends(get_db)) -> SongAnalysis:
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    analysis = get_latest_analysis(song_id)
+    if not analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Song analysis not found. Trigger analysis first.",
+        )
+
+    return analysis
 
 
 @router.get("/{song_id}", response_model=SongRead, summary="Get song")

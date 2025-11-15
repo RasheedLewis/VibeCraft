@@ -58,3 +58,17 @@ def generate_presigned_get_url(
         ) from exc
 
 
+def download_bytes_from_s3(*, bucket_name: str, key: str) -> bytes:
+    client = _get_s3_client()
+    try:
+        response = client.get_object(Bucket=bucket_name, Key=key)
+    except (BotoCoreError, ClientError) as exc:
+        raise RuntimeError(f"Failed to download object {key} from bucket {bucket_name}") from exc
+
+    body = response.get("Body")
+    if body is None:
+        raise RuntimeError(f"No content returned for object {key} from bucket {bucket_name}")
+
+    return body.read()
+
+

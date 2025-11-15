@@ -1,8 +1,16 @@
-import React, { useCallback, useId, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { apiClient } from '../lib/apiClient'
-import { VCButton } from '../components/vibecraft'
-import type { SongUploadResponse } from '../types/song'
+import { SectionMoodTag, VCCard, VCButton } from '../components/vibecraft'
+import type { MoodKind } from '../components/vibecraft/SectionMoodTag'
+import type {
+  JobStatusResponse,
+  SongAnalysis,
+  SongAnalysisJobResponse,
+  SongSection,
+  MoodVector,
+  SongUploadResponse,
+} from '../types/song'
 
 const ACCEPTED_MIME_TYPES = [
   'audio/mpeg',
@@ -23,11 +31,22 @@ const ACCEPTED_MIME_TYPES = [
 
 const MAX_DURATION_SECONDS = 7 * 60
 
+const SECTION_TYPE_LABELS: Record<string, string> = {
+  intro: 'Intro',
+  verse: 'Verse',
+  pre_chorus: 'Pre-chorus',
+  chorus: 'Chorus',
+  bridge: 'Bridge',
+  drop: 'Drop',
+  solo: 'Solo',
+  outro: 'Outro',
+  other: 'Section',
+}
+
 const WAVEFORM_BASE_PATTERN = [0.25, 0.6, 0.85, 0.4, 0.75, 0.35, 0.9, 0.5, 0.65, 0.3]
 const WAVEFORM_BARS = Array.from({ length: 72 }, (_, index) => {
   const patternValue = WAVEFORM_BASE_PATTERN[index % WAVEFORM_BASE_PATTERN.length]
-  const pulseBoost =
-    ((index + 3) % 11 === 0 ? 0.15 : 0) + ((index + 7) % 17 === 0 ? 0.1 : 0)
+  const pulseBoost = ((index + 3) % 11 === 0 ? 0.15 : 0) + ((index + 7) % 17 === 0 ? 0.1 : 0)
   return Math.min(1, patternValue + pulseBoost)
 })
 
@@ -42,10 +61,7 @@ const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes)) return '—'
   if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
-  const exponent = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1,
-  )
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   const value = bytes / Math.pow(1024, exponent)
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`
 }
@@ -56,6 +72,68 @@ const formatSeconds = (seconds: number | null) => {
   const mins = Math.floor(wholeSeconds / 60)
   const secs = wholeSeconds % 60
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const mapMoodToMoodKind = (mood: string): MoodKind => {
+  const normalized = mood?.toLowerCase() ?? ''
+  if (normalized.includes('energy') || normalized.includes('energetic')) return 'energetic'
+  if (normalized.includes('dark') || normalized.includes('moody') || normalized.includes('intense'))
+    return 'dark'
+  if (
+    normalized.includes('uplift') ||
+    normalized.includes('happy') ||
+    normalized.includes('bright') ||
+    normalized.includes('positive')
+  )
+    return 'uplifting'
+  return 'chill'
+}
+
+const formatBpm = (bpm?: number) => {
+  if (!bpm || Number.isNaN(bpm)) return '—'
+  return `${Math.round(bpm)} BPM`
+}
+
+const formatMoodTags = (tags: string[]) =>
+  tags.length ? tags.map((tag) => tag.trim()).filter(Boolean).join(', ') : '—'
+
+const getSectionTitle = (section: SongSection, index: number) => {
+  const label = SECTION_TYPE_LABELS[section.type] ?? `Section`
+  return `${label} ${index + 1}`
+}
+
+const formatProgressLabel = (status: string, progress: number) => {
+  if (status === 'completed') return 'Analysis complete'
+  if (status === 'failed') return 'Analysis failed'
+  if (status === 'processing') return `Analyzing… ${Math.round(progress)}%`
+  if (status === 'queued') return 'Queued for analysis'
+  return 'Analyzing…'
+}
+
+const normalizeJobStatus = (status?: string): 'queued' | 'processing' | 'completed' | 'failed' => {
+  const normalized = status?.toLowerCase()
+  if (normalized === 'processing') return 'processing'
+  if (normalized === 'completed') return 'completed'
+  if (normalized === 'failed') return 'failed'
+  return 'queued'
+}
+
+const extractErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object') {
+    const maybeError = error as {
+      message?: string
+      response?: { data?: any }
+    }
+    const responseData = maybeError.response?.data
+    if (typeof responseData === 'string') return responseData
+    if (responseData?.detail) return responseData.detail
+    if (responseData?.message) return responseData.message
+    if (maybeError.message) return maybeError.message
+  }
+  return fallback
 }
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
@@ -74,6 +152,19 @@ export const UploadPage: React.FC = () => {
   const [metadata, setMetadata] = useState<UploadMetadata | null>(null)
   const [result, setResult] = useState<SongUploadResponse | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const [analysisState, setAnalysisState] = useState<'idle' | 'queued' | 'processing' | 'completed' | 'failed'>('idle')
+  const [analysisJobId, setAnalysisJobId] = useState<string | null>(null)
+  const [analysisProgress, setAnalysisProgress] = useState<number>(0)
+  const [analysisData, setAnalysisData] = useState<SongAnalysis | null>(null)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [isFetchingAnalysis, setIsFetchingAnalysis] = useState<boolean>(false)
+  const summaryMoodKind = useMemo<MoodKind>(() => mapMoodToMoodKind(analysisData?.moodPrimary ?? ''), [analysisData?.moodPrimary])
+  const lyricsBySection = useMemo(() => {
+    if (!analysisData?.sectionLyrics || !analysisData.sectionLyrics.length) {
+      return new Map<string, string>()
+    }
+    return new Map(analysisData.sectionLyrics.map((item) => [item.sectionId, item.text]))
+  }, [analysisData?.sectionLyrics])
 
   const requirementsCopy = useMemo(
     () => ({
@@ -90,10 +181,105 @@ export const UploadPage: React.FC = () => {
     setProgress(0)
     setMetadata(null)
     setResult(null)
+    setAnalysisState('idle')
+    setAnalysisJobId(null)
+    setAnalysisProgress(0)
+    setAnalysisData(null)
+    setAnalysisError(null)
+    setIsFetchingAnalysis(false)
     if (inputRef.current) {
       inputRef.current.value = ''
     }
   }, [])
+
+  const fetchAnalysis = useCallback(
+    async (songId: string) => {
+      setIsFetchingAnalysis(true)
+      try {
+        const { data } = await apiClient.get<SongAnalysis>(`/songs/${songId}/analysis`)
+        setAnalysisData(data)
+        setAnalysisError(null)
+      } catch (err) {
+        setAnalysisError(extractErrorMessage(err, 'Unable to load analysis results.'))
+      } finally {
+        setIsFetchingAnalysis(false)
+      }
+    },
+    [],
+  )
+
+  const startAnalysis = useCallback(
+    async (songId: string) => {
+      try {
+        setAnalysisState('queued')
+        setAnalysisProgress(0)
+        setAnalysisError(null)
+        setAnalysisData(null)
+        setAnalysisJobId(null)
+
+        const { data } = await apiClient.post<SongAnalysisJobResponse>(`/songs/${songId}/analyze`)
+        setAnalysisJobId(data.jobId)
+        setAnalysisState(normalizeJobStatus(data.status))
+      } catch (err) {
+        setAnalysisState('failed')
+        setAnalysisError(extractErrorMessage(err, 'Unable to start analysis for this track.'))
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!analysisJobId || !result?.songId) return
+
+    let cancelled = false
+    let timeoutId: number | undefined
+
+    const pollStatus = async () => {
+      try {
+        const { data } = await apiClient.get<JobStatusResponse>(`/jobs/${analysisJobId}`)
+        if (cancelled) {
+          return
+        }
+
+        const normalizedStatus = normalizeJobStatus(data.status)
+        setAnalysisState(normalizedStatus)
+        setAnalysisProgress(normalizedStatus === 'completed' ? 100 : clamp(data.progress ?? 0, 0, 99))
+
+        if (normalizedStatus === 'completed') {
+          setAnalysisError(null)
+          if (data.result) {
+            setAnalysisData(data.result)
+          } else {
+            await fetchAnalysis(result.songId)
+          }
+          return
+        }
+
+        if (normalizedStatus === 'failed') {
+          setAnalysisError(
+            data.error ?? 'Song analysis failed. Please try again or upload a different track.',
+          )
+          return
+        }
+
+        timeoutId = window.setTimeout(pollStatus, 3_000)
+      } catch (err) {
+        if (!cancelled) {
+          setAnalysisError(extractErrorMessage(err, 'Unable to fetch analysis progress.'))
+          setAnalysisState('failed')
+        }
+      }
+    }
+
+    pollStatus()
+
+    return () => {
+      cancelled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [analysisJobId, result?.songId, fetchAnalysis])
 
   const computeDuration = useCallback(async (file: File): Promise<number | null> => {
     try {
@@ -128,9 +314,7 @@ export const UploadPage: React.FC = () => {
     async (file: File) => {
       resetState()
 
-      if (
-        !ACCEPTED_MIME_TYPES.includes(file.type as (typeof ACCEPTED_MIME_TYPES)[number])
-      ) {
+      if (!ACCEPTED_MIME_TYPES.includes(file.type as (typeof ACCEPTED_MIME_TYPES)[number])) {
         setStage('error')
         setError('Unsupported audio format. Try MP3, WAV, M4A, FLAC, or OGG.')
         return
@@ -170,10 +354,7 @@ export const UploadPage: React.FC = () => {
           },
           onUploadProgress: (event) => {
             if (!event.total) return
-            const percentage = Math.min(
-              100,
-              Math.round((event.loaded / event.total) * 100),
-            )
+            const percentage = Math.min(100, Math.round((event.loaded / event.total) * 100))
             setProgress(percentage)
           },
         })
@@ -181,6 +362,7 @@ export const UploadPage: React.FC = () => {
         setResult(response.data)
         setProgress(100)
         setStage('uploaded')
+        await startAnalysis(response.data.songId)
       } catch (err) {
         console.error('Upload failed', err)
         const message =
@@ -190,7 +372,7 @@ export const UploadPage: React.FC = () => {
         setStage('error')
       }
     },
-    [computeDuration, resetState],
+    [computeDuration, resetState, startAnalysis],
   )
 
   const handleFilesSelected = useCallback(
@@ -215,28 +397,22 @@ export const UploadPage: React.FC = () => {
     [handleFilesSelected],
   )
 
-  const onDragOver = useCallback(
-    (event: React.DragEvent<HTMLElement>) => {
-      event.preventDefault()
-      event.stopPropagation()
-      event.dataTransfer.dropEffect = 'copy'
-      if (stage !== 'uploading') {
-        setStage('dragging')
-      }
-    },
-    [stage],
-  )
+  const onDragOver = useCallback((event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'copy'
+    if (stage !== 'uploading') {
+      setStage('dragging')
+    }
+  }, [stage])
 
-  const onDragLeave = useCallback(
-    (event: React.DragEvent<HTMLElement>) => {
-      event.preventDefault()
-      event.stopPropagation()
-      if (stage === 'dragging') {
-        setStage('idle')
-      }
-    },
-    [stage],
-  )
+  const onDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (stage === 'dragging') {
+      setStage('idle')
+    }
+  }, [stage])
 
   const renderIdleCard = () => (
     <div
@@ -278,8 +454,7 @@ export const UploadPage: React.FC = () => {
           <div>
             <p className="font-medium text-white">{metadata?.fileName}</p>
             <p className="text-xs text-vc-text-muted">
-              {formatSeconds(metadata?.durationSeconds ?? null)} •{' '}
-              {formatBytes(metadata?.fileSize ?? 0)}
+              {formatSeconds(metadata?.durationSeconds ?? null)} • {formatBytes(metadata?.fileSize ?? 0)}
             </p>
           </div>
         </div>
@@ -289,9 +464,7 @@ export const UploadPage: React.FC = () => {
             style={{ width: `${progress}%` }}
           />
         </div>
-        <p className="text-xs text-vc-text-muted">
-          Uploading your track… This may take a moment.
-        </p>
+        <p className="text-xs text-vc-text-muted">Uploading your track… This may take a moment.</p>
         <div className="flex justify-end">
           <VCButton
             variant="ghost"
@@ -306,92 +479,132 @@ export const UploadPage: React.FC = () => {
     </div>
   )
 
-  const renderUploadedCard = () => (
-    <div className="rounded-3xl border border-vc-accent-primary/40 bg-[rgba(12,12,18,0.9)] p-8 shadow-vc3">
-      <div className="flex flex-col gap-6">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-vc-accent-primary/15">
-            <CheckIcon className="h-5 w-5 text-vc-accent-primary" />
-          </div>
-          <div className="text-left">
-            <p className="text-sm font-semibold text-white">
-              Track uploaded successfully
-            </p>
-            <p className="text-xs text-vc-text-muted">
-              We’ll listen for tempo, sections, lyrics, and mood to set up your visual
-              journey.
-            </p>
-          </div>
-        </div>
+  const renderUploadedCard = () => {
+    const progressValue = analysisState === 'completed' ? 100 : clamp(analysisProgress, 0, 99)
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vc-border/40 bg-[rgba(255,255,255,0.02)] px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(255,255,255,0.05)]">
-              <MusicNoteIcon className="h-5 w-5 text-vc-accent-primary" />
+    return (
+      <div className="rounded-3xl border border-vc-accent-primary/40 bg-[rgba(12,12,18,0.9)] p-8 shadow-vc3">
+        <div className="flex flex-col gap-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-vc-accent-primary/15">
+              <CheckIcon className="h-5 w-5 text-vc-accent-primary" />
             </div>
-            <div className="overflow-hidden text-left">
-              <p className="truncate text-sm font-medium text-white">
-                {metadata?.fileName}
-              </p>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-vc-text-muted">
-                {getFileTypeLabel(metadata?.fileName)} •{' '}
-                {formatSeconds(metadata?.durationSeconds ?? null)} •{' '}
-                {formatBytes(metadata?.fileSize ?? 0)}
+            <div className="text-left">
+              <p className="text-sm font-semibold text-white">Track uploaded successfully</p>
+              <p className="text-xs text-vc-text-muted">
+                We’ll listen for tempo, sections, lyrics, and mood to set up your visual journey.
               </p>
             </div>
           </div>
-          {result?.songId && (
-            <span className="rounded-md border border-vc-border/30 bg-[rgba(255,255,255,0.03)] px-3 py-1 font-mono text-[11px] tracking-tight text-vc-text-secondary">
-              ID {result.songId.slice(0, 8)}…
-            </span>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vc-border/40 bg-[rgba(255,255,255,0.02)] px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(255,255,255,0.05)]">
+                <MusicNoteIcon className="h-5 w-5 text-vc-accent-primary" />
+              </div>
+              <div className="overflow-hidden text-left">
+                <p className="truncate text-sm font-medium text-white">{metadata?.fileName}</p>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-vc-text-muted">
+                  {getFileTypeLabel(metadata?.fileName)} • {formatSeconds(metadata?.durationSeconds ?? null)} •{' '}
+                  {formatBytes(metadata?.fileSize ?? 0)}
+                </p>
+              </div>
+            </div>
+            {result?.songId && (
+              <span className="rounded-md border border-vc-border/30 bg-[rgba(255,255,255,0.03)] px-3 py-1 font-mono text-[11px] tracking-tight text-vc-text-secondary">
+                ID {result.songId.slice(0, 8)}…
+              </span>
+            )}
+          </div>
+
+          <WaveformPlaceholder />
+
+          {analysisState !== 'idle' && (
+          <div className="rounded-xl border border-vc-border/40 bg-[rgba(12,12,18,0.6)] px-5 py-4">
+              <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">
+                <span>{formatProgressLabel(analysisState, progressValue)}</span>
+                <span>{analysisState === 'completed' ? '100%' : `${Math.round(progressValue)}%`}</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
+                <div
+                  className={clsx(
+                    'h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary transition-all duration-500 motion-safe:animate-[gradientShift_2.4s_linear_infinite]',
+                    analysisState === 'failed' &&
+                      'from-vc-state-error via-vc-state-error to-vc-state-error motion-safe:animate-none',
+                    analysisState === 'completed' && 'motion-safe:animate-none',
+                  )}
+                  style={{ width: `${analysisState === 'completed' ? 100 : progressValue}%` }}
+                />
+              </div>
+              {analysisError && (
+                <p className="mt-2 text-xs text-vc-state-error">{analysisError}</p>
+              )}
+              {analysisState === 'completed' && isFetchingAnalysis && !analysisData && (
+                <p className="mt-2 text-xs text-vc-text-muted">Loading analysis summary…</p>
+              )}
+            </div>
           )}
-        </div>
 
-        <WaveformPlaceholder />
+          {analysisData && (
+            <div className="space-y-5 rounded-2xl border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-5 text-left">
+              <div className="grid gap-3 md:grid-cols-2">
+                <SummaryStat label="Tempo" value={formatBpm(analysisData.bpm)} />
+                <SummaryStat label="Duration" value={formatSeconds(analysisData.durationSec)} />
+                <SummaryStat label="Primary mood" value={analysisData.moodPrimary} />
+                <SummaryStat label="Mood tags" value={formatMoodTags(analysisData.moodTags)} />
+                <SummaryStat label="Primary genre" value={analysisData.primaryGenre ?? '—'} />
+                <SummaryStat
+                  label="Lyrics detected"
+                  value={analysisData.lyricsAvailable ? 'Yes' : 'No'}
+                />
+              </div>
 
-        <div className="space-y-2 text-left">
-          <p className="vc-label text-[11px] text-vc-text-muted">Analyzing your track…</p>
-          <ul className="space-y-1 text-xs text-vc-text-secondary">
-            <li className="flex items-start gap-2">
-              <span className="mt-1 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-vc-accent-primary" />
-              <span>Detecting tempo and beat grid fidelity</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-vc-accent-secondary" />
-              <span>Identifying intro, verses, and choruses</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-vc-accent-tertiary" />
-              <span>Extracting and aligning lyrics (if vocals detected)</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-vc-text-muted/80" />
-              <span>Mapping mood, genre, and visual palette</span>
-            </li>
-          </ul>
-        </div>
+              <div>
+                <h4 className="text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">Mood vector</h4>
+                <div className="mt-3">
+                  <MoodVectorMeter moodVector={analysisData.moodVector} />
+                </div>
+              </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <a
-            href={result?.audioUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-vc-accent-primary transition-colors hover:text-vc-accent-secondary"
-          >
-            Preview uploaded audio
-          </a>
-          <div className="flex gap-2">
-            <VCButton variant="ghost" onClick={resetState}>
-              Upload another track
-            </VCButton>
-            <VCButton variant="primary" iconRight={<ArrowRightIcon />}>
-              Continue to analysis
-            </VCButton>
+              <div>
+                <h4 className="text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">Sections</h4>
+                <div className="mt-3 space-y-3">
+                  {analysisData.sections.map((section, index) => (
+                    <AnalysisSectionRow
+                      key={section.id}
+                      section={section}
+                      title={getSectionTitle(section, index)}
+                      mood={summaryMoodKind}
+                      lyric={lyricsBySection.get(section.id) ?? undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <a
+              href={result?.audioUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-vc-accent-primary transition-colors hover:text-vc-accent-secondary"
+            >
+              Preview uploaded audio
+            </a>
+            <div className="flex gap-2">
+              <VCButton variant="ghost" onClick={resetState}>
+                Upload another track
+              </VCButton>
+              <VCButton variant="primary" iconRight={<ArrowRightIcon />} disabled>
+                Song profile coming soon
+              </VCButton>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderErrorCard = () => (
     <div className="rounded-3xl border border-vc-state-error/40 bg-[rgba(38,12,18,0.85)] p-7 shadow-vc2">
@@ -419,12 +632,10 @@ export const UploadPage: React.FC = () => {
           <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
             Upload
           </div>
-          <h1 className="font-display text-4xl md:text-5xl">
-            Turn your sound into visuals.
-          </h1>
+          <h1 className="font-display text-4xl md:text-5xl">Turn your sound into visuals.</h1>
           <p className="max-w-xl text-sm text-vc-text-secondary md:text-base">
-            Drop your track below and VibeCraft will start listening for tempo, mood, and
-            structure — setting the stage for a cinematic video.
+            Drop your track below and VibeCraft will start listening for tempo, mood, and structure —
+            setting the stage for a cinematic video.
           </p>
         </div>
 
@@ -437,32 +648,36 @@ export const UploadPage: React.FC = () => {
           onChange={(event) => handleFilesSelected(event.target.files)}
         />
 
-        <label
-          htmlFor={fileInputId}
-          className={clsx(
-            'group block w-full',
-            stage === 'uploading'
-              ? 'pointer-events-none cursor-default'
-              : 'cursor-pointer',
-          )}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-        >
-          {stage === 'idle' || stage === 'dragging'
-            ? renderIdleCard()
-            : stage === 'uploading'
-              ? renderUploadingCard()
-              : stage === 'uploaded'
-                ? renderUploadedCard()
-                : renderErrorCard()}
-        </label>
+        {(() => {
+          const isInteractive = stage === 'idle' || stage === 'dragging'
+          const Container: React.ElementType = isInteractive ? 'label' : 'div'
+          return (
+            <Container
+              {...(isInteractive ? { htmlFor: fileInputId } : {})}
+              className={clsx(
+                'group block w-full',
+                isInteractive ? 'cursor-pointer' : 'cursor-default',
+                stage === 'uploading' && 'pointer-events-none',
+              )}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+            >
+              {stage === 'idle' || stage === 'dragging' ? (
+                renderIdleCard()
+              ) : stage === 'uploading' ? (
+                renderUploadingCard()
+              ) : stage === 'uploaded' ? (
+                renderUploadedCard()
+              ) : (
+                renderErrorCard()
+              )}
+            </Container>
+          )
+        })()}
 
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-vc-text-muted">
-          <RequirementPill
-            icon={<WaveformIcon />}
-            label={`Accepted: ${requirementsCopy.formats}`}
-          />
+          <RequirementPill icon={<WaveformIcon />} label={`Accepted: ${requirementsCopy.formats}`} />
           <RequirementPill icon={<TimerIcon />} label={requirementsCopy.duration} />
           <RequirementPill icon={<HardDriveIcon />} label={requirementsCopy.size} />
         </div>
@@ -471,14 +686,72 @@ export const UploadPage: React.FC = () => {
   )
 }
 
-const RequirementPill: React.FC<{ icon: React.ReactNode; label: string }> = ({
-  icon,
-  label,
-}) => (
+const RequirementPill: React.FC<{ icon: React.ReactNode; label: string }> = ({ icon, label }) => (
   <div className="inline-flex items-center gap-2 rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.02)] px-3 py-1.5 text-xs text-vc-text-secondary shadow-vc1">
     <span className="text-vc-accent-primary">{icon}</span>
     <span>{label}</span>
   </div>
+)
+
+const SummaryStat: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+  <div className="rounded-lg border border-vc-border/40 bg-[rgba(12,12,18,0.5)] p-3">
+    <p className="text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">{label}</p>
+    <p className="mt-2 text-sm text-white">{value}</p>
+  </div>
+)
+
+const MoodVectorMeter: React.FC<{ moodVector: MoodVector }> = ({ moodVector }) => {
+  const entries: Array<[string, number]> = [
+    ['Energy', clamp(moodVector.energy * 100, 0, 100)],
+    ['Valence', clamp(moodVector.valence * 100, 0, 100)],
+    ['Danceability', clamp(moodVector.danceability * 100, 0, 100)],
+    ['Tension', clamp(moodVector.tension * 100, 0, 100)],
+  ]
+
+  return (
+    <div className="space-y-3">
+      {entries.map(([label, value]) => (
+        <div key={label}>
+          <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-vc-text-muted">
+            <span>{label}</span>
+            <span>{Math.round(value)}%</span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary transition-all duration-500"
+              style={{ width: `${value}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const AnalysisSectionRow: React.FC<{
+  section: SongSection
+  title: string
+  mood: MoodKind
+  lyric?: string
+}> = ({ section, title, mood, lyric }) => (
+  <VCCard className="border-vc-border/30 bg-[rgba(12,12,18,0.68)]">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h3 className="font-display text-sm text-white">{title}</h3>
+        <p className="text-xs text-vc-text-muted">
+          {formatSeconds(section.startSec)} – {formatSeconds(section.endSec)}
+        </p>
+      </div>
+      <SectionMoodTag mood={mood} />
+    </div>
+    <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] uppercase tracking-[0.14em] text-vc-text-muted">
+      <span>Confidence {Math.round(clamp(section.confidence * 100, 0, 100))}%</span>
+      {section.repetitionGroup && <span>Group {section.repetitionGroup.toUpperCase()}</span>}
+    </div>
+    {lyric && (
+      <p className="mt-3 border-l border-vc-border pl-3 text-xs italic text-vc-text-secondary">“{lyric}”</p>
+    )}
+  </VCCard>
 )
 
 const WaveformPlaceholder: React.FC = () => (
@@ -487,6 +760,7 @@ const WaveformPlaceholder: React.FC = () => (
     <div className="relative z-10 flex w-full items-center justify-between gap-[3px] px-4">
       {WAVEFORM_BARS.map((height, index) => (
         <span
+          // eslint-disable-next-line react/no-array-index-key
           key={index}
           className="w-[3px] rounded-full bg-gradient-to-t from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary"
           style={{ height: `${Math.max(0.16, height) * 100}%`, opacity: 0.85 }}
@@ -523,13 +797,7 @@ const MusicNoteIcon: React.FC<{ className?: string }> = ({ className }) => (
 )
 
 const UploadIcon: React.FC = () => (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
       d="M12 3V15M12 3L7 8M12 3L17 8M5 17C5 18.1046 5.89543 19 7 19H17C18.1046 19 19 18.1046 19 17"
       stroke="currentColor"
@@ -541,13 +809,7 @@ const UploadIcon: React.FC = () => (
 )
 
 const ArrowRightIcon: React.FC = () => (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
       d="M5 12H19M19 12L13 6M19 12L13 18"
       stroke="currentColor"
@@ -578,13 +840,7 @@ const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
 )
 
 const TimerIcon: React.FC = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
       d="M12 7V12L15 15M9 3H15M12 21C16.4183 21 20 17.4183 20 13C20 8.58172 16.4183 5 12 5C7.58172 5 4 8.58172 4 13C4 17.4183 7.58172 21 12 21Z"
       stroke="currentColor"
@@ -596,13 +852,7 @@ const TimerIcon: React.FC = () => (
 )
 
 const WaveformIcon: React.FC = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
       d="M5 12H7M9 7V17M12 4V20M15 7V17M17 12H19"
       stroke="currentColor"
@@ -614,13 +864,7 @@ const WaveformIcon: React.FC = () => (
 )
 
 const HardDriveIcon: React.FC = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
       d="M20 13V16C20 17.1046 19.1046 18 18 18H6C4.89543 18 4 17.1046 4 16V8C4 6.89543 4.89543 6 6 6H14.5858C14.851 6 15.1054 6.10536 15.2929 6.29289L19.7071 10.7071C19.8946 10.8946 20 11.149 20 11.4142V13ZM12 15H12.01M16 15H16.01"
       stroke="currentColor"
@@ -649,3 +893,5 @@ const ErrorIcon: React.FC<{ className?: string }> = ({ className }) => (
     />
   </svg>
 )
+
+

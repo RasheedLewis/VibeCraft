@@ -209,6 +209,8 @@ cd ./backend
 rq worker ai_music_video
 ```
 
+> New song analyses (PR-04) run on this RQ worker. Ensure it is running before hitting `POST /api/v1/songs/{id}/analyze`; the worker updates job progress and writes results back to Postgres.
+
 > Swap the worker command for Celery if you adopt it instead of RQ.
 
 ---

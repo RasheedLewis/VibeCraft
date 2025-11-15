@@ -1,9 +1,10 @@
-.PHONY: help lint lint-fix format format-fix lint-all build test dev stop clean
+.PHONY: help lint lint-fix format format-fix lint-all build test dev start stop clean
 
 help:
 	@echo "VibeCraft Development Commands"
 	@echo ""
 	@echo "  make dev          - Start all services (backend, worker, frontend)"
+	@echo "  make start        - Alias for 'make dev'"
 	@echo "  make lint         - Run all linters"
 	@echo "  make lint-fix     - Auto-fix linting issues"
 	@echo "  make format       - Check code formatting"
@@ -16,6 +17,8 @@ help:
 
 dev:
 	@bash scripts/dev.sh
+
+start: dev
 
 lint:
 	@echo "Linting frontend..."

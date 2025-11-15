@@ -6,7 +6,7 @@ I kept all ordering logical and sequential.
 
 ---
 
-## **PR-01 — Project Initialization & Repo Setup**
+## **PR-01 — Project Initialization & Repo Setup** ✅ DONE
 
 1. Initialize monorepo or backend+frontend repos
 2. Set up package managers (pnpm / pip / poetry / npm)
@@ -16,6 +16,8 @@ I kept all ordering logical and sequential.
 6. Set up linting (ESLint, Prettier)
 7. Add CI pipeline for linting & typecheck
 8. Validate clean build for backend + frontend
+
+**Testing:** Run `make build` and `make lint-all` - both should pass with no errors.
 
 ---
 
@@ -30,6 +32,8 @@ I kept all ordering logical and sequential.
 7. Build Upload UI screen
 8. Show upload success + waveform placeholder UI
 
+**Testing:** Upload an audio file via UI or `curl -X POST /api/songs -F "file=@song.mp3"`. Verify file is stored and `songId`/`audioUrl` are returned. Check upload UI shows success state.
+
 ---
 
 ## **PR-03 — Audio Preprocessing Pipeline**
@@ -40,6 +44,8 @@ I kept all ordering logical and sequential.
 4. Store processed audio file
 5. Link processed file to database record
 6. Add preprocessing stage to backend analysis job
+
+**Testing:** Upload a stereo audio file, verify processed file is mono/44.1kHz and waveform JSON is generated. Check DB record links to processed file.
 
 ---
 
@@ -55,9 +61,11 @@ I kept all ordering logical and sequential.
 8. Store `SongAnalysis` results in DB
 9. Add frontend loading steps for analysis progress
 
+**Testing:** Call `POST /api/songs/:id/analyze` on uploaded song. Verify response includes BPM, beat times, and sections array (intro/verse/chorus). Check frontend shows analysis progress steps.
+
 ---
 
-## **PR-05 — Genre & Mood Classification**
+## **PR-05 — Genre & Mood Classification** ✅ DONE
 
 1. Compute mood features: energy, valence, tension
 2. Build genre classifier (CLAP / embedding model)
@@ -65,6 +73,8 @@ I kept all ordering logical and sequential.
 4. Compute `moodTags` and `moodVector`
 5. Integrate genre/mood outputs into analysis object
 6. Add genre/mood display UI badges
+
+**Testing:** Run `pytest backend/tests/test_genre_mood_analysis.py -v` and `python backend/test_genre_mood.py` with sample audio. Verify analysis response includes `primaryGenre`, `moodTags`, and `moodVector` fields.
 
 ---
 
@@ -79,6 +89,8 @@ I kept all ordering logical and sequential.
 7. Add `sectionLyrics[]` to analysis
 8. Display lyric previews inside section cards
 
+**Testing:** Run analysis on song with vocals. Verify `sectionLyrics[]` array is populated with timed text aligned to sections. Check lyric previews appear in section cards.
+
 ---
 
 ## **PR-07 — Song Profile UI**
@@ -91,6 +103,8 @@ I kept all ordering logical and sequential.
 6. Add waveform visual under header
 7. Display genre + mood summary
 
+**Testing:** Navigate to song profile page. Verify timeline shows all sections, each SectionCard displays mood tags and lyrics from PR-05/PR-06 data. Check genre/mood summary appears at top.
+
 ---
 
 ## **PR-08 — Section Scene Planner (Template + Prompt Builder)**
@@ -102,6 +116,8 @@ I kept all ordering logical and sequential.
 5. Build function `buildSceneSpec(sectionId)`
 6. Implement prompt builder combining all features
 7. Add internal endpoint `/build-scene` for debugging
+
+**Testing:** Call `POST /build-scene` with a sectionId. Verify response includes scene spec with prompt, color palette, camera motion, and shot pattern derived from section's mood/genre/type.
 
 ---
 
@@ -116,6 +132,8 @@ I kept all ordering logical and sequential.
 7. Build video preview player UI
 8. Build "Regenerate Section Video" button
 
+**Testing:** Click "Generate" on a section card. Verify loading spinner appears, backend polls Replicate job, video is generated and saved. Check video preview player displays generated clip and "Regenerate" button works.
+
 ---
 
 ## **PR-10 — Section Clip Management**
@@ -126,6 +144,8 @@ I kept all ordering logical and sequential.
 4. Add "Use in Full Video" button
 5. Prevent overwrite when clip is approved (unless explicitly regenerated)
 6. Allow viewing all generated clips per section
+
+**Testing:** Approve a generated clip, verify badge appears and clipId is stored. Regenerate should require confirmation. Check "Use in Full Video" button is enabled and all clips are viewable.
 
 ---
 
@@ -138,6 +158,8 @@ I kept all ordering logical and sequential.
 5. Validate timing across entire track
 6. Store scene array in DB for final render
 
+**Testing:** Call `POST /api/songs/:id/build-full-plan` on song with mix of approved/unapproved sections. Verify plan includes approved clips and queues generation for missing ones. Check timing validation passes.
+
 ---
 
 ## **PR-12 — Full-Length Video Generation**
@@ -147,6 +169,8 @@ I kept all ordering logical and sequential.
 3. Force global style consistency (seed inheritance, shared style tokens)
 4. Normalize all clips to same aspect ratio
 5. Save raw section clips for composition stage
+
+**Testing:** Trigger full video generation. Verify all section clips generate in parallel, job tracking shows progress, generated clips share consistent style tokens, and all clips have matching aspect ratio.
 
 ---
 
@@ -161,6 +185,8 @@ I kept all ordering logical and sequential.
 7. Export MP4/WebM
 8. Upload final output to cloud storage
 
+**Testing:** Run composition on full song with all clips. Verify clips are in correct order, transitions align with beats, output is 1080p/30fps, audio is synced, and final video is uploaded to storage.
+
 ---
 
 ## **PR-14 — Full Video Generation API**
@@ -174,6 +200,8 @@ I kept all ordering logical and sequential.
 4. Add job status polling endpoint
 5. Add progress UI ("Generating", "Compositing", "Finalizing")
 
+**Testing:** Call full video generation endpoint, poll status endpoint. Verify job progresses through "Generating" → "Compositing" → "Finalizing" stages. Check frontend progress UI updates accordingly.
+
 ---
 
 ## **PR-15 — Deployment (MVP Release)**
@@ -186,6 +214,8 @@ I kept all ordering logical and sequential.
 6. Add basic rate limiting
 7. Test upload → analysis → generation end-to-end in production
 
+**Testing:** Perform full end-to-end test in production: upload song → analyze → generate sections → compose full video. Verify HTTPS works, logs are captured, and rate limiting prevents abuse.
+
 ---
 
 ## **PR-16 — Sample Videos & Showcase**
@@ -196,6 +226,8 @@ I kept all ordering logical and sequential.
 4. Create demo gallery page in frontend
 5. Add sample outputs to README
 6. Ensure all samples meet 1080p + beat-sync requirements
+
+**Testing:** Navigate to demo gallery page. Verify all three sample videos display, play correctly, and meet 1080p/beat-sync quality standards. Check README includes sample links.
 
 ---
 
@@ -208,6 +240,8 @@ I kept all ordering logical and sequential.
 5. Add per-video cost tracking utilities
 6. Reduce calls to expensive models via shared seeds/style tokens
 
+**Testing:** Re-analyze same song twice, verify second call uses cached results. Check cost tracking shows reduced API calls. Verify approved clips are not regenerated unless explicitly requested.
+
 ---
 
 ## **PR-18 — Final Polish & Bugfixes**
@@ -219,6 +253,8 @@ I kept all ordering logical and sequential.
 5. Smooth out transition timing
 6. Apply final performance tuning (async optimizations, concurrency)
 7. Final UX review and cleanup
+
+**Testing:** Test error scenarios (API failures, network issues) - verify toast notifications appear and retry logic works. Check loading indicators are smooth and transitions are beat-synced. Perform full UX walkthrough.
 
 ---
 

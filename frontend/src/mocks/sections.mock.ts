@@ -3,25 +3,7 @@
  * Use this in PR-08 and PR-09 until Person A completes PR-04
  */
 
-export type SongSectionType =
-  | 'intro'
-  | 'verse'
-  | 'pre_chorus'
-  | 'chorus'
-  | 'bridge'
-  | 'drop'
-  | 'solo'
-  | 'outro'
-  | 'other'
-
-export interface SongSection {
-  id: string
-  type: SongSectionType
-  startSec: number
-  endSec: number
-  confidence: number
-  repetitionGroup?: string
-}
+import type { SongSection } from '../types/analysis'
 
 /**
  * Sample 1: Electronic/EDM track (~3:30)

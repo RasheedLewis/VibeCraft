@@ -1,0 +1,48 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+*.log
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.cache/
+.venv/
+venv/
+env/
+build/
+dist/
+pip-wheel-metadata/
+.coverage
+coverage.xml
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# FastAPI / worker artifacts
+instance/
+logs/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+frontend/dist/
+frontend/.vite/
+
+# Tooling
+.vscode/
+.idea/
+
+# Media & tmp outputs
+storage/
+tmp/
+

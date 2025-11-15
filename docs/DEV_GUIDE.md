@@ -21,17 +21,17 @@ This guide walks new contributors through setting up the AI Music Video project 
 Create the monorepo layout and initialize runtime environments.
 
 ```bash
-mkdir -p /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/{backend,frontend,infra}
-python3 -m venv /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/.venv
-source /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/.venv/bin/activate
-pip install fastapi "uvicorn[standard]" sqlmodel sqlalchemy pydantic ffmpeg-python librosa python-dotenv
-npm create vite@latest /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/frontend -- --template react-ts
-cd /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/frontend && npm install @tanstack/react-query axios
+python3 -m venv .venv
+source .venv/bin/activate
+pip install fastapi "uvicorn[standard]" sqlmodel sqlalchemy pydantic ffmpeg-python librosa python-dotenv # or pipx
+cd ./frontend && npm install @tanstack/react-query axios
 ```
 
 ---
 
 ## 3. Local Infrastructure
+
+Can probably skip Postgres? need Redis for rq
 
 Spin up Postgres and Redis the backend expects.
 
@@ -57,7 +57,7 @@ docker run --name ai-music-video-redis \
 Launch the FastAPI app and the background worker (RQ by default).
 
 ```bash
-cd /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/backend
+cd ./backend
 source ../.venv/bin/activate
 uvicorn app.main:app --reload
 ```
@@ -65,8 +65,8 @@ uvicorn app.main:app --reload
 In a separate shell:
 
 ```bash
-source /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/.venv/bin/activate
-cd /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/backend
+source ./.venv/bin/activate
+cd ./backend
 rq worker ai_music_video
 ```
 
@@ -79,7 +79,7 @@ rq worker ai_music_video
 Start the Vite dev server for the React + TypeScript UI.
 
 ```bash
-cd /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/frontend
+cd ./frontend
 npm run dev -- --host
 ```
 
@@ -89,10 +89,12 @@ Visit `http://localhost:5173` to confirm the scaffolded app loads.
 
 ## 6. Optional: Docker Compose Flow
 
+Later (when /infra exists)...
+
 When the Compose stack is ready, you can run everything together:
 
 ```bash
-cd /Users/rasheedlewis/Workspace/gauntlet/ai-music-video/infra
+cd ./infra
 docker compose up --build
 ```
 

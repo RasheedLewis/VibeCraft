@@ -41,6 +41,8 @@ frontend/.vite/
 # Tooling
 .vscode/
 .idea/
+.specstory/
+.cursorindexingignore
 
 # Media & tmp outputs
 storage/

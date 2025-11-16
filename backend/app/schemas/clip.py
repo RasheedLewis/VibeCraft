@@ -41,6 +41,11 @@ class SongClipRead(BaseModel):
 class SongClipStatus(BaseModel):
     id: UUID
     clip_index: int = Field(..., alias="clipIndex", ge=0)
+    start_sec: float = Field(..., alias="startSec", ge=0.0)
+    end_sec: float = Field(..., alias="endSec", ge=0.0)
+    duration_sec: float = Field(..., alias="durationSec", ge=0.0)
+    start_beat_index: Optional[int] = Field(None, alias="startBeat")
+    end_beat_index: Optional[int] = Field(None, alias="endBeat")
     status: str
     source: str
     num_frames: int = Field(..., alias="numFrames", ge=0)

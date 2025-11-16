@@ -14,6 +14,11 @@ export interface SongAnalysisJobResponse {
 export interface SongClipStatus {
   id: string
   clipIndex: number
+  startSec: number
+  endSec: number
+  durationSec: number
+  startBeat?: number | null
+  endBeat?: number | null
   status: string
   source: string
   numFrames: number

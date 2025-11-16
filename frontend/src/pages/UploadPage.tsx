@@ -1332,6 +1332,51 @@ export const UploadPage: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <div className="vc-label">Completed clips</div>
+                  {clipSummary.completedClips === 0 ? (
+                    <VCCard className="border-dashed border-vc-border/30 bg-[rgba(12,12,18,0.65)] p-6 text-center text-xs text-vc-text-muted">
+                      Completed clips will appear here once generation finishes.
+                    </VCCard>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      {sortedClips
+                        .filter(
+                          (clip) => normalizeClipStatus(clip.status) === 'completed',
+                        )
+                        .map((clip) => (
+                          <button
+                            key={`thumb-${clip.id}`}
+                            type="button"
+                            onClick={() => handlePreviewClip(clip)}
+                            className={clsx(
+                              'group relative overflow-hidden rounded-xl border border-vc-border/40 bg-[rgba(12,12,18,0.55)] transition',
+                              clip.videoUrl && 'hover:border-vc-accent-primary',
+                            )}
+                            disabled={!clip.videoUrl}
+                          >
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-80 transition-opacity group-hover:opacity-90" />
+                            <div className="relative z-10 flex h-24 flex-col justify-end p-3 text-left">
+                              <div className="text-xs font-medium text-white">
+                                #{clip.clipIndex + 1} •{' '}
+                                {formatTimeRange(clip.startSec, clip.endSec)}
+                              </div>
+                              <div className="text-[11px] text-vc-text-muted">
+                                {formatDurationShort(clip.durationSec)} • {clip.numFrames}{' '}
+                                frames • {clip.fps} fps
+                              </div>
+                            </div>
+                            {!clip.videoUrl && (
+                              <div className="absolute inset-0 flex items-center justify-center text-[11px] text-vc-text-muted">
+                                Preview coming soon
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </section>
             )
           })()

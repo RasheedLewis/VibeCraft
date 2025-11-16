@@ -1,5 +1,43 @@
 # Beat-to-Frame Alignment Algorithm
 
+## Context for MVP-02: Beat Alignment Calculation & Planning
+
+This document provides context and analysis for implementing **MVP-02 — Beat Alignment Calculation & Planning**.
+
+### Goal
+Calculate beat-aligned clip boundaries (independent of clip generation). This PR focuses on **calculation and planning only** - it doesn't require clips to exist. Can work in parallel with MVP-01.
+
+### Key Requirements
+1. Implement beat-to-frame alignment algorithm
+2. Build helper function to calculate optimal clip boundaries from beat grid
+3. Account for video generation API FPS (8 FPS) when calculating beat-to-frame alignment
+4. Adjust clip durations to match nearest beats (within 3-6s constraints)
+5. Create API endpoint: `GET /api/songs/:id/beat-aligned-boundaries` that returns calculated boundaries
+6. Store beat alignment metadata (which beats each boundary aligns with)
+7. Add validation to ensure boundaries don't drift from beat grid
+
+### Essential Context Files
+- **`docs/MVP_ROADMAP.md`** - MVP-02 requirements and goals
+- **`backend/app/schemas/analysis.py`** - `SongAnalysis` schema (beat_times, bpm, duration_sec)
+- **`backend/app/models/analysis.py`** - `SongAnalysisRecord` model (how analysis is stored)
+- **`backend/app/services/song_analysis.py`** - How beat times are calculated and stored (lines 165-167, 197-209)
+- **`backend/app/api/v1/__init__.py`** - API router structure (where to add the new endpoint)
+- **`backend/app/api/v1/routes_videos.py`** - Example API route implementation pattern
+
+### Key Data Structures
+- **Beat times:** Stored in `SongAnalysis.beat_times` (list of floats in seconds)
+- **BPM:** Stored in `SongAnalysis.bpm` (optional float)
+- **Analysis storage:** `SongAnalysisRecord.analysis_json` (JSON string of `SongAnalysis`)
+- **Video FPS:** 8 FPS (Zeroscope v2 XL output)
+
+### Important Constraints
+- Video generation API outputs at **8 FPS** (frame interval = 0.125 seconds)
+- Clip durations must be between 3-6 seconds
+- Boundaries should align with beats (within acceptable tolerance)
+- Must account for 8 FPS frame intervals when calculating alignment
+
+---
+
 ## Problem Statement
 
 Given:

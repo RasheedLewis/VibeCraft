@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -341,7 +342,7 @@ def get_beat_aligned_boundaries(
 )
 def plan_clips_for_song(
     song_id: UUID,
-    clip_count: int = Query(4, ge=1, le=32),
+    clip_count: Optional[int] = Query(None, ge=1, le=64),
     min_clip_sec: float = Query(3.0, ge=0.5),
     max_clip_sec: float = Query(15.0, ge=1.0),
     db: Session = Depends(get_db),
@@ -368,11 +369,29 @@ def plan_clips_for_song(
             detail="Song analysis not found. Run analysis before planning clips.",
         )
 
+    min_required_clips = max(1, int(math.ceil(song.duration_sec / max_clip_sec)))
+
+    effective_clip_count = clip_count if clip_count is not None else min_required_clips
+    effective_clip_count = max(3, min(64, effective_clip_count))
+
+    if effective_clip_count < min_required_clips:
+        effective_clip_count = min(64, min_required_clips)
+
+    min_total_required = min_clip_sec * effective_clip_count
+    if song.duration_sec < min_total_required - 1e-3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Unable to plan clips: song duration is shorter than minimum total clip "
+                "duration. Reduce clip_count or lower min_clip_sec."
+            ),
+        )
+
     try:
         plans = plan_beat_aligned_clips(
             duration_sec=song.duration_sec,
             analysis=analysis,
-            clip_count=clip_count,
+            clip_count=effective_clip_count,
             min_clip_sec=min_clip_sec,
             max_clip_sec=max_clip_sec,
             generator_fps=8,

@@ -384,6 +384,53 @@ export const UploadPage: React.FC = () => {
     console.info('Compose action not yet implemented.')
   }, [clipSummary])
 
+  const handleGenerateClips = useCallback(async () => {
+    if (!result?.songId) return
+    try {
+      setClipJobError(null)
+      const durationEstimate =
+        analysisData?.durationSec ??
+        songDetails?.duration_sec ??
+        clipSummary?.clips.reduce((total, clip) => total + clip.durationSec, 0) ??
+        null
+
+      const maxClipSeconds = 15
+      const minClips = 3
+      const maxClips = 64
+      const computedClipCount =
+        durationEstimate && durationEstimate > 0
+          ? Math.min(maxClips, Math.max(minClips, Math.ceil(durationEstimate / maxClipSeconds)))
+          : minClips
+
+      if (
+        !clipSummary ||
+        clipSummary.totalClips === 0 ||
+        clipSummary.completedClips === clipSummary.totalClips
+      ) {
+        await apiClient.post(`/songs/${result.songId}/clips/plan`, null, {
+          params: {
+            clip_count: computedClipCount,
+            max_clip_sec: maxClipSeconds,
+          },
+        })
+      }
+
+      const { data } = await apiClient.post<{
+        jobId: string
+        songId: string
+        status: string
+      }>(`/songs/${result.songId}/clips/generate`)
+
+      setClipJobId(data.jobId)
+      setClipJobStatus(normalizeJobStatus(data.status))
+      setClipJobProgress(0)
+    } catch (err) {
+      setClipJobError(
+        extractErrorMessage(err, 'Unable to start clip generation for this track.'),
+      )
+    }
+  }, [result?.songId, clipSummary])
+
   const handlePreviewClip = useCallback(
     (clip: SongClipStatus) => {
       if (clip.videoUrl) {
@@ -1062,13 +1109,23 @@ export const UploadPage: React.FC = () => {
             >
               Preview uploaded audio
             </a>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <VCButton variant="ghost" onClick={resetState}>
                 Upload another track
               </VCButton>
-              <VCButton variant="primary" iconRight={<ArrowRightIcon />} disabled>
-                Song profile coming soon
-              </VCButton>
+              {analysisData ? (
+                <VCButton
+                  variant="primary"
+                  iconRight={<ArrowRightIcon />}
+                  onClick={handleGenerateClips}
+                >
+                  Generate clips
+                </VCButton>
+              ) : (
+                <VCButton variant="primary" iconRight={<ArrowRightIcon />} disabled>
+                  Analyzing…
+                </VCButton>
+              )}
             </div>
           </div>
         </div>
@@ -1382,6 +1439,16 @@ export const UploadPage: React.FC = () => {
           })()
         : null
 
+    const clipJobActive =
+      clipJobId != null && (clipJobStatus === 'queued' || clipJobStatus === 'processing')
+    const clipJobCompleted =
+      clipSummary && clipSummary.totalClips > 0 && clipSummary.completedClips === clipSummary.totalClips
+    const generateButtonLabel = clipJobActive
+      ? 'Generating…'
+      : clipJobCompleted
+        ? 'Regenerate clips'
+        : 'Generate clips'
+
     return (
       <section className="mt-12 w-full space-y-8">
         <header className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
@@ -1406,6 +1473,25 @@ export const UploadPage: React.FC = () => {
             </div>
           </VCCard>
         </header>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-vc-text-muted">
+            Kick off clip generation to visualize this song in multiple scenes.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <VCButton
+              variant="primary"
+              iconRight={<ArrowRightIcon />}
+              onClick={handleGenerateClips}
+              disabled={clipJobActive}
+            >
+              {generateButtonLabel}
+            </VCButton>
+            {clipJobError && (
+              <span className="text-xs text-vc-state-error">{clipJobError}</span>
+            )}
+          </div>
+        </div>
 
         {clipPanel}
 

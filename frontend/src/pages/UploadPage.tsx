@@ -119,6 +119,16 @@ const formatBpm = (bpm?: number) => {
   return `${Math.round(bpm)} BPM`
 }
 
+const isSongAnalysis = (payload: unknown): payload is SongAnalysis => {
+  if (!payload || typeof payload !== 'object') return false
+  const candidate = payload as Partial<SongAnalysis>
+  return (
+    typeof candidate.durationSec === 'number' &&
+    Array.isArray(candidate.sections) &&
+    Array.isArray(candidate.moodTags)
+  )
+}
+
 const formatMoodTags = (tags: string[]) =>
   tags.length
     ? tags
@@ -441,9 +451,9 @@ export const UploadPage: React.FC = () => {
 
         if (normalizedStatus === 'completed') {
           setAnalysisError(null)
-          if (data.result) {
+          if (data.result && isSongAnalysis(data.result)) {
             setAnalysisData(data.result)
-          } else {
+          } else if (result?.songId) {
             await fetchAnalysis(result.songId)
           }
           if (result?.songId) {

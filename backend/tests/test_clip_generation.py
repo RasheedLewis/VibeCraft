@@ -9,18 +9,46 @@ from sqlmodel import select
 
 from app.core.database import init_db, session_scope
 from app.main import create_app
-from app.models.analysis import SongAnalysisRecord
+from app.models.analysis import ClipGenerationJob, SongAnalysisRecord
 from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import SongAnalysis
 from app.services.clip_generation import (
     enqueue_clip_generation_batch,
+    get_clip_generation_job_status,
     get_clip_generation_summary,
     run_clip_generation_job,
+    start_clip_generation_job,
 )
 from app.services.clip_planning import persist_clip_plans, plan_beat_aligned_clips
 
 init_db()
+
+
+class DummyJob:
+    def __init__(self, clip_id: UUID, job_id: str, depends_on: Optional["DummyJob"], meta: Optional[dict]):
+        self.clip_id = clip_id
+        self.id = job_id
+        self.depends_on = depends_on
+        self.meta = meta or {}
+
+
+class DummyQueue:
+    def __init__(self) -> None:
+        self.jobs: list[DummyJob] = []
+
+    def enqueue(
+        self,
+        func,
+        clip_id,
+        job_id=None,
+        depends_on=None,
+        job_timeout=None,
+        meta=None,
+    ):
+        job = DummyJob(clip_id, job_id, depends_on, meta)
+        self.jobs.append(job)
+        return job
 
 
 def make_analysis(beat_times: list[float]) -> SongAnalysis:
@@ -125,6 +153,12 @@ def _cleanup_song(song_id: UUID) -> None:
         for record in records:
             session.delete(record)
 
+        jobs = session.exec(
+            select(ClipGenerationJob).where(ClipGenerationJob.song_id == song_id)
+        ).all()
+        for job in jobs:
+            session.delete(job)
+
         song = session.get(Song, song_id)
         if song:
             session.delete(song)
@@ -133,29 +167,6 @@ def _cleanup_song(song_id: UUID) -> None:
 
 def test_enqueue_clip_generation_batch_controls_concurrency(monkeypatch):
     song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(32)], clip_count=5)
-
-    class DummyJob:
-        def __init__(self, clip_id: UUID, job_id: str, depends_on: Optional["DummyJob"]):
-            self.clip_id = clip_id
-            self.id = job_id
-            self.depends_on = depends_on
-
-    class DummyQueue:
-        def __init__(self) -> None:
-            self.jobs: list[DummyJob] = []
-
-        def enqueue(
-            self,
-            func,
-            clip_id,
-            job_id=None,
-            depends_on=None,
-            job_timeout=None,
-            meta=None,
-        ):
-            job = DummyJob(clip_id, job_id, depends_on)
-            self.jobs.append(job)
-            return job
 
     dummy_queue = DummyQueue()
     monkeypatch.setattr(
@@ -281,4 +292,45 @@ def test_get_clip_generation_summary():
         assert statuses == {"completed", "processing", "failed"}
 
     _cleanup_song(song_id)
+
+
+def test_start_clip_generation_job_and_status(monkeypatch):
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=3)
+
+    dummy_queue = DummyQueue()
+    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+
+    response = start_clip_generation_job(song_id)
+    assert response.song_id == song_id
+    assert response.job_id.startswith("clip-batch-")
+
+    with session_scope() as session:
+        job_record = session.get(ClipGenerationJob, response.job_id)
+        assert job_record is not None
+        assert job_record.total_clips == 3
+
+    status = get_clip_generation_job_status(response.job_id)
+    assert status.song_id == song_id
+    assert status.result is not None
+    assert status.result.total_clips == 3
+
+    api_queue = DummyQueue()
+    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: api_queue)
+    other_song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(16)], clip_count=2)
+
+    with TestClient(create_app()) as client:
+        resp = client.post(f"/api/v1/songs/{other_song_id}/clips/generate")
+        assert resp.status_code == 202, resp.text
+        payload = resp.json()
+        assert payload["songId"] == str(other_song_id)
+        assert payload["jobId"].startswith("clip-batch-")
+
+        status_resp = client.get(f"/api/v1/songs/{other_song_id}/clips/status")
+        assert status_resp.status_code == 200
+
+        job_status_resp = client.get(f"/api/v1/jobs/{payload['jobId']}")
+        assert job_status_resp.status_code == 200
+
+    _cleanup_song(song_id)
+    _cleanup_song(other_song_id)
 

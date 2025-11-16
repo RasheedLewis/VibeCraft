@@ -15,9 +15,9 @@ from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import BeatAlignedBoundariesResponse, ClipBoundaryMetadata, SongAnalysis
 from app.schemas.clip import ClipPlanBatchResponse, SongClipRead
-from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongClipRead
 from app.schemas.analysis import SongAnalysis
-from app.schemas.job import SongAnalysisJobResponse
+from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongClipRead
+from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
 from app.schemas.song import SongRead, SongUploadResponse
 from app.services import preprocess_audio
 from app.services.beat_alignment import (
@@ -26,6 +26,11 @@ from app.services.beat_alignment import (
     validate_boundaries,
 )
 from app.services.clip_generation import get_clip_generation_summary
+from app.services.clip_generation import (
+    DEFAULT_MAX_CONCURRENCY,
+    get_clip_generation_summary,
+    start_clip_generation_job,
+)
 from app.services.clip_planning import (
     ClipPlanningError,
     persist_clip_plans,
@@ -419,5 +424,29 @@ def get_clip_generation_status(song_id: UUID, db: Session = Depends(get_db)) -> 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No clip plans found for this song.",
+        ) from exc
+
+
+@router.post(
+    "/{song_id}/clips/generate",
+    response_model=ClipGenerationJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Start clip generation job",
+)
+def generate_clip_batch(
+    song_id: UUID,
+    max_parallel: int = Query(DEFAULT_MAX_CONCURRENCY, ge=1, le=8),
+    db: Session = Depends(get_db),
+) -> ClipGenerationJobResponse:
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    try:
+        return start_clip_generation_job(song_id, max_parallel=max_parallel)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
         ) from exc
 

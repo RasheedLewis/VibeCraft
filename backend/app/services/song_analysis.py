@@ -52,7 +52,7 @@ def enqueue_song_analysis(song_id: UUID) -> SongAnalysisJobResponse:
         session.add(analysis_job)
         session.commit()
 
-    return SongAnalysisJobResponse(job_id=job.id, status="queued")
+    return SongAnalysisJobResponse(job_id=job.id, song_id=song_id, status="queued")
 
 
 def get_job_status(job_id: str) -> JobStatusResponse:
@@ -68,11 +68,11 @@ def get_job_status(job_id: str) -> JobStatusResponse:
                 result = SongAnalysis.model_validate_json(analysis_record.analysis_json)
 
         return JobStatusResponse(
-            job_id=job_record.id,
-            song_id=str(job_record.song_id),
+            jobId=job_record.id,
+            songId=job_record.song_id,
             status=job_record.status,
             progress=job_record.progress,
-            analysis_id=str(job_record.analysis_id) if job_record.analysis_id else None,
+            analysisId=job_record.analysis_id,
             error=job_record.error,
             result=result,
         )

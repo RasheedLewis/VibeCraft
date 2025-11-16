@@ -8,7 +8,7 @@ from app.schemas.analysis import (
     SongSectionType,
 )
 from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongClipRead, SongClipStatus
-from app.schemas.job import JobStatusResponse, SongAnalysisJobResponse
+from app.schemas.job import ClipGenerationJobResponse, JobStatusResponse, SongAnalysisJobResponse
 from app.schemas.scene import (
     CameraMotion,
     ColorPalette,
@@ -22,6 +22,7 @@ __all__ = [
     "SongRead",
     "SongUploadResponse",
     "SongAnalysisJobResponse",
+    "ClipGenerationJobResponse",
     "JobStatusResponse",
     "ClipPlanBatchResponse",
     "ClipGenerationSummary",

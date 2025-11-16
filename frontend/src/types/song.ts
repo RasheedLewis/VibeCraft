@@ -7,17 +7,43 @@ export interface SongUploadResponse {
 
 export interface SongAnalysisJobResponse {
   jobId: string
+  songId: string
   status: 'queued' | 'processing' | 'completed' | 'failed' | string
+}
+
+export interface SongClipStatus {
+  id: string
+  clipIndex: number
+  status: string
+  source: string
+  numFrames: number
+  fps: number
+  videoUrl?: string
+  rqJobId?: string
+  replicateJobId?: string
+  error?: string | null
+}
+
+export interface ClipGenerationSummary {
+  songId: string
+  totalClips: number
+  completedClips: number
+  failedClips: number
+  processingClips: number
+  queuedClips: number
+  progressCompleted: number
+  progressTotal: number
+  clips: SongClipStatus[]
 }
 
 export interface JobStatusResponse {
   jobId: string
   songId: string
   status: 'queued' | 'processing' | 'completed' | 'failed' | string
-  progress: number
+  progress?: number
   analysisId?: string | null
   error?: string | null
-  result?: SongAnalysis | null
+  result?: SongAnalysis | ClipGenerationSummary | null
 }
 
 export interface MoodVector {

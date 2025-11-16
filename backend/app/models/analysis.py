@@ -39,3 +39,21 @@ class AnalysisJob(SQLModel, table=True):
     )
 
 
+class ClipGenerationJob(SQLModel, table=True):
+    __tablename__ = "clip_generation_jobs"
+
+    id: str = Field(primary_key=True, max_length=128)
+    song_id: UUID = Field(foreign_key="songs.id", index=True)
+    status: str = Field(default="queued", max_length=32)
+    progress: int = Field(default=0, ge=0, le=100)
+    total_clips: int = Field(default=0, ge=0)
+    completed_clips: int = Field(default=0, ge=0)
+    failed_clips: int = Field(default=0, ge=0)
+    error: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
+    )
+
+

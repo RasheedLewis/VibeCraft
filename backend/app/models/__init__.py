@@ -1,4 +1,4 @@
-from app.models.analysis import AnalysisJob, SongAnalysisRecord
+from app.models.analysis import AnalysisJob, ClipGenerationJob, SongAnalysisRecord
 from app.models.clip import SongClip
 from app.models.section_video import SectionVideo
 from app.models.song import DEFAULT_USER_ID, Song
@@ -12,4 +12,5 @@ __all__ = [
     "SongClip",
     "SongAnalysisRecord",
     "AnalysisJob",
+    "ClipGenerationJob",
 ]

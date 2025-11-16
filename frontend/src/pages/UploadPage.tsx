@@ -8,6 +8,7 @@ import type {
   JobStatusResponse,
   SongAnalysis,
   SongAnalysisJobResponse,
+  SongClipStatus,
   SongRead,
   SongSection,
   MoodVector,
@@ -155,6 +156,9 @@ const formatDurationShort = (seconds: number) => {
   if (seconds >= 10) return `${Math.round(seconds)}s`
   return `${seconds.toFixed(1)}s`
 }
+
+const formatTimeRange = (startSec: number, endSec: number) =>
+  `${formatSeconds(startSec)}–${formatSeconds(endSec)}`
 
 const getSectionTitle = (section: SongSection, index: number) => {
   const label = SECTION_TYPE_LABELS[section.type] ?? `Section`
@@ -379,6 +383,33 @@ export const UploadPage: React.FC = () => {
     if (clipSummary.completedClips !== clipSummary.totalClips) return
     console.info('Compose action not yet implemented.')
   }, [clipSummary])
+
+  const handlePreviewClip = useCallback(
+    (clip: SongClipStatus) => {
+      if (clip.videoUrl) {
+        window.open(clip.videoUrl, '_blank', 'noopener,noreferrer')
+      } else {
+        setClipJobError('Preview not available for this clip yet.')
+      }
+    },
+    [setClipJobError],
+  )
+
+  const handleRegenerateClip = useCallback(
+    (clip: SongClipStatus) => {
+      console.info('Regenerate clip requested', clip.id)
+      setClipJobError('Clip regeneration is not available yet.')
+    },
+    [setClipJobError],
+  )
+
+  const handleRetryClip = useCallback(
+    (clip: SongClipStatus) => {
+      console.info('Retry clip requested', clip.id)
+      setClipJobError('Retry is not available yet.')
+    },
+    [setClipJobError],
+  )
   const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
     () => mapMoodToMoodKind(analysisData?.moodPrimary ?? ''),
@@ -1204,6 +1235,103 @@ export const UploadPage: React.FC = () => {
                     </div>
                   </div>
                 </VCCard>
+
+                {sortedClips.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="vc-label">Clip queue</div>
+                    <div className="overflow-hidden rounded-2xl border border-vc-border/40 bg-[rgba(12,12,18,0.65)]">
+                      {sortedClips.map((clip, index) => {
+                        const normalizedStatus = normalizeClipStatus(clip.status)
+                        const rangeLabel = formatTimeRange(clip.startSec, clip.endSec)
+                        const beats =
+                          clip.startBeat != null && clip.endBeat != null
+                            ? Math.max(clip.endBeat - clip.startBeat, 0)
+                            : null
+                        const infoParts: string[] = [
+                          formatDurationShort(clip.durationSec),
+                          `${clip.numFrames} frames`,
+                          `${clip.fps} fps`,
+                        ]
+                        if (beats && beats > 0) {
+                          infoParts.push(`${beats} beats`)
+                        }
+                        const infoLine = infoParts.join(' • ')
+                        const isLast = index === sortedClips.length - 1
+
+                        return (
+                          <div
+                            key={clip.id}
+                            className={clsx(
+                              'flex flex-col gap-2 border-b border-vc-border/20 px-4 py-4',
+                              isLast && 'border-b-0',
+                            )}
+                          >
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                              <div className="flex items-center gap-3 text-sm font-medium text-white">
+                                <div className="w-8 text-right text-xs text-vc-text-muted">
+                                  #{clip.clipIndex + 1}
+                                </div>
+                                <div>{rangeLabel}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <ClipStatusBadge status={normalizedStatus} />
+                                {normalizedStatus === 'processing' && (
+                                  <span className="flex items-center gap-1 text-[11px] text-vc-text-muted">
+                                    <span className="inline-block h-2 w-2 rounded-full bg-vc-accent-primary animate-pulse" />
+                                    Generating…
+                                  </span>
+                                )}
+                                {normalizedStatus === 'queued' && (
+                                  <span className="text-[11px] text-vc-text-muted">
+                                    Awaiting generation
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-2 text-xs text-vc-text-secondary md:flex-row md:items-center md:justify-between">
+                              <div>{infoLine}</div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {normalizedStatus === 'completed' && (
+                                  <>
+                                    <VCButton
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => handlePreviewClip(clip)}
+                                      disabled={!clip.videoUrl}
+                                    >
+                                      Preview
+                                    </VCButton>
+                                    <VCButton
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleRegenerateClip(clip)}
+                                    >
+                                      Regenerate
+                                    </VCButton>
+                                  </>
+                                )}
+                                {normalizedStatus === 'failed' && (
+                                  <VCButton
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => handleRetryClip(clip)}
+                                  >
+                                    Retry
+                                  </VCButton>
+                                )}
+                                {normalizedStatus === 'canceled' && (
+                                  <span className="text-vc-text-muted">
+                                    Clip canceled
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </section>
             )
           })()
@@ -1436,6 +1564,34 @@ const MoodVectorMeter: React.FC<{ moodVector: MoodVector }> = ({ moodVector }) =
         </div>
       ))}
     </div>
+  )
+}
+
+const ClipStatusBadge: React.FC<{
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'canceled'
+}> = ({ status }) => {
+  const labelMap: Record<typeof status, string> = {
+    queued: 'Queued',
+    processing: 'Processing',
+    completed: 'Completed',
+    failed: 'Failed',
+    canceled: 'Canceled',
+  }
+
+  const variantClass =
+    status === 'completed'
+      ? 'vc-badge-success'
+      : status === 'failed'
+        ? 'vc-badge-danger'
+        : 'vc-badge'
+
+  return (
+    <span className={clsx(variantClass, 'inline-flex items-center gap-1 text-[11px]')}>
+      {status === 'processing' && (
+        <span className="inline-block h-2 w-2 rounded-full bg-white/80 animate-pulse" />
+      )}
+      {labelMap[status]}
+    </span>
   )
 }
 

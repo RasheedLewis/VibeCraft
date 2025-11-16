@@ -1,5 +1,10 @@
 from app.services.audio_preprocessing import AudioPreprocessingResult, preprocess_audio
-from app.services.clip_planning import ClipPlan, ClipPlanningError, plan_beat_aligned_clips
+from app.services.clip_planning import (
+    ClipPlan,
+    ClipPlanningError,
+    persist_clip_plans,
+    plan_beat_aligned_clips,
+)
 from app.services.genre_mood_analysis import compute_genre, compute_mood_features, compute_mood_tags
 from app.services.lyric_extraction import (
     align_lyrics_to_sections,
@@ -12,6 +17,7 @@ __all__ = [
     "AudioPreprocessingResult",
     "ClipPlan",
     "ClipPlanningError",
+    "persist_clip_plans",
     "compute_genre",
     "compute_mood_features",
     "compute_mood_tags",

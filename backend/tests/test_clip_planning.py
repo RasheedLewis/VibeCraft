@@ -1,9 +1,19 @@
 from __future__ import annotations
 
-import pytest
+from uuid import uuid4
 
+import pytest
+from sqlmodel import select
+
+from app.core.database import session_scope
+from app.models.clip import SongClip
+from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import SongAnalysis
-from app.services.clip_planning import ClipPlanningError, plan_beat_aligned_clips
+from app.services.clip_planning import (
+    ClipPlanningError,
+    persist_clip_plans,
+    plan_beat_aligned_clips,
+)
 
 
 def make_analysis(beat_times: list[float]) -> SongAnalysis:
@@ -97,4 +107,61 @@ def test_plan_clips_raises_when_exceeds_max_duration():
             max_clip_sec=5.0,
             generator_fps=8,
         )
+
+
+def test_persist_clip_plans_creates_records():
+    beat_times = [i * 0.5 for i in range(40)]
+    analysis = make_analysis(beat_times)
+    duration = beat_times[-1] + 0.5
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=duration,
+        analysis=analysis,
+        clip_count=4,
+        min_clip_sec=3.0,
+        max_clip_sec=12.0,
+        generator_fps=8,
+    )
+
+    song_id = uuid4()
+    with session_scope() as session:
+        song = Song(
+            id=song_id,
+            user_id=DEFAULT_USER_ID,
+            title="Persist Test Song",
+            original_filename="persist.wav",
+            original_file_size=1024,
+            original_s3_key="s3://test/persist.wav",
+            processed_s3_key="s3://test/persist-processed.wav",
+            duration_sec=duration,
+        )
+        session.add(song)
+        session.commit()
+
+    try:
+        stored = persist_clip_plans(song_id=song_id, plans=plans, fps=8, source="beat")
+        assert len(stored) == len(plans)
+
+        with session_scope() as session:
+            rows = session.exec(
+                select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+            ).all()
+
+        assert len(rows) == len(plans)
+        for row, plan in zip(rows, plans):
+            assert row.status == "queued"
+            assert row.source == "beat"
+            assert row.fps == 8
+            assert row.frame_count == plan.frame_count
+            assert row.start_sec == pytest.approx(plan.start_sec)
+            assert row.end_sec == pytest.approx(plan.end_sec)
+
+    finally:
+        with session_scope() as session:
+            for clip in session.exec(select(SongClip).where(SongClip.song_id == song_id)).all():
+                session.delete(clip)
+            song = session.get(Song, song_id)
+            if song:
+                session.delete(song)
+            session.commit()
 

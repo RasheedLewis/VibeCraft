@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
+from uuid import UUID
 
+from sqlmodel import select
+
+from app.core.database import session_scope
+from app.models.clip import SongClip
 from app.schemas.analysis import SongAnalysis
 
 
@@ -120,6 +125,49 @@ def plan_beat_aligned_clips(
         )
 
     return plans
+
+
+def persist_clip_plans(
+    *,
+    song_id: UUID,
+    plans: List[ClipPlan],
+    fps: int = 8,
+    source: str = "auto",
+    clear_existing: bool = True,
+) -> List[SongClip]:
+    """Persist planned clips to the database and return the stored records."""
+
+    with session_scope() as session:
+        if clear_existing:
+            existing = session.exec(select(SongClip).where(SongClip.song_id == song_id)).all()
+            for clip in existing:
+                session.delete(clip)
+            session.commit()
+
+        song_clips: list[SongClip] = []
+        for plan in plans:
+            clip = SongClip(
+                song_id=song_id,
+                clip_index=plan.index,
+                start_sec=plan.start_sec,
+                end_sec=plan.end_sec,
+                duration_sec=plan.duration_sec,
+                start_beat_index=plan.start_beat_index,
+                end_beat_index=plan.end_beat_index,
+                frame_count=plan.frame_count,
+                fps=fps,
+                status="queued",
+                source=source,
+            )
+            session.add(clip)
+            song_clips.append(clip)
+
+        session.commit()
+
+        for clip in song_clips:
+            session.refresh(clip)
+
+        return song_clips
 
 
 def _pick_boundary_from_beats(

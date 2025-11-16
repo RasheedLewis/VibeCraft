@@ -47,12 +47,13 @@ The following PRs are **already complete** and provide the foundation for MVP:
 
 1. Define clip planning service that snaps boundaries to beat grid and frame intervals
 2. Persist planned clips (start/end/beats/duration) with status tracking + metadata columns
-3. Enqueue per-clip generation jobs (controlled concurrency) that hit Replicate
-4. Support variable clip lengths (3–15s) converted to `num_frames` for 8 fps models
-5. Track per-clip job status and aggregate progress (`completed/total`)
-6. Expose API endpoints: start generation, list planned/generated clips, poll job status
-7. Frontend: show “Generating clip X of N…” progress and list completed clips
-8. Record 8 fps and frame counts in metadata for downstream composition
+3. Expose planning APIs (`POST /api/songs/:id/clips/plan` + `GET /api/songs/:id/clips`) to generate/head list plans
+4. Enqueue per-clip generation jobs (controlled concurrency) that hit Replicate
+5. Support variable clip lengths (3–15s) converted to `num_frames` for 8 fps models
+6. Track per-clip job status and aggregate progress (`completed/total`)
+7. Expose endpoint for multi-clip generation job + status (reuse job poller)
+8. Frontend: show “Generating clip X of N…” progress and list completed clips
+9. Record 8 fps and frame counts in metadata for downstream composition
 
 **Note:** Clips will be 3-6 seconds each, totaling the song duration. Uses simple time-based boundaries (no beat alignment yet). Generated clips are at 8 FPS (from Replicate API), which will be upscaled to 30+ FPS during composition. Beat alignment will be added in MVP-02.
 

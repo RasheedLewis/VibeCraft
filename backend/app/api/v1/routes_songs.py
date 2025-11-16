@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import math
 import re
 from pathlib import Path
@@ -15,8 +17,6 @@ from app.core.config import get_settings
 from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import BeatAlignedBoundariesResponse, ClipBoundaryMetadata, SongAnalysis
-from app.schemas.clip import ClipPlanBatchResponse, SongClipRead
-from app.schemas.analysis import SongAnalysis
 from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongClipRead
 from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
 from app.schemas.song import SongRead, SongUploadResponse
@@ -26,7 +26,6 @@ from app.services.beat_alignment import (
     calculate_beat_aligned_boundaries,
     validate_boundaries,
 )
-from app.services.clip_generation import get_clip_generation_summary
 from app.services.clip_generation import (
     DEFAULT_MAX_CONCURRENCY,
     get_clip_generation_summary,
@@ -37,8 +36,20 @@ from app.services.clip_planning import (
     persist_clip_plans,
     plan_beat_aligned_clips,
 )
+from app.services.composition_job import (
+    cancel_job,
+    enqueue_composition,
+    get_composed_video,
+    get_job_status,
+)
 from app.services.song_analysis import enqueue_song_analysis, get_latest_analysis
 from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
+from app.schemas.composition import (
+    ComposeVideoRequest,
+    ComposeVideoResponse,
+    ComposedVideoResponse,
+    CompositionJobStatusResponse,
+)
 
 ALLOWED_CONTENT_TYPES = {
     "audio/mpeg",
@@ -55,6 +66,8 @@ ALLOWED_CONTENT_TYPES = {
     "audio/m4a",
 }
 MAX_DURATION_SECONDS = 7 * 60  # 7 minutes
+
+logger = logging.getLogger(__name__)
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -468,4 +481,191 @@ def generate_clip_batch(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/{song_id}/compose",
+    response_model=ComposeVideoResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Enqueue video composition job",
+)
+def compose_video(
+    song_id: UUID,
+    request: ComposeVideoRequest,
+    db: Session = Depends(get_db),
+) -> ComposeVideoResponse:
+    """
+    Enqueue a video composition job to stitch clips together.
+
+    Args:
+        song_id: Song ID
+        request: Composition request with clip IDs and metadata
+
+    Returns:
+        ComposeVideoResponse with job ID
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    # Validate clip IDs match metadata
+    if len(request.clip_ids) != len(request.clip_metadata):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Number of clip IDs must match number of clip metadata entries",
+        )
+
+    # Convert clip metadata to dict format
+    clip_metadata_dicts = [
+        {
+            "clipId": str(meta.clip_id),
+            "startFrame": meta.start_frame,
+            "endFrame": meta.end_frame,
+        }
+        for meta in request.clip_metadata
+    ]
+
+    # Create job and enqueue to RQ
+    try:
+        job_id, _ = enqueue_composition(
+            song_id=song_id,
+            clip_ids=request.clip_ids,
+            clip_metadata=clip_metadata_dicts,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    return ComposeVideoResponse(
+        job_id=job_id,
+        status="queued",
+        song_id=str(song_id),
+    )
+
+
+@router.get(
+    "/{song_id}/compose/{job_id}/status",
+    response_model=CompositionJobStatusResponse,
+    summary="Get composition job status",
+)
+def get_composition_job_status(
+    song_id: UUID,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> CompositionJobStatusResponse:
+    """
+    Get the status of a composition job.
+
+    Args:
+        song_id: Song ID
+        job_id: Composition job ID
+
+    Returns:
+        CompositionJobStatusResponse with job status and progress
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    try:
+        return get_job_status(job_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+
+
+@router.post(
+    "/{song_id}/compose/{job_id}/cancel",
+    status_code=status.HTTP_200_OK,
+    summary="Cancel a composition job",
+)
+def cancel_composition_job(
+    song_id: UUID,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """
+    Cancel a composition job.
+
+    Args:
+        song_id: Song ID
+        job_id: Composition job ID
+
+    Returns:
+        Dict with status message
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    try:
+        cancel_job(job_id)
+        return {"status": "cancelled", "job_id": job_id}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.get(
+    "/{song_id}/composed-videos/{composed_video_id}",
+    response_model=ComposedVideoResponse,
+    summary="Get composed video details",
+)
+def get_composed_video_endpoint(
+    song_id: UUID,
+    composed_video_id: UUID,
+    db: Session = Depends(get_db),
+) -> ComposedVideoResponse:
+    """
+    Get details of a composed video.
+
+    Args:
+        song_id: Song ID
+        composed_video_id: ComposedVideo ID
+
+    Returns:
+        ComposedVideoResponse with video details and presigned URL
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    composed_video = get_composed_video(composed_video_id)
+    if not composed_video:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Composed video not found"
+        )
+    if composed_video.song_id != song_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Composed video does not belong to this song",
+        )
+
+    # Generate presigned URL
+    settings = get_settings()
+    try:
+        video_url = generate_presigned_get_url(
+            bucket_name=settings.s3_bucket_name,
+            key=composed_video.s3_key,
+            expires_in=3600,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate video URL: {e}",
+        ) from e
+
+    # Parse clip IDs from JSON
+    clip_ids = json.loads(composed_video.clip_ids)
+
+    return ComposedVideoResponse(
+        id=str(composed_video.id),
+        song_id=str(composed_video.song_id),
+        video_url=video_url,
+        duration_sec=composed_video.duration_sec,
+        file_size_bytes=composed_video.file_size_bytes,
+        resolution_width=composed_video.resolution_width,
+        resolution_height=composed_video.resolution_height,
+        fps=composed_video.fps,
+        clip_ids=clip_ids,
+        status=composed_video.status,
+        created_at=composed_video.created_at.isoformat(),
+    )
 

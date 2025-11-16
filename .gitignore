@@ -57,5 +57,8 @@ samples/audio/**/*.flac
 !samples/README.md
 !samples/metadata/
 
+# Test composition outputs (large files)
+samples/compTest/testComp*.mp4
+
 
 .trigger

@@ -9,6 +9,13 @@ from app.schemas.analysis import (
 )
 from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongClipRead, SongClipStatus
 from app.schemas.job import ClipGenerationJobResponse, JobStatusResponse, SongAnalysisJobResponse
+from app.schemas.composition import (
+    ClipMetadata,
+    ComposeVideoRequest,
+    ComposeVideoResponse,
+    ComposedVideoResponse,
+    CompositionJobStatusResponse,
+)
 from app.schemas.scene import (
     CameraMotion,
     ColorPalette,
@@ -40,5 +47,14 @@ __all__ = [
     "SceneSpec",
     "ShotPattern",
     "TemplateType",
+    "SectionVideoRead",
+    "SectionVideoCreate",
+    "SectionVideoGenerateRequest",
+    "SectionVideoGenerateResponse",
+    "ClipMetadata",
+    "ComposeVideoRequest",
+    "ComposeVideoResponse",
+    "ComposedVideoResponse",
+    "CompositionJobStatusResponse",
 ]
 

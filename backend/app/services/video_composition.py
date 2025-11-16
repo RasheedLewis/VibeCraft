@@ -1,0 +1,601 @@
+"""Video composition service for stitching clips together with FFmpeg."""
+
+from __future__ import annotations
+
+import json
+import logging
+import subprocess
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
+import ffmpeg
+
+from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# Default composition settings
+DEFAULT_TARGET_RESOLUTION = (1920, 1080)
+DEFAULT_TARGET_FPS = 24
+DEFAULT_VIDEO_CODEC = "libx264"
+DEFAULT_AUDIO_CODEC = "aac"
+DEFAULT_AUDIO_BITRATE = "192k"
+DEFAULT_CRF = 23  # Quality setting for H.264 (lower = better quality, 18-28 is typical range)
+
+
+@dataclass
+class ClipMetadata:
+    """Metadata for a video clip."""
+
+    duration_sec: float
+    fps: float
+    width: int
+    height: int
+    codec: str
+    has_audio: bool
+
+
+@dataclass
+class CompositionResult:
+    """Result of video composition."""
+
+    output_path: Path
+    duration_sec: float
+    file_size_bytes: int
+    width: int
+    height: int
+    fps: int
+
+
+def validate_composition_inputs(
+    clip_urls: list[str],
+    ffmpeg_bin: str | None = None,
+    ffprobe_bin: str | None = None,
+) -> list[ClipMetadata]:
+    """
+    Validate clip URLs and extract metadata using ffprobe.
+
+    Args:
+        clip_urls: List of URLs or file paths to video clips
+        ffmpeg_bin: Path to ffmpeg binary (defaults to config)
+        ffprobe_bin: Path to ffprobe binary (defaults to ffmpeg_bin + 'probe')
+
+    Returns:
+        List of ClipMetadata objects
+
+    Raises:
+        RuntimeError: If validation fails or clips are inaccessible
+    """
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+    ffprobe_bin = ffprobe_bin or ffmpeg_bin.replace("ffmpeg", "ffprobe")
+
+    metadata_list = []
+
+    for i, clip_url in enumerate(clip_urls):
+        try:
+            # Use ffprobe to get clip metadata
+            probe_cmd = [
+                ffprobe_bin,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height,r_frame_rate,codec_name,codec_type",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                clip_url,
+            ]
+
+            try:
+                result = subprocess.run(
+                    probe_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=30,
+                )
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"Failed to validate clip {i + 1}: {e.stderr or str(e)}") from e
+
+            probe_data = json.loads(result.stdout)
+
+            # Extract video stream info
+            # When using -select_streams v:0, the stream should be the first (and only) one
+            # But we check codec_type if available, or assume it's video if selected
+            streams = probe_data.get("streams", [])
+            video_stream = None
+            
+            if streams:
+                # If we selected v:0, the first stream should be video
+                # But check codec_type if available for safety
+                first_stream = streams[0]
+                if first_stream.get("codec_type") == "video" or "width" in first_stream:
+                    video_stream = first_stream
+                else:
+                    # Fallback: search for video stream by codec_type
+                    for stream in streams:
+                        if stream.get("codec_type") == "video":
+                            video_stream = stream
+                            break
+
+            if not video_stream:
+                raise RuntimeError(f"No video stream found in clip {i + 1}")
+
+            # Parse frame rate (can be "30/1" or "29.97")
+            r_frame_rate = video_stream.get("r_frame_rate", "30/1")
+            if "/" in r_frame_rate:
+                num, den = map(int, r_frame_rate.split("/"))
+                fps = num / den if den > 0 else 30.0
+            else:
+                fps = float(r_frame_rate)
+
+            # Get duration from format
+            format_info = probe_data.get("format", {})
+            duration_sec = float(format_info.get("duration", 0))
+
+            # Check for audio stream
+            audio_check_cmd = [
+                ffprobe_bin,
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "json",
+                clip_url,
+            ]
+
+            has_audio = False
+            try:
+                audio_result = subprocess.run(
+                    audio_check_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=10,
+                )
+                audio_data = json.loads(audio_result.stdout)
+                has_audio = len(audio_data.get("streams", [])) > 0
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                has_audio = False
+
+            metadata = ClipMetadata(
+                duration_sec=duration_sec,
+                fps=fps,
+                width=int(video_stream.get("width", 0)),
+                height=int(video_stream.get("height", 0)),
+                codec=video_stream.get("codec_name", "unknown"),
+                has_audio=has_audio,
+            )
+
+            metadata_list.append(metadata)
+            logger.info(
+                f"Validated clip {i + 1}/{len(clip_urls)}: {metadata.width}x{metadata.height} @ {metadata.fps}fps, "
+                f"duration={metadata.duration_sec:.2f}s, codec={metadata.codec}"
+            )
+
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Timeout validating clip {i + 1} (URL: {clip_url})")
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(
+                f"Failed to validate clip {i + 1} (URL: {clip_url}): {e.stderr}"
+            ) from e
+        except (KeyError, ValueError, json.JSONDecodeError) as e:
+            raise RuntimeError(
+                f"Failed to parse metadata for clip {i + 1} (URL: {clip_url}): {e}"
+            ) from e
+
+    return metadata_list
+
+
+def normalize_clip(
+    input_path: str | Path,
+    output_path: str | Path,
+    target_resolution: tuple[int, int] = DEFAULT_TARGET_RESOLUTION,
+    target_fps: int = DEFAULT_TARGET_FPS,
+    ffmpeg_bin: str | None = None,
+) -> None:
+    """
+    Normalize a clip to target resolution and FPS.
+
+    Args:
+        input_path: Path to input video file
+        output_path: Path to output video file
+        target_resolution: Target resolution (width, height)
+        target_fps: Target FPS
+        ffmpeg_bin: Path to ffmpeg binary (defaults to config)
+
+    Raises:
+        RuntimeError: If normalization fails
+    """
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+
+    target_width, target_height = target_resolution
+
+    # Build video filter: scale with letterboxing, then set FPS
+    # scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24
+    vf_parts = [
+        f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease",
+        f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2",
+        f"fps={target_fps}",
+    ]
+    video_filter = ",".join(vf_parts)
+
+    try:
+        (
+            ffmpeg.input(str(input_path))
+            .output(
+                str(output_path),
+                vf=video_filter,
+                vcodec=DEFAULT_VIDEO_CODEC,
+                preset="medium",
+                crf=DEFAULT_CRF,
+                **{"an": None},  # Remove audio (we'll add song audio later)
+            )
+            .overwrite_output()
+            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+        )
+    except ffmpeg.Error as e:  # type: ignore[attr-defined]
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+        raise RuntimeError(f"Failed to normalize clip: {stderr}") from e
+
+
+def concatenate_clips(
+    normalized_clip_paths: list[str | Path],
+    audio_path: str | Path,
+    output_path: str | Path,
+    song_duration_sec: float,
+    ffmpeg_bin: str | None = None,
+) -> CompositionResult:
+    """
+    Concatenate normalized clips and mux with audio.
+
+    Args:
+        normalized_clip_paths: List of paths to normalized video clips
+        audio_path: Path to audio file (song)
+        output_path: Path to output video file
+        song_duration_sec: Expected song duration in seconds
+        ffmpeg_bin: Path to ffmpeg binary (defaults to config)
+
+    Returns:
+        CompositionResult with output metadata
+
+    Raises:
+        RuntimeError: If concatenation fails
+    """
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+
+    if not normalized_clip_paths:
+        raise ValueError("No clips provided for concatenation")
+
+    # Create concat file for FFmpeg concat demuxer
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as concat_file:
+        concat_path = Path(concat_file.name)
+        for clip_path in normalized_clip_paths:
+            # Escape single quotes and backslashes in path
+            escaped_path = str(clip_path).replace("'", "'\\''").replace("\\", "\\\\")
+            concat_file.write(f"file '{escaped_path}'\n")
+        
+        # Log concat file for debugging (first few and last few entries)
+        logger.debug(f"Created concat file with {len(normalized_clip_paths)} clips")
+        if len(normalized_clip_paths) > 10:
+            logger.debug(f"  First 3: {normalized_clip_paths[:3]}")
+            logger.debug(f"  Last 3: {normalized_clip_paths[-3:]}")
+
+    try:
+        # Use concat demuxer for fast concatenation
+        # Then mux with audio - video should be full length, audio will loop or be trimmed
+        try:
+            video_input = ffmpeg.input(str(concat_path), format="concat", safe=0)
+            audio_input = ffmpeg.input(str(audio_path))
+            
+            # Output video and audio - let video be full length, audio will be trimmed to video length
+            # Use -map to explicitly map video from input 0 and audio from input 1
+            (
+                ffmpeg.output(
+                    video_input["v"],
+                    audio_input["a"],
+                    str(output_path),
+                    vcodec=DEFAULT_VIDEO_CODEC,
+                    acodec=DEFAULT_AUDIO_CODEC,
+                    audio_bitrate=DEFAULT_AUDIO_BITRATE,
+                    **{"async": 1},  # Audio resampling for sync
+                )
+                .overwrite_output()
+                .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+            )
+        except ffmpeg.Error as e:  # type: ignore[attr-defined]
+            stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+            # Log concat file contents for debugging if concatenation fails
+            logger.error(f"FFmpeg concatenation failed. Concat file had {len(normalized_clip_paths)} clips.")
+            if len(normalized_clip_paths) > 0:
+                logger.error(f"First clip: {normalized_clip_paths[0]}")
+                logger.error(f"Last clip: {normalized_clip_paths[-1]}")
+            raise RuntimeError(f"Failed to concatenate clips: {stderr}") from e
+
+        # Verify output using ffprobe
+        result = verify_composed_video(str(output_path), ffmpeg_bin=ffmpeg_bin)
+
+        return result
+
+    finally:
+        # Clean up concat file
+        try:
+            concat_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def extend_last_clip(
+    clip_path: str | Path,
+    output_path: str | Path,
+    target_duration_sec: float,
+    fadeout_duration_sec: float = 2.0,
+    ffmpeg_bin: str | None = None,
+) -> None:
+    """
+    Extend the last clip to match target duration with fadeout.
+
+    Args:
+        clip_path: Path to input clip
+        output_path: Path to output clip
+        target_duration_sec: Target duration in seconds
+        fadeout_duration_sec: Fadeout duration in seconds
+        ffmpeg_bin: Path to ffmpeg binary (defaults to config)
+
+    Raises:
+        RuntimeError: If extension fails
+    """
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+
+    # Get current clip duration
+    try:
+        probe_cmd = [
+            ffmpeg_bin.replace("ffmpeg", "ffprobe"),
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            str(clip_path),
+        ]
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True, timeout=10)
+        probe_data = json.loads(result.stdout)
+        current_duration = float(probe_data["format"]["duration"])
+    except Exception as e:
+        raise RuntimeError(f"Failed to get clip duration: {e}") from e
+
+    if current_duration >= target_duration_sec:
+        # Clip is already long enough, just add fadeout
+        fade_start = max(0, current_duration - fadeout_duration_sec)
+        video_filter = f"fade=t=out:st={fade_start}:d={fadeout_duration_sec}"
+    else:
+        # Extend clip by cloning last frame, then fadeout
+        extend_duration = target_duration_sec - current_duration
+        fade_start = max(0, target_duration_sec - fadeout_duration_sec)
+        video_filter = (
+            f"tpad=stop_mode=clone:stop_duration={extend_duration},"
+            f"fade=t=out:st={fade_start}:d={fadeout_duration_sec}"
+        )
+
+    try:
+        (
+            ffmpeg.input(str(clip_path))
+            .output(
+                str(output_path),
+                vf=video_filter,
+                vcodec=DEFAULT_VIDEO_CODEC,
+                preset="medium",
+                crf=DEFAULT_CRF,
+                **{"an": None},  # Remove audio
+            )
+            .overwrite_output()
+            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+        )
+    except ffmpeg.Error as e:  # type: ignore[attr-defined]
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+        raise RuntimeError(f"Failed to extend clip: {stderr}") from e
+
+
+def trim_last_clip(
+    clip_path: str | Path,
+    output_path: str | Path,
+    target_duration_sec: float,
+    fadeout_duration_sec: float = 1.0,
+    ffmpeg_bin: str | None = None,
+) -> None:
+    """
+    Trim the last clip to match target duration with fadeout.
+
+    Args:
+        clip_path: Path to input clip
+        output_path: Path to output clip
+        target_duration_sec: Target duration in seconds
+        fadeout_duration_sec: Fadeout duration in seconds
+        ffmpeg_bin: Path to ffmpeg binary (defaults to config)
+
+    Raises:
+        RuntimeError: If trimming fails
+    """
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+
+    # Get current clip duration
+    try:
+        probe_cmd = [
+            ffmpeg_bin.replace("ffmpeg", "ffprobe"),
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            str(clip_path),
+        ]
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True, timeout=10)
+        probe_data = json.loads(result.stdout)
+        current_duration = float(probe_data["format"]["duration"])
+    except Exception as e:
+        raise RuntimeError(f"Failed to get clip duration: {e}") from e
+
+    if current_duration <= target_duration_sec:
+        # Clip is already short enough, just add fadeout
+        fade_start = max(0, current_duration - fadeout_duration_sec)
+        video_filter = f"fade=t=out:st={fade_start}:d={fadeout_duration_sec}"
+    else:
+        # Trim clip and add fadeout
+        fade_start = max(0, target_duration_sec - fadeout_duration_sec)
+        video_filter = (
+            f"trim=duration={target_duration_sec},"
+            f"fade=t=out:st={fade_start}:d={fadeout_duration_sec}"
+        )
+
+    try:
+        (
+            ffmpeg.input(str(clip_path))
+            .output(
+                str(output_path),
+                vf=video_filter,
+                vcodec=DEFAULT_VIDEO_CODEC,
+                preset="medium",
+                crf=DEFAULT_CRF,
+                **{"an": None},  # Remove audio
+            )
+            .overwrite_output()
+            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+        )
+    except ffmpeg.Error as e:  # type: ignore[attr-defined]
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+        raise RuntimeError(f"Failed to trim clip: {stderr}") from e
+
+
+def verify_composed_video(
+    video_path: str | Path,
+    expected_resolution: tuple[int, int] = DEFAULT_TARGET_RESOLUTION,
+    expected_fps: int = DEFAULT_TARGET_FPS,
+    ffmpeg_bin: str | None = None,
+) -> CompositionResult:
+    """
+    Verify composed video meets quality requirements.
+
+    Args:
+        video_path: Path to video file
+        expected_resolution: Expected resolution (width, height)
+        expected_fps: Expected FPS
+        ffmpeg_bin: Path to ffmpeg binary (defaults to config)
+
+    Returns:
+        CompositionResult with video metadata
+
+    Raises:
+        RuntimeError: If verification fails or video doesn't meet requirements
+    """
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+    ffprobe_bin = ffmpeg_bin.replace("ffmpeg", "ffprobe")
+
+    try:
+        probe_cmd = [
+            ffprobe_bin,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height,r_frame_rate,codec_type",
+            "-show_entries",
+            "format=duration,size",
+            "-of",
+            "json",
+            str(video_path),
+        ]
+
+        result = subprocess.run(
+            probe_cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+
+        probe_data = json.loads(result.stdout)
+
+        # Extract video stream info
+        # When using -select_streams v:0, the stream should be the first (and only) one
+        streams = probe_data.get("streams", [])
+        video_stream = None
+        
+        if streams:
+            # If we selected v:0, the first stream should be video
+            # But check codec_type if available for safety
+            first_stream = streams[0]
+            if first_stream.get("codec_type") == "video" or "width" in first_stream:
+                video_stream = first_stream
+            else:
+                # Fallback: search for video stream by codec_type
+                for stream in streams:
+                    if stream.get("codec_type") == "video":
+                        video_stream = stream
+                        break
+
+        if not video_stream:
+            raise RuntimeError("No video stream found in composed video")
+
+        # Parse frame rate
+        r_frame_rate = video_stream.get("r_frame_rate", "30/1")
+        if "/" in r_frame_rate:
+            num, den = map(int, r_frame_rate.split("/"))
+            fps = round(num / den) if den > 0 else expected_fps
+        else:
+            fps = round(float(r_frame_rate))
+
+        format_info = probe_data.get("format", {})
+        duration_sec = float(format_info.get("duration", 0))
+        file_size_bytes = int(format_info.get("size", 0))
+
+        width = int(video_stream.get("width", 0))
+        height = int(video_stream.get("height", 0))
+
+        # Verify requirements
+        expected_width, expected_height = expected_resolution
+        if width != expected_width or height != expected_height:
+            raise RuntimeError(
+                f"Resolution mismatch: expected {expected_width}x{expected_height}, got {width}x{height}"
+            )
+
+        if abs(fps - expected_fps) > 1:  # Allow 1 FPS tolerance
+            logger.warning(f"FPS mismatch: expected {expected_fps}, got {fps}")
+
+        if file_size_bytes == 0:
+            raise RuntimeError("Composed video file is empty")
+
+        if duration_sec <= 0:
+            raise RuntimeError(f"Invalid duration: {duration_sec}")
+
+        return CompositionResult(
+            output_path=Path(video_path),
+            duration_sec=duration_sec,
+            file_size_bytes=file_size_bytes,
+            width=width,
+            height=height,
+            fps=fps,
+        )
+
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Timeout verifying composed video")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to verify composed video: {e.stderr}") from e
+    except (KeyError, ValueError, json.JSONDecodeError) as e:
+        raise RuntimeError(f"Failed to parse video metadata: {e}") from e
+

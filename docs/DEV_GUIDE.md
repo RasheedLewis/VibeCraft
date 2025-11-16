@@ -354,12 +354,32 @@ The FastAPI app lives under `backend/app/`:
 - `api/v1/` – versioned routers (`/health`, `/songs`, etc.)
 - `models/` – SQLModel ORM tables (e.g., `Song`)
 - `schemas/` – Pydantic request/response models
-- `services/` – pipeline logic (audio analysis, scene planning, etc.)
+- `services/` – pipeline logic (audio analysis, scene planning, video composition, etc.)
 - `workers/` – background task entrypoints (RQ/Celery)
 
 > **Note:** Until authentication is implemented, uploaded songs are associated with a placeholder user record whose ID is `default-user`. The default user is created automatically on startup (`init_db()`); replace this once real auth is wired up.
 
 `init_db()` currently auto-creates tables via SQLModel metadata on startup; swap for Alembic migrations once schemas stabilize.
+
+#### 4.2.1 Video Composition Settings
+
+Video composition (MVP-03) normalizes clips to 1080p @ 24fps using H.264 encoding. Default settings are in `backend/app/services/video_composition.py`:
+
+- **CRF**: 23 (quality setting, 18-28 range, lower = better quality)
+- **Preset**: "medium" (encoding speed vs compression tradeoff)
+- **Resolution**: 1920×1080 (fixed for MVP)
+- **FPS**: 24 (fixed for MVP)
+
+**Controlling file size:**
+
+If composed videos are too large, you can adjust these settings:
+
+1. **Increase CRF** (smaller file, lower quality): Change `DEFAULT_CRF = 23` to `26-28` (~30-50% smaller)
+2. **Use slower preset** (better compression, slower): Change `preset="medium"` to `"slow"` or `"veryslow"` (~10-20% smaller, 2-5× slower)
+3. **Reduce resolution** (smaller file, lower resolution): Change `DEFAULT_TARGET_RESOLUTION = (1920, 1080)` to `(1280, 720)` (~40% smaller)
+4. **Reduce FPS** (smaller file, less smooth): Change `DEFAULT_TARGET_FPS = 24` to `20` (~15% smaller)
+
+For detailed file size analysis and testing workflows, see `docs/adam/VideoCompTesting.md`.
 
 ---
 

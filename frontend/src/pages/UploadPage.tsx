@@ -399,7 +399,10 @@ export const UploadPage: React.FC = () => {
       const maxClips = 64
       const computedClipCount =
         durationEstimate && durationEstimate > 0
-          ? Math.min(maxClips, Math.max(minClips, Math.ceil(durationEstimate / maxClipSeconds)))
+          ? Math.min(
+              maxClips,
+              Math.max(minClips, Math.ceil(durationEstimate / maxClipSeconds)),
+            )
           : minClips
 
       if (
@@ -429,7 +432,7 @@ export const UploadPage: React.FC = () => {
         extractErrorMessage(err, 'Unable to start clip generation for this track.'),
       )
     }
-  }, [result?.songId, clipSummary])
+  }, [result?.songId, clipSummary, analysisData?.durationSec, songDetails?.duration_sec])
 
   const handlePreviewClip = useCallback(
     (clip: SongClipStatus) => {
@@ -1442,7 +1445,9 @@ export const UploadPage: React.FC = () => {
     const clipJobActive =
       clipJobId != null && (clipJobStatus === 'queued' || clipJobStatus === 'processing')
     const clipJobCompleted =
-      clipSummary && clipSummary.totalClips > 0 && clipSummary.completedClips === clipSummary.totalClips
+      clipSummary &&
+      clipSummary.totalClips > 0 &&
+      clipSummary.completedClips === clipSummary.totalClips
     const generateButtonLabel = clipJobActive
       ? 'Generating…'
       : clipJobCompleted

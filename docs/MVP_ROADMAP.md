@@ -41,7 +41,7 @@ The following PRs are **already complete** and provide the foundation for MVP:
 
 ---
 
-## **MVP-01 — Multi-Clip Generation for Full Song (Time-Based Boundaries)**
+## **MVP-01 — Multi-Clip Generation for Full Song (Time-Based Boundaries)** ✅ **Done (Rasheed)**
 
 **Goal:** Generate 3-5 video clips for an entire song using simple time-based boundaries.
 
@@ -65,7 +65,7 @@ The following PRs are **already complete** and provide the foundation for MVP:
 
 ---
 
-## **MVP-02 — Beat Alignment Calculation & Planning**
+## **MVP-02 — Beat Alignment Calculation & Planning** ✅ **Done (Adam)**
 
 **Goal:** Calculate beat-aligned clip boundaries (independent of clip generation).
 
@@ -86,7 +86,7 @@ The following PRs are **already complete** and provide the foundation for MVP:
 
 ---
 
-## **MVP-03 — Video Composition & Stitching (Backend)**
+## **MVP-03 — Video Composition & Stitching (Backend)** ✅ **Done (Adam)**
 
 **Goal:** Stitch 3-5 clips together into a single video (works with any clips, beat-aligned or not).
 
@@ -111,28 +111,65 @@ The following PRs are **already complete** and provide the foundation for MVP:
 
 ---
 
-## **MVP-04 — Consistent Visual Style Across Clips** ⚠️ **MUST WORK TOGETHER**
+## **MVP-04 — Prompt Experimentation + Consistent Visual Style** 🔬 **Adam → then together**
 
-**Goal:** Maintain visual coherence across all clips in a song.
+**Goal:** Maintain visual coherence across all clips in a song through systematic prompt engineering and experimentation.
 
-1. Research and experiment with prompt engineering techniques for style consistency
-2. Investigate if Replicate API supports context persistence across multiple video generation calls
-3. Test seed inheritance and shared style tokens across clips
-4. Experiment with style reference images or embeddings (if supported by model)
-5. Develop prompt templates that maintain visual coherence (color palette, mood, aesthetic)
-6. Generate a "style seed" for the entire song that all clips inherit
-7. Test style consistency across multiple clips for the same song
-8. Document successful techniques and create style consistency guidelines
-9. Implement style consistency parameters in scene planner and video generation services
-10. Add style consistency validation/testing utilities
+1. **Run extensive tests and collect results:**
+   - Generate multiple test videos with different prompt variations
+   - Document outcomes for each variation (visual quality, style consistency, coherence)
+   - Create a test catalog/database of prompt → video results
 
-**Note:** This PR comes after MVP-03 (stitching) so we can validate the full pipeline works first, then improve style quality. Requires collaboration between both developers due to the experimental nature and need for prompt engineering research. Expect significant iteration and testing.
+2. **Experiment with different templates:**
+   - Test existing scene planner templates with various songs/genres
+   - Create new template variations for different moods and genres
+   - Compare template effectiveness across different musical styles
+   - Document which templates work best for which genres/moods
 
-**Testing:** Generate multiple clips for a song with style consistency enabled. Verify visual style consistency (colors, mood, aesthetic) across all clips. Stitch clips together and verify cohesive look in final video. Document any limitations or trade-offs discovered.
+3. **Test different Replicate models:**
+   - Compare `anotherjesse/zeroscope-v2-xl` with alternative models
+   - Evaluate model-specific features (seed support, style tokens, context persistence)
+   - Document model capabilities and limitations
+   - Test model switching strategies (same model vs. model-specific prompts)
+
+4. **Catalog prompt → video mapping:**
+   - Build a database/catalog of successful prompt patterns
+   - Map prompt components to visual outcomes (color, mood, aesthetic, motion)
+   - Document prompt engineering patterns that produce consistent results
+   - Create a prompt library organized by genre, mood, and visual style
+
+5. **Targeted prompt tweaks and iteration:**
+   - Test incremental prompt modifications (single word/phrase changes)
+   - Measure impact of specific prompt components (adjectives, style descriptors, motion verbs)
+   - Document which tweaks produce desired visual changes
+   - Create a prompt tuning workflow for fine-tuning visual style
+
+6. **Advanced prompt engineering techniques:**
+   - Research and experiment with prompt engineering techniques for style consistency
+   - Test seed inheritance and shared style tokens across clips
+   - Experiment with style reference images or embeddings (if supported by model)
+   - Test prompt chaining and context persistence across multiple video generation calls
+   - Investigate if Replicate API supports style transfer or reference-based generation
+
+7. **Style consistency implementation:**
+   - Generate a "style seed" for the entire song that all clips inherit
+   - Develop prompt templates that maintain visual coherence (color palette, mood, aesthetic)
+   - Implement style consistency parameters in scene planner and video generation services
+   - Test style consistency across multiple clips for the same song
+
+8. **Documentation and guidelines:**
+   - Document successful techniques and create style consistency guidelines
+   - Create a style consistency playbook with best practices
+   - Document limitations, trade-offs, and edge cases discovered
+   - Add style consistency validation/testing utilities
+
+**Note:** This PR comes after MVP-03 (stitching) so we can validate the full pipeline works first, then improve style quality. Adam will lead the initial experimentation phase, then both developers will collaborate on implementation. Expect significant iteration and testing. The experimental phase should produce a comprehensive catalog of what works and what doesn't.
+
+**Testing:** Generate multiple clips for a song with style consistency enabled. Verify visual style consistency (colors, mood, aesthetic) across all clips. Stitch clips together and verify cohesive look in final video. Test across different genres and song lengths. Document any limitations or trade-offs discovered.
 
 ---
 
-## **MVP-05 — Web UI Editor for Clip Boundaries**
+## **MVP-05 — Web UI Editor for Clip Boundaries** 👤 **Assigned: Rasheed**
 
 **Goal:** Allow users to manually adjust clip boundaries with a visual editor.
 
@@ -178,7 +215,28 @@ The following PRs are **already complete** and provide the foundation for MVP:
 
 ---
 
-## **MVP-07 — MVP Polish & Testing**
+## **MVP-07 — Deployment**
+
+**Goal:** Deploy MVP to production environment.
+
+1. Set up production infrastructure (hosting, database, storage)
+2. Configure environment variables and secrets management
+3. Deploy backend API (FastAPI) to production server
+4. Deploy frontend (React/Vite) to CDN or static hosting
+5. Set up production database (PostgreSQL)
+6. Configure S3 bucket for production storage
+7. Set up RQ workers for background job processing
+8. Configure FFmpeg in production environment
+9. Set up monitoring and logging
+10. Configure domain and SSL certificates
+11. Test production deployment end-to-end
+12. Document deployment process and runbooks
+
+**Testing:** Verify all services work in production environment. Test full pipeline (upload, analysis, generation, composition) in production. Monitor for errors and performance issues.
+
+---
+
+## **MVP-08 — MVP Polish & Testing**
 
 **Goal:** Ensure MVP works end-to-end and is ready for demo.
 
@@ -201,7 +259,7 @@ The following PRs are **already complete** and provide the foundation for MVP:
 
 ## **MVP Success Criteria**
 
-By the end of MVP-07, the system must:
+By the end of MVP-08, the system must:
 
 1. ✅ **Audio Visual Sync:** Video transitions align with audio beats (within acceptable tolerance)
 2. ✅ **Multi Clip Composition:** Successfully stitch 3-5 clips together into a single video
@@ -222,21 +280,21 @@ These features will be implemented after MVP is complete:
 - Cost optimization and caching
 - Sample videos and showcase gallery
 - Advanced transitions and effects
-- Deployment to production
 
 ---
 
 ## **Estimated Timeline**
 
-- **MVP-01:** 2-3 days (multi-clip generation)
-- **MVP-02:** 1-2 days (beat alignment)
-- **MVP-03:** 2-3 days (composition & stitching - backend)
-- **MVP-04:** 3-5 days (style consistency - experimental, requires collaboration)
-- **MVP-05:** 2-3 days (web UI editor for clip boundaries - optional)
+- **MVP-01:** ✅ 2-3 days (multi-clip generation) - **Done (Rasheed)**
+- **MVP-02:** ✅ 1-2 days (beat alignment) - **Done (Adam)**
+- **MVP-03:** ✅ 2-3 days (composition & stitching - backend) - **Done (Adam)**
+- **MVP-04:** 5-7 days (prompt experimentation + style consistency - experimental, Adam leads then collaboration)
+- **MVP-05:** 2-3 days (web UI editor for clip boundaries - optional) - **Assigned: Rasheed**
 - **MVP-06:** 1-2 days (API orchestration)
-- **MVP-07:** 1-2 days (polish & testing)
+- **MVP-07:** 2-3 days (deployment)
+- **MVP-08:** 1-2 days (polish & testing)
 
-**Total MVP:** ~13-20 days (or ~11-17 days if MVP-05 is deferred)
+**Total MVP:** ~15-23 days remaining (MVP-01, 02, 03 complete)
 
 ---
 
@@ -271,16 +329,19 @@ Foundation (PRs 1-9) ✅
 │ Clip Gen │   │ Align    │  │ tion &   │
 │ (Time-   │   │ (Calc)   │  │ Stitch   │
 │ Based)   │   │          │  │          │
+│ ✅ Done  │   │ ✅ Done  │  │ ✅ Done  │
+│ (Rasheed)│   │ (Adam)   │  │ (Adam)   │
 └──────────┘   └──────────┘  └──────────┘
     │                │              │
     │                │              │
     └────────┬───────┴──────────────┘
              │
              ▼
-    ┌───────────────────┐
-    │   MVP-04          │ ⚠️ MUST WORK TOGETHER
-    │ Style Consistency │
-    └───────────────────┘
+    ┌──────────────────────────────┐
+    │   MVP-04                     │ 🔬 Adam → together
+    │ Prompt Experimentation +     │
+    │ Consistent Visual Style      │
+    └──────────────────────────────┘
              │
     ┌────────┴────────┐
     │                 │
@@ -289,11 +350,18 @@ Foundation (PRs 1-9) ✅
 │ MVP-05  │    │   MVP-06     │
 │ UI Edit │    │ Full API     │
 │(Optional)│   │ Orchestration│
+│Rasheed  │    │              │
 └─────────┘    └──────────────┘
                       │
                       ▼
                ┌──────────────┐
                │   MVP-07     │
+               │  Deployment  │
+               └──────────────┘
+                      │
+                      ▼
+               ┌──────────────┐
+               │   MVP-08     │
                │ Polish & Test│
                └──────────────┘
 ```
@@ -317,13 +385,14 @@ Foundation (PRs 1-9) ✅
 
 - **MVP-04** depends on:
   - PR-08 (scene planner)
-  - MVP-01 (multi-clip generation)
-  - MVP-03 (stitching pipeline validated)
-  - ⚠️ **MUST WORK TOGETHER** (collaborative PR)
+  - MVP-01 (multi-clip generation) ✅
+  - MVP-03 (stitching pipeline validated) ✅
+  - 🔬 **Adam leads experimentation, then collaborative implementation**
 
 - **MVP-05** depends on:
-  - MVP-02 (beat alignment for snap-to-beat)
-  - MVP-03 (stitching works - validates boundaries)
+  - MVP-02 (beat alignment for snap-to-beat) ✅
+  - MVP-03 (stitching works - validates boundaries) ✅
+  - **Assigned: Rasheed**
   - **Optional:** Can be deferred if time is limited
 
 - **MVP-06** depends on:
@@ -336,24 +405,27 @@ Foundation (PRs 1-9) ✅
 - **MVP-07** depends on:
   - MVP-06 (complete pipeline)
 
+- **MVP-08** depends on:
+  - MVP-07 (production deployment)
+
 ### **Critical Path**
 
 The critical path (minimum required sequence) is:
 
 ```text
-PR-09 → MVP-01 → MVP-03 → MVP-04 → MVP-06 → MVP-07
+PR-09 → MVP-01 ✅ → MVP-03 ✅ → MVP-04 → MVP-06 → MVP-07 → MVP-08
 ```
 
-**MVP-02 (Beat Alignment)** can be done in parallel with MVP-01 and MVP-03, then integrated later.
+**MVP-02 (Beat Alignment)** ✅ can be done in parallel with MVP-01 and MVP-03, then integrated later.
 
 **MVP-05 (UI Editor)** is optional and can be done in parallel with MVP-04 or deferred.
 
 ### **Parallel Work Opportunities**
 
-- **MVP-01, MVP-02, and MVP-03 can all work in parallel:**
-  - **MVP-01:** Generate clips with time-based boundaries (independent)
-  - **MVP-02:** Calculate beat-aligned boundaries (independent, just needs beat grid)
-  - **MVP-03:** Stitch clips together (needs MVP-01 clips, but doesn't need MVP-02)
+- **MVP-01, MVP-02, and MVP-03 can all work in parallel:** ✅ **All complete**
+  - **MVP-01:** ✅ Generate clips with time-based boundaries (independent) - **Done (Rasheed)**
+  - **MVP-02:** ✅ Calculate beat-aligned boundaries (independent, just needs beat grid) - **Done (Adam)**
+  - **MVP-03:** ✅ Stitch clips together (needs MVP-01 clips, but doesn't need MVP-02) - **Done (Adam)**
 
 - **Integration points:**
   - MVP-01 can optionally use MVP-02's calculated boundaries (if ready)
@@ -376,4 +448,3 @@ PR-09 → MVP-01 → MVP-03 → MVP-04 → MVP-06 → MVP-07
 2. **Beat Alignment:** If beat detection is inaccurate, fall back to time-based boundaries
 3. **Audio Drift:** Use FFmpeg's audio sync features and test thoroughly
 4. **Replicate API Limits:** Have fallback plans for rate limits and timeouts
-

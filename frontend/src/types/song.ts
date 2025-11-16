@@ -57,6 +57,7 @@ export interface SectionLyrics {
 export interface SongAnalysis {
   durationSec: number
   bpm?: number
+  beatTimes?: number[]
   sections: SongSection[]
   moodPrimary: string
   moodTags: string[]

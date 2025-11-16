@@ -247,7 +247,11 @@ const SongTimeline: React.FC<{
   )
 }
 
-const WaveformDisplay: React.FC<{ waveform: number[] }> = ({ waveform }) => {
+const WaveformDisplay: React.FC<{
+  waveform: number[]
+  beatTimes?: number[]
+  duration: number
+}> = ({ waveform, beatTimes, duration }) => {
   if (!waveform.length) {
     return (
       <div className="flex h-16 items-center justify-center rounded-2xl border border-dashed border-vc-border/40 bg-[rgba(12,12,18,0.45)] text-xs text-vc-text-muted">
@@ -257,6 +261,7 @@ const WaveformDisplay: React.FC<{ waveform: number[] }> = ({ waveform }) => {
   }
 
   const bars = waveform.slice(0, 512)
+  const hasBeats = Array.isArray(beatTimes) && beatTimes.length > 0 && duration > 0
 
   return (
     <div className="relative h-20 w-full overflow-hidden rounded-2xl border border-vc-border/40 bg-[rgba(12,12,18,0.55)]">
@@ -273,6 +278,20 @@ const WaveformDisplay: React.FC<{ waveform: number[] }> = ({ waveform }) => {
           />
         ))}
       </div>
+      {hasBeats && (
+        <div className="pointer-events-none absolute inset-0">
+          {beatTimes!.slice(0, 400).map((time, idx) => {
+            const position = clamp((time / duration) * 100, 0, 100)
+            return (
+              <span
+                key={`beat-${idx}-${time}`}
+                className="absolute top-0 bottom-0 w-px bg-white/45"
+                style={{ left: `${position}%` }}
+              />
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -888,7 +907,11 @@ export const UploadPage: React.FC = () => {
 
         <section className="space-y-2">
           <div className="vc-label">Waveform</div>
-          <WaveformDisplay waveform={waveformValues} />
+          <WaveformDisplay
+            waveform={waveformValues}
+            beatTimes={analysisData.beatTimes}
+            duration={durationValue || 1}
+          />
         </section>
 
         <section className="space-y-2">

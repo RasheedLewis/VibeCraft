@@ -55,6 +55,7 @@ class SongAnalysis(BaseModel):
 
     duration_sec: float = Field(..., alias="durationSec")
     bpm: Optional[float] = None
+    beat_times: list[float] = Field(default_factory=list, alias="beatTimes")
     sections: List[SongSection] = []
     mood_primary: str = Field(..., alias="moodPrimary")
     mood_tags: List[str] = Field(default_factory=list, alias="moodTags")

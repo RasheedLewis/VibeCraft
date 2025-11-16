@@ -163,7 +163,8 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
         duration = float(librosa.get_duration(y=y, sr=sr))
 
         tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
-        # beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()  # Not used yet
+        beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
+        beat_times = [round(time, 4) for time in beat_times]
 
         _update_job_progress(job_id, 25)
 
@@ -196,6 +197,7 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
         analysis = SongAnalysis(
             durationSec=duration,
             bpm=float(tempo) if tempo else None,
+            beatTimes=beat_times,
             sections=sections,
             moodPrimary=primary_mood,
             moodTags=mood_tags,

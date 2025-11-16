@@ -466,7 +466,7 @@ function fmtTime(sec: number) {
 
 - [x] 1. **Backend payload**
    - Extend `/songs/{id}/clips/status` (or add a dedicated endpoint) to include beat grid, clip boundaries, clip URLs/posters, and composed video metadata.
-2. **Frontend data wiring**
+- [x] 2. **Frontend data wiring**
    - Fetch the player payload after clip generation completes and pass it into the song profile; refetch on regeneration.
 3. **Integrate `MainVideoPlayer`**
    - Render the component in the UI once clips (or a composed video) are available; wire up props (videoUrl, beatGrid, clips, lyrics).

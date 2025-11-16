@@ -388,6 +388,7 @@ export const UploadPage: React.FC = () => {
     if (!result?.songId) return
     try {
       setClipJobError(null)
+      setClipSummary(null)
       const durationEstimate =
         analysisData?.durationSec ??
         songDetails?.duration_sec ??
@@ -542,6 +543,25 @@ export const UploadPage: React.FC = () => {
     }
   }, [])
 
+  const fetchClipSummary = useCallback(
+    async (songId: string) => {
+      try {
+        const { data } = await apiClient.get<ClipGenerationSummary>(
+          `/songs/${songId}/clips/status`,
+        )
+        setClipSummary(data)
+      } catch (err) {
+        const message = extractErrorMessage(err, 'Unable to load clip status.')
+        if (clipJobId) {
+          setClipJobError((prev) => prev ?? message)
+        } else {
+          console.warn('[clip-summary]', message)
+        }
+      }
+    },
+    [clipJobId],
+  )
+
   const startAnalysis = useCallback(async (songId: string) => {
     try {
       setAnalysisState('queued')
@@ -656,6 +676,9 @@ export const UploadPage: React.FC = () => {
         }
 
         if (normalizedStatus === 'completed' || normalizedStatus === 'failed') {
+          if (result?.songId) {
+            void fetchClipSummary(result.songId)
+          }
           return
         }
 
@@ -678,7 +701,14 @@ export const UploadPage: React.FC = () => {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [clipJobId, result?.songId])
+  }, [clipJobId, result?.songId, fetchClipSummary])
+
+  useEffect(() => {
+    if (!result?.songId || clipJobId || clipSummary) {
+      return
+    }
+    void fetchClipSummary(result.songId)
+  }, [result?.songId, clipJobId, clipSummary, fetchClipSummary])
 
   useEffect(() => {
     if (!result?.songId) {

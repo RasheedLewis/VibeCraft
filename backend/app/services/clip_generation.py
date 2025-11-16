@@ -87,17 +87,25 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     job_id = job.id if job else None
 
     song_id: UUID | None = None
+    clip_fps: int = 8
+    clip_num_frames: int = 0
     with session_scope() as session:
         clip = session.get(SongClip, clip_id)
         if not clip:
             raise ValueError(f"Clip {clip_id} not found")
 
         song_id = clip.song_id
+        clip_fps = clip.fps or 8
+        computed_frames = clip.num_frames
+        if computed_frames <= 0 and clip.duration_sec:
+            computed_frames = max(int(round(clip.duration_sec * clip_fps)), 1)
+        clip.num_frames = computed_frames
         clip.status = "processing"
         clip.error = None
         clip.rq_job_id = job_id or clip.rq_job_id
         session.add(clip)
         session.commit()
+        clip_num_frames = clip.num_frames
 
     if song_id is None:
         raise RuntimeError("Song id missing for clip generation job.")
@@ -110,7 +118,9 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     scene_spec = _build_scene_spec_for_clip(clip_id, analysis)
     seed = _determine_seed_for_clip(clip_id)
 
-    success, video_url, metadata = generate_section_video(scene_spec, seed=seed)
+    success, video_url, metadata = generate_section_video(
+        scene_spec, seed=seed, num_frames=clip_num_frames, fps=clip_fps
+    )
     metadata = metadata or {}
 
     with session_scope() as session:
@@ -120,8 +130,9 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
 
         clip.prompt = scene_spec.prompt
         clip.style_seed = str(metadata.get("seed") or seed) if seed is not None else clip.style_seed
-        clip.fps = metadata.get("fps", clip.fps)
+        clip.fps = metadata.get("fps", clip_fps) or clip_fps
         clip.replicate_job_id = metadata.get("job_id", clip.replicate_job_id)
+        clip.num_frames = metadata.get("num_frames", clip_num_frames) or clip_num_frames
 
         if success and video_url:
             clip.status = "completed"

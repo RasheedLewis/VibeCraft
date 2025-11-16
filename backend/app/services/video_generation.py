@@ -23,7 +23,9 @@ VIDEO_MODEL = "anotherjesse/zeroscope-v2-xl"
 def generate_section_video(
     scene_spec: SceneSpec,
     seed: Optional[int] = None,
-    max_poll_attempts: int = 180,  # 180 attempts * 5 sec = 15 minutes max (Zeroscope typically takes 1-3 min, but can be slower)
+    num_frames: Optional[int] = None,
+    fps: Optional[int] = None,
+    max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
 ) -> tuple[bool, Optional[str], Optional[dict]]:
     """
@@ -51,12 +53,14 @@ def generate_section_video(
         # Prepare input parameters for Zeroscope v2 XL (text-to-video, no image required)
         # Based on model schema: prompt, num_frames, width, height, fps, seed, batch_size, init_video, init_weight, model
         # Note: 576x320 is the default for 576w, but XL supports up to 1024x576
+        effective_fps = fps or 8
+        frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
         input_params = {
             "prompt": scene_spec.prompt,
-            "num_frames": min(int(scene_spec.duration_sec * 8), 48),  # 8 fps, max 48 frames
+            "num_frames": max(1, min(frame_count, 120)),
             "width": 576,  # Smaller resolution = faster/cheaper (XL supports up to 1024)
             "height": 320,  # 16:9 aspect ratio (576x320)
-            "fps": 8,
+            "fps": effective_fps,
         }
 
         if seed is not None:
@@ -82,6 +86,7 @@ def generate_section_video(
         video_url = None
         metadata = {
             "fps": input_params["fps"],
+            "num_frames": input_params["num_frames"],
             "resolution_width": input_params["width"],
             "resolution_height": input_params["height"],
             "seed": seed,

@@ -21,7 +21,7 @@ class SongClip(SQLModel, table=True):
     start_beat_index: Optional[int] = Field(default=None)
     end_beat_index: Optional[int] = Field(default=None)
 
-    frame_count: int = Field(default=0, ge=0)
+    num_frames: int = Field(default=0, ge=0)
     fps: int = Field(default=8, ge=1)
 
     status: str = Field(default="queued", max_length=32)

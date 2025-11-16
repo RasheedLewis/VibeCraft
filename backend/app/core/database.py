@@ -48,7 +48,7 @@ EXPECTED_SONG_CLIP_COLUMNS: set[str] = {
     "duration_sec",
     "start_beat_index",
     "end_beat_index",
-    "frame_count",
+    "num_frames",
     "fps",
     "status",
     "source",

@@ -19,7 +19,7 @@ class ClipPlan:
     duration_sec: float
     start_beat_index: Optional[int]
     end_beat_index: Optional[int]
-    frame_count: int
+    num_frames: int
 
 
 class ClipPlanningError(RuntimeError):
@@ -103,7 +103,7 @@ def plan_beat_aligned_clips(
                 f"Planned clip {index} exceeds max duration ({duration:.2f}s > {max_clip_sec}s)"
             )
 
-        frame_count = max(int(round(duration * generator_fps)), 1)
+        num_frames = max(int(round(duration * generator_fps)), 1)
 
         plan = ClipPlan(
             index=index,
@@ -112,7 +112,7 @@ def plan_beat_aligned_clips(
             duration_sec=round(duration, 4),
             start_beat_index=start_beat_index,
             end_beat_index=end_beat_index if not is_last_clip else None,
-            frame_count=frame_count,
+            num_frames=num_frames,
         )
         plans.append(plan)
 
@@ -154,7 +154,7 @@ def persist_clip_plans(
                 duration_sec=plan.duration_sec,
                 start_beat_index=plan.start_beat_index,
                 end_beat_index=plan.end_beat_index,
-                frame_count=plan.frame_count,
+                num_frames=plan.num_frames,
                 fps=fps,
                 status="queued",
                 source=source,

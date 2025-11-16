@@ -22,7 +22,7 @@ class SongClipRead(BaseModel):
     duration_sec: float = Field(..., alias="durationSec", ge=0.0)
     start_beat_index: Optional[int] = Field(None, alias="startBeat")
     end_beat_index: Optional[int] = Field(None, alias="endBeat")
-    frame_count: int = Field(..., alias="frameCount", ge=0)
+    num_frames: int = Field(..., alias="numFrames", ge=0)
     fps: int = Field(..., ge=1)
     status: str
     source: str

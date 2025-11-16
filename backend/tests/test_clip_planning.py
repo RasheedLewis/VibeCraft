@@ -60,7 +60,7 @@ def test_plan_clips_snaps_to_beats_and_frames():
         assert plan.end_sec % 0.125 == pytest.approx(0.0, abs=1e-6)
         assert plan.duration_sec >= 3.0 - 1e-3
         assert plan.duration_sec <= 15.0 + 1e-3
-        assert plan.frame_count == int(round(plan.duration_sec * 8))
+        assert plan.num_frames == int(round(plan.duration_sec * 8))
         prev_end = plan.end_sec
 
     assert prev_end == pytest.approx(duration, abs=0.25)
@@ -158,7 +158,7 @@ def test_persist_clip_plans_creates_records():
             assert row.status == "queued"
             assert row.source == "beat"
             assert row.fps == 8
-            assert row.frame_count == plan.frame_count
+            assert row.num_frames == plan.num_frames
             assert row.start_sec == pytest.approx(plan.start_sec)
             assert row.end_sec == pytest.approx(plan.end_sec)
         assert row.prompt is None
@@ -220,6 +220,7 @@ def test_clip_planning_api_flow():
         assert clips[-1]["endSec"] == pytest.approx(analysis.duration_sec, abs=0.5)
         assert clips[0]["prompt"] is None
         assert clips[0]["rqJobId"] is None
+        assert clips[0]["numFrames"] > 0
 
     with session_scope() as session:
         for clip in session.exec(select(SongClip).where(SongClip.song_id == song_id)).all():

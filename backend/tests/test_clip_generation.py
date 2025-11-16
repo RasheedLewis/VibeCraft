@@ -172,6 +172,7 @@ def test_enqueue_clip_generation_batch_controls_concurrency(monkeypatch):
         assert clip.status == "queued"
         assert clip.rq_job_id == job.id
         assert clip.error is None
+        assert clip.num_frames > 0
 
     _cleanup_song(song_id)
 
@@ -186,14 +187,14 @@ def test_run_clip_generation_job_success(monkeypatch):
     assert clip is not None
     clip_id = clip.id
 
-    monkeypatch.setattr(
-        "app.services.clip_generation.generate_section_video",
-        lambda scene_spec, seed=None: (
-            True,
-            "https://video.example.com/clip.mp4",
-            {"fps": 8, "job_id": "rep-123", "seed": seed or 42},
-        ),
-    )
+    captured = {}
+
+    def _mock_generate(scene_spec, seed=None, num_frames=None, fps=None):
+        captured["num_frames"] = num_frames
+        captured["fps"] = fps
+        return True, "https://video.example.com/clip.mp4", {"fps": fps, "job_id": "rep-123", "seed": seed or 42}
+
+    monkeypatch.setattr("app.services.clip_generation.generate_section_video", _mock_generate)
 
     # Ensure deterministic seed
     monkeypatch.setattr("random.randint", lambda *_: 42)
@@ -209,6 +210,8 @@ def test_run_clip_generation_job_success(monkeypatch):
         assert updated_clip.replicate_job_id == "rep-123"
         assert updated_clip.prompt
         assert updated_clip.error is None
+        assert captured["num_frames"] == updated_clip.num_frames
+        assert captured["fps"] == updated_clip.fps
 
     _cleanup_song(song_id)
 
@@ -223,7 +226,7 @@ def test_run_clip_generation_job_failure(monkeypatch):
     assert clip is not None
     clip_id = clip.id
 
-    def _fail_generation(scene_spec, seed=None):
+    def _fail_generation(scene_spec, seed=None, num_frames=None, fps=None):
         return False, None, {"error": "replicate error", "job_id": "rep-err"}
 
     monkeypatch.setattr("app.services.clip_generation.generate_section_video", _fail_generation)

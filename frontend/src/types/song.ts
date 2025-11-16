@@ -66,3 +66,21 @@ export interface SongAnalysis {
   lyricsAvailable: boolean
   sectionLyrics?: SectionLyrics[]
 }
+
+export interface SongRead {
+  id: string
+  user_id: string
+  title: string
+  original_filename: string
+  original_file_size: number
+  original_content_type?: string | null
+  original_s3_key: string
+  processed_s3_key?: string | null
+  processed_sample_rate?: number | null
+  waveform_json?: string | null
+  duration_sec?: number | null
+  description?: string | null
+  attribution?: string | null
+  created_at: string
+  updated_at: string
+}

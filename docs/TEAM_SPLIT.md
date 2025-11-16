@@ -115,6 +115,7 @@ This document outlines how to split the first 9 PRs (67 subtasks) between two de
 - ✅ Add Generate/Regenerate buttons (connects to Person B's API)
 - ✅ Add waveform visual under header
 - ✅ Display genre + mood summary (using Person B's data)
+- ✅ Generate waveform visualization from processed audio data
 
 **Deliverable:** Complete song profile page with section cards
 

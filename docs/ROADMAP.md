@@ -104,6 +104,7 @@ I kept all ordering logical and sequential.
 5. Add Generate/Regenerate buttons
 6. Add waveform visual under header
 7. Display genre + mood summary
+8. Generate waveform visualization from processed audio data
 
 **Testing:** Navigate to song profile page. Verify timeline shows all sections, each SectionCard displays mood tags and lyrics from PR-05/PR-06 data. Check genre/mood summary appears at top.
 

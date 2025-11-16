@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { apiClient } from '../lib/apiClient'
-import { SectionMoodTag, VCCard, VCButton } from '../components/vibecraft'
+import { SectionCard, SectionMoodTag, VCCard, VCButton } from '../components/vibecraft'
 import type { MoodKind } from '../components/vibecraft/SectionMoodTag'
 import type {
   JobStatusResponse,
   SongAnalysis,
   SongAnalysisJobResponse,
+  SongRead,
   SongSection,
   MoodVector,
   SongUploadResponse,
@@ -41,6 +42,18 @@ const SECTION_TYPE_LABELS: Record<string, string> = {
   solo: 'Solo',
   outro: 'Outro',
   other: 'Section',
+}
+
+const SECTION_COLORS: Record<string, string> = {
+  intro: 'rgba(110, 107, 255, 0.32)',
+  verse: 'rgba(130, 89, 255, 0.42)',
+  pre_chorus: 'rgba(112, 84, 255, 0.48)',
+  chorus: 'rgba(255, 111, 245, 0.55)',
+  bridge: 'rgba(0, 198, 192, 0.45)',
+  drop: 'rgba(255, 189, 89, 0.5)',
+  solo: 'rgba(89, 255, 214, 0.4)',
+  outro: 'rgba(90, 105, 255, 0.28)',
+  other: 'rgba(120, 120, 180, 0.35)',
 }
 
 const WAVEFORM_BASE_PATTERN = [0.25, 0.6, 0.85, 0.4, 0.75, 0.35, 0.9, 0.5, 0.65, 0.3]
@@ -147,13 +160,121 @@ const extractErrorMessage = (error: unknown, fallback: string): string => {
     const responseData = maybeError.response?.data
     if (typeof responseData === 'string') return responseData
     if (responseData && typeof responseData === 'object') {
-      const dataObj = responseData as { detail?: string; message?: string }
-      if (dataObj.detail) return dataObj.detail
-      if (dataObj.message) return dataObj.message
+      const detail = (responseData as Record<string, unknown>).detail
+      if (typeof detail === 'string') return detail
+      const message = (responseData as Record<string, unknown>).message
+      if (typeof message === 'string') return message
     }
     if (maybeError.message) return maybeError.message
   }
   return fallback
+}
+
+const buildSectionsWithDisplayNames = (
+  sections: SongSection[],
+): Array<SongSection & { displayName: string }> => {
+  const counts: Record<string, number> = {}
+  return sections.map((section) => {
+    const label = SECTION_TYPE_LABELS[section.type] ?? 'Section'
+    const nextCount = (counts[section.type] ?? 0) + 1
+    counts[section.type] = nextCount
+
+    const displayName =
+      section.type === 'intro' || section.type === 'outro' || section.type === 'bridge'
+        ? label
+        : `${label} ${nextCount}`
+
+    return { ...section, displayName }
+  })
+}
+
+const parseWaveformJson = (waveformJson?: string | null): number[] => {
+  if (!waveformJson) return []
+  try {
+    const parsed = JSON.parse(waveformJson)
+    if (Array.isArray(parsed)) {
+      return parsed.map((value) => {
+        const num = Number(value)
+        if (Number.isNaN(num)) {
+          return 0
+        }
+        return clamp(num, 0, 1)
+      })
+    }
+    return []
+  } catch {
+    return []
+  }
+}
+
+const SongTimeline: React.FC<{
+  sections: Array<SongSection & { displayName: string }>
+  duration: number
+  onSelect?: (sectionId: string) => void
+}> = ({ sections, duration, onSelect }) => {
+  if (!sections.length || !Number.isFinite(duration) || duration <= 0) {
+    return null
+  }
+
+  return (
+    <div className="overflow-hidden rounded-full border border-vc-border/40 bg-[rgba(12,12,18,0.65)]">
+      <div className="flex h-12">
+        {sections.map((section) => {
+          const length = Math.max(section.endSec - section.startSec, 0)
+          const widthPercent = clamp((length / duration) * 100, 4, 100)
+          return (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => onSelect?.(section.id)}
+              className="group relative flex items-center justify-center border-r border-white/5 px-2 text-xs text-white transition-colors last:border-r-0 hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(12,12,18,0.85)]"
+              style={{
+                width: `${widthPercent}%`,
+                backgroundColor: SECTION_COLORS[section.type] ?? 'rgba(100,100,150,0.35)',
+              }}
+            >
+              <span className="pointer-events-none px-2 text-[11px] font-medium tracking-wide">
+                {section.displayName}
+              </span>
+              <span className="pointer-events-none absolute bottom-1 text-[10px] uppercase tracking-[0.12em] text-white/70 opacity-0 transition-opacity group-hover:opacity-100">
+                {formatSeconds(section.startSec)} – {formatSeconds(section.endSec)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+const WaveformDisplay: React.FC<{ waveform: number[] }> = ({ waveform }) => {
+  if (!waveform.length) {
+    return (
+      <div className="flex h-16 items-center justify-center rounded-2xl border border-dashed border-vc-border/40 bg-[rgba(12,12,18,0.45)] text-xs text-vc-text-muted">
+        Waveform preview unavailable
+      </div>
+    )
+  }
+
+  const bars = waveform.slice(0, 512)
+
+  return (
+    <div className="relative h-20 w-full overflow-hidden rounded-2xl border border-vc-border/40 bg-[rgba(12,12,18,0.55)]">
+      <div className="absolute inset-0 bg-gradient-to-r from-[#6E6BFF33] via-[#FF6FF533] to-[#00C6C033]" />
+      <div className="relative z-10 flex h-full items-center justify-between px-3">
+        {bars.map((value, idx) => (
+          <span
+            key={`wave-bar-${idx}-${value}`}
+            className="w-[2px] rounded-full bg-white/85 transition-all duration-300"
+            style={{
+              height: `${Math.max(16, value * 100)}%`,
+              opacity: Math.max(0.25, value),
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
 }
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
@@ -180,6 +301,9 @@ export const UploadPage: React.FC = () => {
   const [analysisData, setAnalysisData] = useState<SongAnalysis | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [isFetchingAnalysis, setIsFetchingAnalysis] = useState<boolean>(false)
+  const [songDetails, setSongDetails] = useState<SongRead | null>(null)
+  const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null)
+  const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
     () => mapMoodToMoodKind(analysisData?.moodPrimary ?? ''),
     [analysisData?.moodPrimary],
@@ -190,6 +314,16 @@ export const UploadPage: React.FC = () => {
     }
     return new Map(analysisData.sectionLyrics.map((item) => [item.sectionId, item.text]))
   }, [analysisData?.sectionLyrics])
+
+  useEffect(
+    () => () => {
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current)
+        highlightTimeoutRef.current = null
+      }
+    },
+    [],
+  )
 
   const requirementsCopy = useMemo(
     () => ({
@@ -212,6 +346,12 @@ export const UploadPage: React.FC = () => {
     setAnalysisData(null)
     setAnalysisError(null)
     setIsFetchingAnalysis(false)
+    setSongDetails(null)
+    if (highlightTimeoutRef.current) {
+      window.clearTimeout(highlightTimeoutRef.current)
+      highlightTimeoutRef.current = null
+    }
+    setHighlightedSectionId(null)
     if (inputRef.current) {
       inputRef.current.value = ''
     }
@@ -230,6 +370,15 @@ export const UploadPage: React.FC = () => {
     }
   }, [])
 
+  const fetchSongDetails = useCallback(async (songId: string) => {
+    try {
+      const { data } = await apiClient.get<SongRead>(`/songs/${songId}`)
+      setSongDetails(data)
+    } catch (err) {
+      console.error('Failed to load song details', err)
+    }
+  }, [])
+
   const startAnalysis = useCallback(async (songId: string) => {
     try {
       setAnalysisState('queued')
@@ -237,6 +386,7 @@ export const UploadPage: React.FC = () => {
       setAnalysisError(null)
       setAnalysisData(null)
       setAnalysisJobId(null)
+      setSongDetails(null)
 
       const { data } = await apiClient.post<SongAnalysisJobResponse>(
         `/songs/${songId}/analyze`,
@@ -277,6 +427,9 @@ export const UploadPage: React.FC = () => {
           } else {
             await fetchAnalysis(result.songId)
           }
+          if (result?.songId) {
+            void fetchSongDetails(result.songId)
+          }
           return
         }
 
@@ -305,7 +458,26 @@ export const UploadPage: React.FC = () => {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [analysisJobId, result?.songId, fetchAnalysis])
+  }, [analysisJobId, result?.songId, fetchAnalysis, fetchSongDetails])
+
+  const handleSectionSelect = useCallback((sectionId: string) => {
+    if (!sectionId) return
+    if (highlightTimeoutRef.current) {
+      window.clearTimeout(highlightTimeoutRef.current)
+      highlightTimeoutRef.current = null
+    }
+    setHighlightedSectionId(sectionId)
+
+    const element = document.getElementById(`section-${sectionId}`)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+    }
+
+    highlightTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedSectionId(null)
+      highlightTimeoutRef.current = null
+    }, 2000)
+  }, [])
 
   const computeDuration = useCallback(async (file: File): Promise<number | null> => {
     try {
@@ -674,6 +846,104 @@ export const UploadPage: React.FC = () => {
     )
   }
 
+  const renderSongProfile = () => {
+    if (!analysisData || !songDetails) return null
+
+    const sectionsWithDisplay = buildSectionsWithDisplayNames(analysisData.sections)
+    const waveformValues = parseWaveformJson(songDetails.waveform_json)
+    const durationValue = analysisData.durationSec ?? songDetails.duration_sec ?? 0
+    const bpmLabel = formatBpm(analysisData.bpm)
+    const durationLabel = durationValue ? formatSeconds(durationValue) : '—'
+    const primaryGenre = analysisData.primaryGenre ?? 'Unknown genre'
+    const moodLabel = analysisData.moodPrimary ?? formatMoodTags(analysisData.moodTags)
+    const fileName = songDetails.title?.trim()
+      ? songDetails.title
+      : (metadata?.fileName ?? songDetails.original_filename)
+    const sectionMood = mapMoodToMoodKind(analysisData.moodPrimary ?? '')
+
+    return (
+      <section className="mt-12 w-full space-y-8">
+        <header className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-2">
+            <div className="vc-label">Song profile</div>
+            <h1 className="font-display text-3xl text-white md:text-4xl">
+              {fileName ?? 'Untitled track'}
+            </h1>
+            <p className="text-xs uppercase tracking-[0.16em] text-vc-text-muted">
+              Source file: {songDetails.original_filename}
+            </p>
+          </div>
+          <VCCard className="w-full space-y-2 border-vc-border/40 bg-[rgba(12,12,18,0.75)] p-4 md:w-72">
+            <div className="vc-label">Genre & mood</div>
+            <div className="text-sm font-medium text-white">{primaryGenre}</div>
+            <div className="text-xs text-vc-text-secondary">{moodLabel}</div>
+            <div className="text-xs text-vc-text-muted">
+              {[bpmLabel, durationLabel].filter(Boolean).join(' • ')} • Key: —
+            </div>
+            <div className="pt-2">
+              <MoodVectorMeter moodVector={analysisData.moodVector} />
+            </div>
+          </VCCard>
+        </header>
+
+        <section className="space-y-2">
+          <div className="vc-label">Waveform</div>
+          <WaveformDisplay waveform={waveformValues} />
+        </section>
+
+        <section className="space-y-2">
+          <div className="vc-label">Song structure</div>
+          <SongTimeline
+            sections={sectionsWithDisplay}
+            duration={durationValue || 1}
+            onSelect={handleSectionSelect}
+          />
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="vc-label">Sections</div>
+            <div className="text-xs text-vc-text-muted">
+              {analysisData.sections.length} section
+              {analysisData.sections.length === 1 ? '' : 's'}
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {sectionsWithDisplay.map((section) => {
+              const lyric = lyricsBySection.get(section.id) ?? undefined
+              const highlightClass =
+                highlightedSectionId === section.id
+                  ? 'ring-2 ring-vc-accent-primary ring-offset-2 ring-offset-[rgba(12,12,18,0.9)]'
+                  : ''
+
+              return (
+                <div
+                  key={section.id}
+                  id={`section-${section.id}`}
+                  className={highlightClass}
+                >
+                  <SectionCard
+                    name={section.displayName}
+                    startSec={section.startSec}
+                    endSec={section.endSec}
+                    mood={sectionMood}
+                    lyricSnippet={lyric}
+                    hasVideo={false}
+                    className="h-full bg-[rgba(12,12,18,0.78)]"
+                    onGenerate={() => {}}
+                    onRegenerate={() => {}}
+                    onUseInFull={() => {}}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      </section>
+    )
+  }
+
   const renderErrorCard = () => (
     <div className="rounded-3xl border border-vc-state-error/40 bg-[rgba(38,12,18,0.85)] p-7 shadow-vc2">
       <div className="flex flex-col gap-4">
@@ -695,64 +965,74 @@ export const UploadPage: React.FC = () => {
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#0C0C12] via-[#121224] to-[#0B0B16] px-4 py-16 text-white">
       <BackgroundOrbs />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
-        <div className="space-y-3">
-          <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
-            Upload
+      {analysisState !== 'completed' && (
+        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
+          <div className="space-y-3">
+            <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
+              Upload
+            </div>
+            <h1 className="font-display text-4xl md:text-5xl">
+              Turn your sound into visuals.
+            </h1>
+            <p className="max-w-xl text-sm text-vc-text-secondary md:text-base">
+              Drop your track below and VibeCraft will start listening for tempo, mood,
+              and structure — setting the stage for a cinematic video.
+            </p>
           </div>
-          <h1 className="font-display text-4xl md:text-5xl">
-            Turn your sound into visuals.
-          </h1>
-          <p className="max-w-xl text-sm text-vc-text-secondary md:text-base">
-            Drop your track below and VibeCraft will start listening for tempo, mood, and
-            structure — setting the stage for a cinematic video.
-          </p>
-        </div>
 
-        <input
-          id={fileInputId}
-          ref={inputRef}
-          type="file"
-          accept={ACCEPTED_MIME_TYPES.join(',')}
-          className="hidden"
-          onChange={(event) => handleFilesSelected(event.target.files)}
-        />
-
-        {(() => {
-          const isInteractive = stage === 'idle' || stage === 'dragging'
-          const Container: React.ElementType = isInteractive ? 'label' : 'div'
-          return (
-            <Container
-              {...(isInteractive ? { htmlFor: fileInputId } : {})}
-              className={clsx(
-                'group block w-full',
-                isInteractive ? 'cursor-pointer' : 'cursor-default',
-                stage === 'uploading' && 'pointer-events-none',
-              )}
-              onDragOver={onDragOver}
-              onDragLeave={onDragLeave}
-              onDrop={onDrop}
-            >
-              {stage === 'idle' || stage === 'dragging'
-                ? renderIdleCard()
-                : stage === 'uploading'
-                  ? renderUploadingCard()
-                  : stage === 'uploaded'
-                    ? renderUploadedCard()
-                    : renderErrorCard()}
-            </Container>
-          )
-        })()}
-
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-vc-text-muted">
-          <RequirementPill
-            icon={<WaveformIcon />}
-            label={`Accepted: ${requirementsCopy.formats}`}
+          <input
+            id={fileInputId}
+            ref={inputRef}
+            type="file"
+            accept={ACCEPTED_MIME_TYPES.join(',')}
+            className="hidden"
+            onChange={(event) => handleFilesSelected(event.target.files)}
           />
-          <RequirementPill icon={<TimerIcon />} label={requirementsCopy.duration} />
-          <RequirementPill icon={<HardDriveIcon />} label={requirementsCopy.size} />
+
+          {(() => {
+            const isInteractive = stage === 'idle' || stage === 'dragging'
+            const Container: React.ElementType = isInteractive ? 'label' : 'div'
+            return (
+              <Container
+                {...(isInteractive ? { htmlFor: fileInputId } : {})}
+                className={clsx(
+                  'group block w-full',
+                  isInteractive ? 'cursor-pointer' : 'cursor-default',
+                  stage === 'uploading' && 'pointer-events-none',
+                )}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+              >
+                {stage === 'idle' || stage === 'dragging'
+                  ? renderIdleCard()
+                  : stage === 'uploading'
+                    ? renderUploadingCard()
+                    : stage === 'uploaded'
+                      ? renderUploadedCard()
+                      : stage === 'error'
+                        ? renderErrorCard()
+                        : null}
+              </Container>
+            )
+          })()}
+
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-vc-text-muted">
+            <RequirementPill
+              icon={<WaveformIcon />}
+              label={`Accepted: ${requirementsCopy.formats}`}
+            />
+            <RequirementPill icon={<TimerIcon />} label={requirementsCopy.duration} />
+            <RequirementPill icon={<HardDriveIcon />} label={requirementsCopy.size} />
+          </div>
         </div>
-      </div>
+      )}
+
+      {analysisState === 'completed' && analysisData && songDetails && (
+        <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
+          {renderSongProfile()}
+        </div>
+      )}
     </div>
   )
 }
@@ -841,7 +1121,7 @@ const WaveformPlaceholder: React.FC = () => (
     <div className="relative z-10 flex w-full items-center justify-between gap-[3px] px-4">
       {WAVEFORM_BARS.map((height, index) => (
         <span
-          key={index}
+          key={`placeholder-bar-${index}-${height}`}
           className="w-[3px] rounded-full bg-gradient-to-t from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary"
           style={{ height: `${Math.max(0.16, height) * 100}%`, opacity: 0.85 }}
         />

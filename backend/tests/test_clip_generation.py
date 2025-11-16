@@ -4,6 +4,7 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlmodel import select
 
 from app.core.database import init_db, session_scope
@@ -12,7 +13,11 @@ from app.models.analysis import SongAnalysisRecord
 from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import SongAnalysis
-from app.services.clip_generation import enqueue_clip_generation_batch, run_clip_generation_job
+from app.services.clip_generation import (
+    enqueue_clip_generation_batch,
+    get_clip_generation_summary,
+    run_clip_generation_job,
+)
 from app.services.clip_planning import persist_clip_plans, plan_beat_aligned_clips
 
 init_db()
@@ -240,6 +245,40 @@ def test_run_clip_generation_job_failure(monkeypatch):
         assert updated_clip.status == "failed"
         assert updated_clip.error == "replicate error"
         assert updated_clip.video_url is None
+
+    _cleanup_song(song_id)
+
+
+def test_get_clip_generation_summary():
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(30)], clip_count=3)
+
+    with session_scope() as session:
+        clips = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).all()
+        clips[0].status = "completed"
+        clips[0].video_url = "https://example.com/video0.mp4"
+        clips[1].status = "processing"
+        clips[2].status = "failed"
+        clips[2].error = "generation failed"
+        session.add_all(clips)
+        session.commit()
+
+    summary = get_clip_generation_summary(song_id)
+    assert summary.progress_total == 3
+    assert summary.progress_completed == 1
+    assert summary.failed_clips == 1
+    assert summary.processing_clips == 1
+    assert len(summary.clips) == 3
+
+    with TestClient(create_app()) as client:
+        response = client.get(f"/api/v1/songs/{song_id}/clips/status")
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["progressTotal"] == 3
+        assert data["progressCompleted"] == 1
+        statuses = {clip["status"] for clip in data["clips"]}
+        assert statuses == {"completed", "processing", "failed"}
 
     _cleanup_song(song_id)
 

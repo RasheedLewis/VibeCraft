@@ -7,7 +7,7 @@ from app.schemas.analysis import (
     SongSection,
     SongSectionType,
 )
-from app.schemas.clip import ClipPlanBatchResponse, SongClipRead
+from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongClipRead, SongClipStatus
 from app.schemas.job import JobStatusResponse, SongAnalysisJobResponse
 from app.schemas.scene import (
     CameraMotion,
@@ -24,7 +24,9 @@ __all__ = [
     "SongAnalysisJobResponse",
     "JobStatusResponse",
     "ClipPlanBatchResponse",
+    "ClipGenerationSummary",
     "SongClipRead",
+    "SongClipStatus",
     "MoodVector",
     "SongSection",
     "SongSectionType",

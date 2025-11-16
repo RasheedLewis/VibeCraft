@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import logging
 import random
+from collections import Counter
 from typing import Iterable, List, Optional
 from uuid import UUID
 
 import redis
 from rq import Queue
 from rq.job import Job, get_current_job
+from sqlmodel import select
 
 from app.core.config import get_settings
 from app.core.database import session_scope
 from app.models.clip import SongClip
 from app.schemas.analysis import SongAnalysis, SongSection
+from app.schemas.clip import ClipGenerationSummary, SongClipStatus
 from app.schemas.scene import SceneSpec
 from app.services.scene_planner import build_scene_spec
 from app.services.song_analysis import get_latest_analysis
@@ -155,6 +158,37 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
         session.commit()
         logger.error("Clip %s generation failed: %s", clip_id, error_message)
         raise RuntimeError(error_message)
+
+
+def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
+    with session_scope() as session:
+        clips = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).all()
+
+    if not clips:
+        raise ValueError("No planned clips found for song.")
+
+    status_counts = Counter(clip.status for clip in clips)
+    total = len(clips)
+    completed = status_counts.get("completed", 0)
+    failed = status_counts.get("failed", 0)
+    processing = status_counts.get("processing", 0)
+    queued = status_counts.get("queued", 0)
+
+    clip_statuses = [SongClipStatus.model_validate(clip) for clip in clips]
+
+    return ClipGenerationSummary(
+        songId=song_id,
+        totalClips=total,
+        completedClips=completed,
+        failedClips=failed,
+        processingClips=processing,
+        queuedClips=queued,
+        progressCompleted=completed,
+        progressTotal=total,
+        clips=clip_statuses,
+    )
 
 
 def _mark_clip_failed(clip_id: UUID, message: str) -> None:

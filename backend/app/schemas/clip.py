@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -36,4 +36,33 @@ class SongClipRead(BaseModel):
     updated_at: datetime = Field(..., alias="updatedAt")
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class SongClipStatus(BaseModel):
+    id: UUID
+    clip_index: int = Field(..., alias="clipIndex", ge=0)
+    status: str
+    source: str
+    num_frames: int = Field(..., alias="numFrames", ge=0)
+    fps: int = Field(..., ge=1)
+    video_url: Optional[str] = Field(None, alias="videoUrl")
+    rq_job_id: Optional[str] = Field(None, alias="rqJobId")
+    replicate_job_id: Optional[str] = Field(None, alias="replicateJobId")
+    error: Optional[str] = None
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class ClipGenerationSummary(BaseModel):
+    song_id: UUID = Field(..., alias="songId")
+    total_clips: int = Field(..., alias="totalClips", ge=0)
+    completed_clips: int = Field(..., alias="completedClips", ge=0)
+    failed_clips: int = Field(..., alias="failedClips", ge=0)
+    processing_clips: int = Field(..., alias="processingClips", ge=0)
+    queued_clips: int = Field(..., alias="queuedClips", ge=0)
+    progress_completed: int = Field(..., alias="progressCompleted", ge=0)
+    progress_total: int = Field(..., alias="progressTotal", ge=0)
+    clips: List[SongClipStatus]
+
+    model_config = {"populate_by_name": True}
 

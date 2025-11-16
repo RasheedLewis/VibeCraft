@@ -1,6 +1,7 @@
 from app.services.audio_preprocessing import AudioPreprocessingResult, preprocess_audio
 from app.services.clip_generation import (
     enqueue_clip_generation_batch,
+    get_clip_generation_summary,
     run_clip_generation_job,
 )
 from app.services.clip_planning import (
@@ -23,6 +24,7 @@ __all__ = [
     "ClipPlanningError",
     "persist_clip_plans",
     "enqueue_clip_generation_batch",
+    "get_clip_generation_summary",
     "run_clip_generation_job",
     "compute_genre",
     "compute_mood_features",

@@ -15,6 +15,7 @@ from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import BeatAlignedBoundariesResponse, ClipBoundaryMetadata, SongAnalysis
 from app.schemas.clip import ClipPlanBatchResponse, SongClipRead
+from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongClipRead
 from app.schemas.analysis import SongAnalysis
 from app.schemas.job import SongAnalysisJobResponse
 from app.schemas.song import SongRead, SongUploadResponse
@@ -24,6 +25,7 @@ from app.services.beat_alignment import (
     calculate_beat_aligned_boundaries,
     validate_boundaries,
 )
+from app.services.clip_generation import get_clip_generation_summary
 from app.services.clip_planning import (
     ClipPlanningError,
     persist_clip_plans,
@@ -399,4 +401,23 @@ def list_planned_clips(song_id: UUID, db: Session = Depends(get_db)) -> List[Son
     ).all()
 
     return [SongClipRead.model_validate(clip) for clip in clips]
+
+
+@router.get(
+    "/{song_id}/clips/status",
+    response_model=ClipGenerationSummary,
+    summary="Get clip generation status and aggregate progress",
+)
+def get_clip_generation_status(song_id: UUID, db: Session = Depends(get_db)) -> ClipGenerationSummary:
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    try:
+        return get_clip_generation_summary(song_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No clip plans found for this song.",
+        ) from exc
 

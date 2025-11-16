@@ -28,7 +28,10 @@ class SongClip(SQLModel, table=True):
     source: str = Field(default="auto", max_length=32)
 
     video_url: Optional[str] = Field(default=None, max_length=2048)
+    prompt: Optional[str] = Field(default=None, max_length=2048)
     style_seed: Optional[str] = Field(default=None, max_length=128)
+    rq_job_id: Optional[str] = Field(default=None, max_length=128)
+    replicate_job_id: Optional[str] = Field(default=None, max_length=256)
     error: Optional[str] = Field(default=None)
 
     created_at: datetime = Field(default_factory=datetime.utcnow)

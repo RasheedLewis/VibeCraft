@@ -5,7 +5,7 @@ from sqlalchemy import inspect, text
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.core.config import get_settings
-from app.models import DEFAULT_USER_ID, User
+from app.models import DEFAULT_USER_ID, SongClip, User
 
 settings = get_settings()
 # Disable GSS/Kerberos authentication to prevent crashes in forked processes (RQ workers)
@@ -39,9 +39,33 @@ EXPECTED_SONG_COLUMNS: set[str] = {
     "updated_at",
 }
 
+EXPECTED_SONG_CLIP_COLUMNS: set[str] = {
+    "id",
+    "song_id",
+    "clip_index",
+    "start_sec",
+    "end_sec",
+    "duration_sec",
+    "start_beat_index",
+    "end_beat_index",
+    "frame_count",
+    "fps",
+    "status",
+    "source",
+    "video_url",
+    "prompt",
+    "style_seed",
+    "rq_job_id",
+    "replicate_job_id",
+    "error",
+    "created_at",
+    "updated_at",
+}
+
 
 def init_db() -> None:
     _ensure_song_schema()
+    _ensure_song_clip_schema()
     SQLModel.metadata.create_all(bind=engine)
     with Session(engine) as session:
         if not session.get(User, DEFAULT_USER_ID):
@@ -82,6 +106,21 @@ def _ensure_song_schema() -> None:
 
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS songs CASCADE"))
+
+
+def _ensure_song_clip_schema() -> None:
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    if SongClip.__tablename__ not in table_names:
+        return
+
+    column_names = _get_column_names(inspector.get_columns(SongClip.__tablename__))
+    if EXPECTED_SONG_CLIP_COLUMNS.issubset(column_names):
+        return
+
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS song_clips CASCADE"))
 
 
 def _get_column_names(columns: Iterable[dict[str, object]]) -> set[str]:

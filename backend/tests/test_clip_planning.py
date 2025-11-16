@@ -161,6 +161,9 @@ def test_persist_clip_plans_creates_records():
             assert row.frame_count == plan.frame_count
             assert row.start_sec == pytest.approx(plan.start_sec)
             assert row.end_sec == pytest.approx(plan.end_sec)
+        assert row.prompt is None
+        assert row.rq_job_id is None
+        assert row.replicate_job_id is None
 
     finally:
         with session_scope() as session:
@@ -215,6 +218,8 @@ def test_clip_planning_api_flow():
         assert clips[0]["clipIndex"] == 0
         assert clips[-1]["clipIndex"] == 2
         assert clips[-1]["endSec"] == pytest.approx(analysis.duration_sec, abs=0.5)
+        assert clips[0]["prompt"] is None
+        assert clips[0]["rqJobId"] is None
 
     with session_scope() as session:
         for clip in session.exec(select(SongClip).where(SongClip.song_id == song_id)).all():

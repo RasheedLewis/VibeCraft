@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+from typing import Optional
+from uuid import UUID, uuid4
+
+import pytest
+from sqlmodel import select
+
+from app.core.database import init_db, session_scope
+from app.main import create_app
+from app.models.analysis import SongAnalysisRecord
+from app.models.clip import SongClip
+from app.models.song import DEFAULT_USER_ID, Song
+from app.schemas.analysis import SongAnalysis
+from app.services.clip_generation import enqueue_clip_generation_batch, run_clip_generation_job
+from app.services.clip_planning import persist_clip_plans, plan_beat_aligned_clips
+
+init_db()
+
+
+def make_analysis(beat_times: list[float]) -> SongAnalysis:
+    return SongAnalysis(
+        durationSec=max(beat_times) + 0.5 if beat_times else 20.0,
+        bpm=128.0,
+        beatTimes=beat_times,
+        sections=[
+            {
+                "id": "intro",
+                "type": "intro",
+                "startSec": 0.0,
+                "endSec": 5.0,
+                "confidence": 0.8,
+            },
+            {
+                "id": "verse",
+                "type": "verse",
+                "startSec": 5.0,
+                "endSec": 12.0,
+                "confidence": 0.8,
+            },
+            {
+                "id": "chorus",
+                "type": "chorus",
+                "startSec": 12.0,
+                "endSec": 20.0,
+                "confidence": 0.8,
+            },
+            {
+                "id": "outro",
+                "type": "outro",
+                "startSec": 20.0,
+                "endSec": 24.0,
+                "confidence": 0.8,
+            },
+        ],
+        moodPrimary="energetic",
+        moodTags=["energetic", "uplifting", "cinematic"],
+        moodVector={"energy": 0.8, "valence": 0.7, "danceability": 0.6, "tension": 0.5},
+        primaryGenre="Electronic",
+        subGenres=["EDM"],
+        lyricsAvailable=False,
+        sectionLyrics=[],
+    )
+
+
+def _insert_song_and_clips(
+    *,
+    beat_times: list[float],
+    clip_count: int,
+) -> tuple[UUID, SongAnalysis]:
+    analysis = make_analysis(beat_times)
+    song_id = uuid4()
+
+    with session_scope() as session:
+        song = Song(
+            id=song_id,
+            user_id=DEFAULT_USER_ID,
+            title="Generation Song",
+            original_filename="gen.wav",
+            original_file_size=1024,
+            original_s3_key="s3://test/gen.wav",
+            processed_s3_key="s3://test/gen-processed.wav",
+            duration_sec=analysis.duration_sec,
+        )
+        session.add(song)
+        session.commit()
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=analysis.duration_sec,
+        analysis=analysis,
+        clip_count=clip_count,
+        min_clip_sec=3.0,
+        max_clip_sec=10.0,
+        generator_fps=8,
+    )
+    persist_clip_plans(song_id=song_id, plans=plans, fps=8, source="beat")
+
+    with session_scope() as session:
+        record = SongAnalysisRecord(
+            song_id=song_id,
+            analysis_json=analysis.model_dump_json(by_alias=True),
+            bpm=analysis.bpm,
+            duration_sec=analysis.duration_sec,
+        )
+        session.add(record)
+        session.commit()
+
+    return song_id, analysis
+
+
+def _cleanup_song(song_id: UUID) -> None:
+    with session_scope() as session:
+        clips = session.exec(select(SongClip).where(SongClip.song_id == song_id)).all()
+        for clip in clips:
+            session.delete(clip)
+
+        records = session.exec(
+            select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
+        ).all()
+        for record in records:
+            session.delete(record)
+
+        song = session.get(Song, song_id)
+        if song:
+            session.delete(song)
+        session.commit()
+
+
+def test_enqueue_clip_generation_batch_controls_concurrency(monkeypatch):
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(32)], clip_count=5)
+
+    class DummyJob:
+        def __init__(self, clip_id: UUID, job_id: str, depends_on: Optional["DummyJob"]):
+            self.clip_id = clip_id
+            self.id = job_id
+            self.depends_on = depends_on
+
+    class DummyQueue:
+        def __init__(self) -> None:
+            self.jobs: list[DummyJob] = []
+
+        def enqueue(
+            self,
+            func,
+            clip_id,
+            job_id=None,
+            depends_on=None,
+            job_timeout=None,
+            meta=None,
+        ):
+            job = DummyJob(clip_id, job_id, depends_on)
+            self.jobs.append(job)
+            return job
+
+    dummy_queue = DummyQueue()
+    monkeypatch.setattr(
+        "app.services.clip_generation._get_clip_queue",
+        lambda: dummy_queue,
+    )
+
+    job_ids = enqueue_clip_generation_batch(song_id=song_id, max_parallel=2)
+    assert len(job_ids) == 5
+    assert dummy_queue.jobs[2].depends_on is dummy_queue.jobs[0]
+    assert dummy_queue.jobs[3].depends_on is dummy_queue.jobs[1]
+
+    with session_scope() as session:
+        clips = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).all()
+
+    for clip, job in zip(clips, dummy_queue.jobs):
+        assert clip.status == "queued"
+        assert clip.rq_job_id == job.id
+        assert clip.error is None
+
+    _cleanup_song(song_id)
+
+
+def test_run_clip_generation_job_success(monkeypatch):
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=3)
+
+    with session_scope() as session:
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+    assert clip is not None
+    clip_id = clip.id
+
+    monkeypatch.setattr(
+        "app.services.clip_generation.generate_section_video",
+        lambda scene_spec, seed=None: (
+            True,
+            "https://video.example.com/clip.mp4",
+            {"fps": 8, "job_id": "rep-123", "seed": seed or 42},
+        ),
+    )
+
+    # Ensure deterministic seed
+    monkeypatch.setattr("random.randint", lambda *_: 42)
+
+    result = run_clip_generation_job(clip_id)
+    assert result["status"] == "completed"
+
+    with session_scope() as session:
+        updated_clip = session.get(SongClip, clip_id)
+        assert updated_clip is not None
+        assert updated_clip.status == "completed"
+        assert updated_clip.video_url == "https://video.example.com/clip.mp4"
+        assert updated_clip.replicate_job_id == "rep-123"
+        assert updated_clip.prompt
+        assert updated_clip.error is None
+
+    _cleanup_song(song_id)
+
+
+def test_run_clip_generation_job_failure(monkeypatch):
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(20)], clip_count=2)
+
+    with session_scope() as session:
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+    assert clip is not None
+    clip_id = clip.id
+
+    def _fail_generation(scene_spec, seed=None):
+        return False, None, {"error": "replicate error", "job_id": "rep-err"}
+
+    monkeypatch.setattr("app.services.clip_generation.generate_section_video", _fail_generation)
+
+    with pytest.raises(RuntimeError):
+        run_clip_generation_job(clip_id)
+
+    with session_scope() as session:
+        updated_clip = session.get(SongClip, clip_id)
+        assert updated_clip is not None
+        assert updated_clip.status == "failed"
+        assert updated_clip.error == "replicate error"
+        assert updated_clip.video_url is None
+
+    _cleanup_song(song_id)
+

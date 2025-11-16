@@ -19,7 +19,12 @@ from app.models.analysis import AnalysisJob, SongAnalysisRecord
 from app.models.song import Song
 from app.schemas.analysis import SongAnalysis, SongSection
 from app.schemas.job import JobStatusResponse, SongAnalysisJobResponse
-from app.services import compute_genre, compute_mood_features, compute_mood_tags, extract_and_align_lyrics
+from app.services.genre_mood_analysis import (
+    compute_genre,
+    compute_mood_features,
+    compute_mood_tags,
+)
+from app.services.lyric_extraction import extract_and_align_lyrics
 from app.services.storage import download_bytes_from_s3
 from sqlmodel import select
 

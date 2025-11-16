@@ -27,7 +27,10 @@ class SongClipRead(BaseModel):
     status: str
     source: str
     video_url: Optional[str] = Field(None, alias="videoUrl")
+    prompt: Optional[str] = None
     style_seed: Optional[str] = Field(None, alias="styleSeed")
+    rq_job_id: Optional[str] = Field(None, alias="rqJobId")
+    replicate_job_id: Optional[str] = Field(None, alias="replicateJobId")
     error: Optional[str] = None
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")

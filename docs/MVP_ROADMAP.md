@@ -45,14 +45,14 @@ The following PRs are **already complete** and provide the foundation for MVP:
 
 **Goal:** Generate 3-5 video clips for an entire song using simple time-based boundaries.
 
-1. Create simplified clip planning that divides song into 3-5 equal time segments
-2. Use existing `plan_clips_for_section()` helper, but adapt for full song duration
-3. Generate clips in parallel for faster processing
-4. Track each clip's generation status (success/failure) individually
-5. Store clip metadata (duration, start_time, end_time, video_url, status, fps) in database
-6. Update video generation API to handle multi-clip requests for full song
-7. Add progress tracking UI ("Generating clip 2 of 4")
-8. Note: Video generation API (Zeroscope v2 XL) outputs at **8 FPS** - store this in metadata
+1. Define clip planning service that snaps boundaries to beat grid and frame intervals
+2. Persist planned clips (start/end/beats/duration) with status tracking + metadata columns
+3. Enqueue per-clip generation jobs (controlled concurrency) that hit Replicate
+4. Support variable clip lengths (3–15s) converted to `num_frames` for 8 fps models
+5. Track per-clip job status and aggregate progress (`completed/total`)
+6. Expose API endpoints: start generation, list planned/generated clips, poll job status
+7. Frontend: show “Generating clip X of N…” progress and list completed clips
+8. Record 8 fps and frame counts in metadata for downstream composition
 
 **Note:** Clips will be 3-6 seconds each, totaling the song duration. Uses simple time-based boundaries (no beat alignment yet). Generated clips are at 8 FPS (from Replicate API), which will be upscaled to 30+ FPS during composition. Beat alignment will be added in MVP-02.
 

@@ -3,9 +3,12 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlmodel import select
 
-from app.core.database import session_scope
+from app.core.database import init_db, session_scope
+from app.main import create_app
+from app.models.analysis import SongAnalysisRecord
 from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import SongAnalysis
@@ -14,6 +17,9 @@ from app.services.clip_planning import (
     persist_clip_plans,
     plan_beat_aligned_clips,
 )
+
+
+init_db()
 
 
 def make_analysis(beat_times: list[float]) -> SongAnalysis:
@@ -164,4 +170,62 @@ def test_persist_clip_plans_creates_records():
             if song:
                 session.delete(song)
             session.commit()
+
+
+def test_clip_planning_api_flow():
+    beat_times = [i * 0.5 for i in range(24)]
+    analysis = make_analysis(beat_times)
+    song_id = uuid4()
+
+    with session_scope() as session:
+        song = Song(
+            id=song_id,
+            user_id=DEFAULT_USER_ID,
+            title="API Clip Song",
+            original_filename="api.wav",
+            original_file_size=2048,
+            original_s3_key="s3://test/api.wav",
+            processed_s3_key="s3://test/api-processed.wav",
+            duration_sec=analysis.duration_sec,
+        )
+        session.add(song)
+        session.commit()
+
+        record = SongAnalysisRecord(
+            song_id=song_id,
+            analysis_json=analysis.model_dump_json(by_alias=True),
+            bpm=analysis.bpm,
+            duration_sec=analysis.duration_sec,
+        )
+        session.add(record)
+        session.commit()
+
+    with TestClient(create_app()) as client:
+        response = client.post(
+            f"/api/v1/songs/{song_id}/clips/plan",
+            params={"clip_count": 3, "min_clip_sec": 3.0, "max_clip_sec": 10.0},
+        )
+        assert response.status_code == 202, response.text
+        assert response.json()["clipsPlanned"] == 3
+
+        list_response = client.get(f"/api/v1/songs/{song_id}/clips")
+        assert list_response.status_code == 200, list_response.text
+        clips = list_response.json()
+        assert len(clips) == 3
+        assert clips[0]["clipIndex"] == 0
+        assert clips[-1]["clipIndex"] == 2
+        assert clips[-1]["endSec"] == pytest.approx(analysis.duration_sec, abs=0.5)
+
+    with session_scope() as session:
+        for clip in session.exec(select(SongClip).where(SongClip.song_id == song_id)).all():
+            session.delete(clip)
+        records = session.exec(
+            select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
+        ).all()
+        for record in records:
+            session.delete(record)
+        song = session.get(Song, song_id)
+        if song:
+            session.delete(song)
+        session.commit()
 

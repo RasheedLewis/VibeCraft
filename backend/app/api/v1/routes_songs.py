@@ -6,13 +6,16 @@ from pathlib import Path
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlmodel import Session, select
 
 from app.api.deps import get_db
 from app.core.config import get_settings
+from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import BeatAlignedBoundariesResponse, ClipBoundaryMetadata, SongAnalysis
+from app.schemas.clip import ClipPlanBatchResponse, SongClipRead
+from app.schemas.analysis import SongAnalysis
 from app.schemas.job import SongAnalysisJobResponse
 from app.schemas.song import SongRead, SongUploadResponse
 from app.services import preprocess_audio
@@ -20,6 +23,11 @@ from app.services.beat_alignment import (
     ACCEPTABLE_ALIGNMENT,
     calculate_beat_aligned_boundaries,
     validate_boundaries,
+)
+from app.services.clip_planning import (
+    ClipPlanningError,
+    persist_clip_plans,
+    plan_beat_aligned_clips,
 )
 from app.services.song_analysis import enqueue_song_analysis, get_latest_analysis
 from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
@@ -316,4 +324,79 @@ def get_beat_aligned_boundaries(
         avg_alignment_error=avg_error,
         validation_status="valid" if is_valid else "warning",
     )
+
+
+@router.post(
+    "/{song_id}/clips/plan",
+    response_model=ClipPlanBatchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Generate beat-aligned clip plan for song",
+)
+def plan_clips_for_song(
+    song_id: UUID,
+    clip_count: int = Query(4, ge=1, le=32),
+    min_clip_sec: float = Query(3.0, ge=0.5),
+    max_clip_sec: float = Query(15.0, ge=1.0),
+    db: Session = Depends(get_db),
+) -> ClipPlanBatchResponse:
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+    if not song.duration_sec:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Song duration is missing. Upload and analyze the song first.",
+        )
+
+    if min_clip_sec >= max_clip_sec:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="min_clip_sec must be less than max_clip_sec",
+        )
+
+    analysis = get_latest_analysis(song_id)
+    if not analysis:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Song analysis not found. Run analysis before planning clips.",
+        )
+
+    try:
+        plans = plan_beat_aligned_clips(
+            duration_sec=song.duration_sec,
+            analysis=analysis,
+            clip_count=clip_count,
+            min_clip_sec=min_clip_sec,
+            max_clip_sec=max_clip_sec,
+            generator_fps=8,
+        )
+    except ClipPlanningError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    persisted = persist_clip_plans(
+        song_id=song_id,
+        plans=plans,
+        fps=8,
+        source="beat",
+        clear_existing=True,
+    )
+
+    return ClipPlanBatchResponse(clips_planned=len(persisted))
+
+
+@router.get(
+    "/{song_id}/clips",
+    response_model=List[SongClipRead],
+    summary="List planned clips for a song",
+)
+def list_planned_clips(song_id: UUID, db: Session = Depends(get_db)) -> List[SongClipRead]:
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    clips = db.exec(
+        select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+    ).all()
+
+    return [SongClipRead.model_validate(clip) for clip in clips]
 

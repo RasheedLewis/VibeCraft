@@ -7,6 +7,7 @@ from app.schemas.analysis import (
     SongSection,
     SongSectionType,
 )
+from app.schemas.clip import ClipPlanBatchResponse, SongClipRead
 from app.schemas.job import JobStatusResponse, SongAnalysisJobResponse
 from app.schemas.scene import (
     CameraMotion,
@@ -15,12 +16,6 @@ from app.schemas.scene import (
     ShotPattern,
     TemplateType,
 )
-from app.schemas.section_video import (
-    SectionVideoCreate,
-    SectionVideoGenerateRequest,
-    SectionVideoGenerateResponse,
-    SectionVideoRead,
-)
 from app.schemas.song import SongRead, SongUploadResponse
 
 __all__ = [
@@ -28,6 +23,8 @@ __all__ = [
     "SongUploadResponse",
     "SongAnalysisJobResponse",
     "JobStatusResponse",
+    "ClipPlanBatchResponse",
+    "SongClipRead",
     "MoodVector",
     "SongSection",
     "SongSectionType",
@@ -40,9 +37,5 @@ __all__ = [
     "SceneSpec",
     "ShotPattern",
     "TemplateType",
-    "SectionVideoRead",
-    "SectionVideoCreate",
-    "SectionVideoGenerateRequest",
-    "SectionVideoGenerateResponse",
 ]
 

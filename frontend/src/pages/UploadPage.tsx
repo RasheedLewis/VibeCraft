@@ -4,6 +4,7 @@ import { apiClient } from '../lib/apiClient'
 import { SectionCard, SectionMoodTag, VCCard, VCButton } from '../components/vibecraft'
 import type { MoodKind } from '../components/vibecraft/SectionMoodTag'
 import type {
+  ClipGenerationSummary,
   JobStatusResponse,
   SongAnalysis,
   SongAnalysisJobResponse,
@@ -126,6 +127,18 @@ const isSongAnalysis = (payload: unknown): payload is SongAnalysis => {
     typeof candidate.durationSec === 'number' &&
     Array.isArray(candidate.sections) &&
     Array.isArray(candidate.moodTags)
+  )
+}
+
+const isClipGenerationSummary = (payload: unknown): payload is ClipGenerationSummary => {
+  if (!payload || typeof payload !== 'object') return false
+  const candidate = payload as Partial<ClipGenerationSummary>
+  return (
+    typeof candidate.songId === 'string' &&
+    typeof candidate.totalClips === 'number' &&
+    typeof candidate.progressCompleted === 'number' &&
+    typeof candidate.progressTotal === 'number' &&
+    Array.isArray(candidate.clips)
   )
 }
 
@@ -332,6 +345,13 @@ export const UploadPage: React.FC = () => {
   const [isFetchingAnalysis, setIsFetchingAnalysis] = useState<boolean>(false)
   const [songDetails, setSongDetails] = useState<SongRead | null>(null)
   const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null)
+  const [clipJobId, setClipJobId] = useState<string | null>(null)
+  const [clipJobStatus, setClipJobStatus] = useState<
+    'idle' | 'queued' | 'processing' | 'completed' | 'failed'
+  >('idle')
+  const [clipJobProgress, setClipJobProgress] = useState<number>(0)
+  const [clipJobError, setClipJobError] = useState<string | null>(null)
+  const [clipSummary, setClipSummary] = useState<ClipGenerationSummary | null>(null)
   const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
     () => mapMoodToMoodKind(analysisData?.moodPrimary ?? ''),
@@ -376,6 +396,11 @@ export const UploadPage: React.FC = () => {
     setAnalysisError(null)
     setIsFetchingAnalysis(false)
     setSongDetails(null)
+    setClipJobId(null)
+    setClipJobStatus('idle')
+    setClipJobProgress(0)
+    setClipJobError(null)
+    setClipSummary(null)
     if (highlightTimeoutRef.current) {
       window.clearTimeout(highlightTimeoutRef.current)
       highlightTimeoutRef.current = null
@@ -488,6 +513,124 @@ export const UploadPage: React.FC = () => {
       }
     }
   }, [analysisJobId, result?.songId, fetchAnalysis, fetchSongDetails])
+
+  useEffect(() => {
+    if (!clipJobId || !result?.songId) return
+
+    let cancelled = false
+    let timeoutId: number | undefined
+
+    const pollClipJob = async () => {
+      try {
+        const { data } = await apiClient.get<JobStatusResponse>(`/jobs/${clipJobId}`)
+        if (cancelled) return
+
+        const normalizedStatus = normalizeJobStatus(data.status)
+        setClipJobStatus(normalizedStatus)
+        setClipJobProgress(
+          normalizedStatus === 'completed' ? 100 : clamp(data.progress ?? 0, 0, 99),
+        )
+        setClipJobError(
+          normalizedStatus === 'failed'
+            ? (data.error ?? 'Clip generation failed. Please retry.')
+            : null,
+        )
+
+        if (data.result && isClipGenerationSummary(data.result)) {
+          setClipSummary(data.result)
+        }
+
+        if (normalizedStatus === 'completed' || normalizedStatus === 'failed') {
+          return
+        }
+
+        timeoutId = window.setTimeout(pollClipJob, 3_000)
+      } catch (err) {
+        if (!cancelled) {
+          setClipJobError(
+            extractErrorMessage(err, 'Unable to fetch clip generation progress.'),
+          )
+          timeoutId = window.setTimeout(pollClipJob, 5_000)
+        }
+      }
+    }
+
+    pollClipJob()
+
+    return () => {
+      cancelled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [clipJobId, result?.songId])
+
+  useEffect(() => {
+    if (!result?.songId) {
+      setClipSummary(null)
+      return
+    }
+
+    if (
+      !clipJobId &&
+      clipSummary &&
+      clipSummary.completedClips === clipSummary.totalClips
+    ) {
+      return
+    }
+
+    let cancelled = false
+    let timeoutId: number | undefined
+
+    const pollClipSummary = async () => {
+      try {
+        const { data } = await apiClient.get<ClipGenerationSummary>(
+          `/songs/${result.songId}/clips/status`,
+        )
+        if (cancelled) return
+
+        setClipSummary(data)
+
+        const hasActiveJob =
+          clipJobId != null &&
+          clipJobProgress < 100 &&
+          (clipJobStatus === 'queued' || clipJobStatus === 'processing') &&
+          data.totalClips > 0 &&
+          data.completedClips < data.totalClips
+
+        if (hasActiveJob) {
+          timeoutId = window.setTimeout(pollClipSummary, 2_000)
+        } else if (clipJobId) {
+          timeoutId = window.setTimeout(pollClipSummary, 6_000)
+        }
+      } catch (err) {
+        if (cancelled) return
+
+        if (clipJobId) {
+          const message = extractErrorMessage(err, 'Unable to load clip status.')
+          setClipJobError((prev) => prev ?? message)
+          timeoutId = window.setTimeout(pollClipSummary, 6_000)
+        } else {
+          setClipSummary(null)
+        }
+      }
+    }
+
+    pollClipSummary()
+
+    return () => {
+      cancelled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [result?.songId, clipJobId, clipJobStatus, clipJobProgress, clipSummary])
+
+  useEffect(() => {
+    if (clipJobError) {
+      console.warn('[clip-generation]', clipJobError)
+    }
+  }, [clipJobError])
 
   const handleSectionSelect = useCallback((sectionId: string) => {
     if (!sectionId) return

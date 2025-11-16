@@ -52,7 +52,11 @@ The following PRs are **already complete** and provide the foundation for MVP:
 5. Support variable clip lengths (3–15s) converted to `num_frames` for 8 fps models
 6. Track per-clip job status and aggregate progress (`completed/total`)
 7. Expose endpoint for multi-clip generation job + status (reuse job poller)
-8. Frontend: show “Generating clip X of N…” progress and list completed clips
+8. Frontend: multi-clip generation UI
+   - 8a. Poll `/api/songs/:id/clips/status` alongside job poller and manage polling lifecycle
+   - 8b. Render progress panel (“Generating clip X of N…”) with active clip metadata + cancel/compose actions
+   - 8c. Display clip list rows with status badges, duration/frames/beats, and per-status actions (preview/regenerate/retry)
+   - 8d. Surface completed clip visuals (thumbnail strip or mosaic) and empty/error states
 9. Record 8 fps and frame counts in metadata for downstream composition
 
 **Note:** Clips will be 3-6 seconds each, totaling the song duration. Uses simple time-based boundaries (no beat alignment yet). Generated clips are at 8 FPS (from Replicate API), which will be upscaled to 30+ FPS during composition. Beat alignment will be added in MVP-02.

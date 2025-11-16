@@ -460,4 +460,22 @@ function fmtTime(sec: number) {
 * For very long tracks, consider a **zoomable timeline** (1×/2×/4×).
 * Add **hover preview thumbnails** by sampling every N seconds during composition (optional polish).
 
-If you want, I can also wire this player to your existing **job poller**, so “Compose Full Video” automatically swaps this component in and starts playback when the render completes.
+---
+
+## Pending Tasks
+
+- [x] 1. **Backend payload**
+   - Extend `/songs/{id}/clips/status` (or add a dedicated endpoint) to include beat grid, clip boundaries, clip URLs/posters, and composed video metadata.
+2. **Frontend data wiring**
+   - Fetch the player payload after clip generation completes and pass it into the song profile; refetch on regeneration.
+3. **Integrate `MainVideoPlayer`**
+   - Render the component in the UI once clips (or a composed video) are available; wire up props (videoUrl, beatGrid, clips, lyrics).
+4. **Timeline enhancements**
+   - Highlight current clip, render clip spans over the waveform, enable seeking via clip taps or thumbnails, and show completed clip thumbnails in a strip.
+5. **Clip actions**
+   - Hook clip row “Preview/Regenerate” buttons to seek the player and trigger backend regeneration while keeping UI state in sync.
+6. **Empty & error states**
+   - Gracefully handle partial completion (mix of queued/processing/completed) and show messaging when no clips are ready.
+7. **QA**
+   - Validate keyboard shortcuts, loop behavior, captions toggle, and responsiveness on desktop/tablet; test long songs with many clips.
+

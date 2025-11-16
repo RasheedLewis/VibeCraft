@@ -31,6 +31,7 @@ export interface SongClipStatus {
 
 export interface ClipGenerationSummary {
   songId: string
+  songDurationSec?: number
   totalClips: number
   completedClips: number
   failedClips: number
@@ -39,6 +40,7 @@ export interface ClipGenerationSummary {
   progressCompleted: number
   progressTotal: number
   clips: SongClipStatus[]
+  analysis?: SongAnalysis
 }
 
 export interface JobStatusResponse {

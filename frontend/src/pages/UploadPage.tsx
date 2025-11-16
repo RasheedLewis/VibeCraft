@@ -391,6 +391,7 @@ export const UploadPage: React.FC = () => {
       const durationEstimate =
         analysisData?.durationSec ??
         songDetails?.duration_sec ??
+        clipSummary?.songDurationSec ??
         clipSummary?.clips.reduce((total, clip) => total + clip.durationSec, 0) ??
         null
 
@@ -621,6 +622,12 @@ export const UploadPage: React.FC = () => {
       }
     }
   }, [analysisJobId, result?.songId, fetchAnalysis, fetchSongDetails])
+
+  useEffect(() => {
+    if (!analysisData && clipSummary?.analysis) {
+      setAnalysisData(clipSummary.analysis)
+    }
+  }, [clipSummary?.analysis, analysisData])
 
   useEffect(() => {
     if (!clipJobId || !result?.songId) return

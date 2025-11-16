@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.database import session_scope
 from app.models.analysis import ClipGenerationJob
 from app.models.clip import SongClip
+from app.models.song import Song
 from app.schemas.analysis import SongAnalysis, SongSection
 from app.schemas.clip import ClipGenerationSummary, SongClipStatus
 from app.schemas.job import ClipGenerationJobResponse, JobStatusResponse
@@ -194,7 +195,7 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
 
     clip_statuses = [SongClipStatus.model_validate(clip) for clip in clips]
 
-    return ClipGenerationSummary(
+    summary = ClipGenerationSummary(
         songId=song_id,
         totalClips=total,
         completedClips=completed,
@@ -205,6 +206,20 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
         progressTotal=total,
         clips=clip_statuses,
     )
+
+    with session_scope() as session:
+        song = session.get(Song, song_id)
+        if song and song.duration_sec is not None:
+            summary.songDurationSec = float(song.duration_sec)
+
+    try:
+        analysis = get_latest_analysis(song_id)
+    except Exception:
+        analysis = None
+    if analysis:
+        summary.analysis = analysis
+
+    return summary
 
 
 def _mark_clip_failed(clip_id: UUID, message: str, *, batch_job_id: Optional[str] = None) -> None:

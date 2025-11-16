@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.analysis import SongAnalysis
+
 
 class ClipPlanBatchResponse(BaseModel):
     clips_planned: int = Field(..., alias="clipsPlanned", ge=0)
@@ -60,6 +62,7 @@ class SongClipStatus(BaseModel):
 
 class ClipGenerationSummary(BaseModel):
     song_id: UUID = Field(..., alias="songId")
+    song_duration_sec: Optional[float] = Field(None, alias="songDurationSec", ge=0)
     total_clips: int = Field(..., alias="totalClips", ge=0)
     completed_clips: int = Field(..., alias="completedClips", ge=0)
     failed_clips: int = Field(..., alias="failedClips", ge=0)
@@ -68,6 +71,7 @@ class ClipGenerationSummary(BaseModel):
     progress_completed: int = Field(..., alias="progressCompleted", ge=0)
     progress_total: int = Field(..., alias="progressTotal", ge=0)
     clips: List[SongClipStatus]
+    analysis: Optional[SongAnalysis]
 
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "from_attributes": True}
 

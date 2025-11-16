@@ -108,6 +108,9 @@ cd ..
 # Start RQ worker
 echo -e "${GREEN}Starting RQ worker${NC}"
 cd backend
+# Disable Objective-C fork safety checks to prevent crashes in forked processes (macOS issue)
+# This is needed when RQ workers fork and try to connect to PostgreSQL
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 rq worker ai_music_video &
 WORKER_PID=$!
 cd ..

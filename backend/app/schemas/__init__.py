@@ -1,4 +1,6 @@
 from app.schemas.analysis import (
+    BeatAlignedBoundariesResponse,
+    ClipBoundaryMetadata,
     MoodVector,
     SectionLyrics,
     SongAnalysis,
@@ -31,6 +33,8 @@ __all__ = [
     "SongSectionType",
     "SectionLyrics",
     "SongAnalysis",
+    "ClipBoundaryMetadata",
+    "BeatAlignedBoundariesResponse",
     "CameraMotion",
     "ColorPalette",
     "SceneSpec",

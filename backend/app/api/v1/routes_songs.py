@@ -12,10 +12,15 @@ from sqlmodel import Session, select
 from app.api.deps import get_db
 from app.core.config import get_settings
 from app.models.song import DEFAULT_USER_ID, Song
-from app.schemas.analysis import SongAnalysis
+from app.schemas.analysis import BeatAlignedBoundariesResponse, ClipBoundaryMetadata, SongAnalysis
 from app.schemas.job import SongAnalysisJobResponse
 from app.schemas.song import SongRead, SongUploadResponse
 from app.services import preprocess_audio
+from app.services.beat_alignment import (
+    ACCEPTABLE_ALIGNMENT,
+    calculate_beat_aligned_boundaries,
+    validate_boundaries,
+)
 from app.services.song_analysis import enqueue_song_analysis, get_latest_analysis
 from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
 
@@ -215,4 +220,100 @@ def get_song(song_id: UUID, db: Session = Depends(get_db)) -> Song:
     if not song:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
     return song
+
+
+@router.get(
+    "/{song_id}/beat-aligned-boundaries",
+    response_model=BeatAlignedBoundariesResponse,
+    summary="Get beat-aligned clip boundaries",
+)
+def get_beat_aligned_boundaries(
+    song_id: UUID,
+    fps: float = 24.0,
+    db: Session = Depends(get_db),
+) -> BeatAlignedBoundariesResponse:
+    """
+    Calculate beat-aligned clip boundaries for a song.
+
+    Returns clip boundaries that align with beats and video frames,
+    with each clip between 3-6 seconds in duration.
+
+    Args:
+        song_id: Song ID
+        fps: Video frames per second (default: 24.0). Higher FPS improves alignment accuracy.
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    analysis = get_latest_analysis(song_id)
+    if not analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Song analysis not found. Trigger analysis first.",
+        )
+
+    if not analysis.beat_times:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Song analysis does not contain beat times. Please re-analyze the song.",
+        )
+
+    if not analysis.duration_sec or analysis.duration_sec <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid song duration in analysis.",
+        )
+
+    # Validate FPS
+    if fps <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="FPS must be greater than 0.",
+        )
+
+    # Calculate beat-aligned boundaries
+    boundaries = calculate_beat_aligned_boundaries(
+        beat_times=analysis.beat_times,
+        song_duration=analysis.duration_sec,
+        fps=fps,
+    )
+
+    # Validate boundaries
+    is_valid, max_error, avg_error = validate_boundaries(
+        boundaries=boundaries,
+        beat_times=analysis.beat_times,
+        song_duration=analysis.duration_sec,
+        max_drift=ACCEPTABLE_ALIGNMENT,
+        fps=fps,
+    )
+
+    # Convert boundaries to response format
+    boundary_metadata = [
+        ClipBoundaryMetadata(
+            start_time=boundary.start_time,
+            end_time=boundary.end_time,
+            start_beat_index=boundary.start_beat_index,
+            end_beat_index=boundary.end_beat_index,
+            start_frame_index=boundary.start_frame_index,
+            end_frame_index=boundary.end_frame_index,
+            start_alignment_error=boundary.start_alignment_error,
+            end_alignment_error=boundary.end_alignment_error,
+            duration_sec=boundary.duration_sec,
+            beats_in_clip=boundary.beats_in_clip,
+        )
+        for boundary in boundaries
+    ]
+
+    return BeatAlignedBoundariesResponse(
+        boundaries=boundary_metadata,
+        clip_count=len(boundaries),
+        song_duration=analysis.duration_sec,
+        bpm=analysis.bpm,
+        fps=fps,
+        total_beats=len(analysis.beat_times),
+        max_alignment_error=max_error,
+        avg_alignment_error=avg_error,
+        validation_status="valid" if is_valid else "warning",
+    )
 

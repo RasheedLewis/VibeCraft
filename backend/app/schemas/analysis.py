@@ -67,3 +67,36 @@ class SongAnalysis(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+
+class ClipBoundaryMetadata(BaseModel):
+    """Metadata for a single clip boundary with beat alignment information."""
+
+    start_time: float = Field(..., alias="startTime", description="Start time in seconds")
+    end_time: float = Field(..., alias="endTime", description="End time in seconds")
+    start_beat_index: int = Field(..., alias="startBeatIndex", description="Beat index at start boundary")
+    end_beat_index: int = Field(..., alias="endBeatIndex", description="Beat index at end boundary")
+    start_frame_index: int = Field(..., alias="startFrameIndex", description="Frame index at start boundary (8 FPS)")
+    end_frame_index: int = Field(..., alias="endFrameIndex", description="Frame index at end boundary (8 FPS)")
+    start_alignment_error: float = Field(..., alias="startAlignmentError", description="Alignment error at start (seconds)")
+    end_alignment_error: float = Field(..., alias="endAlignmentError", description="Alignment error at end (seconds)")
+    duration_sec: float = Field(..., alias="durationSec", description="Clip duration in seconds")
+    beats_in_clip: List[int] = Field(..., alias="beatsInClip", description="List of beat indices within this clip")
+
+    model_config = {"populate_by_name": True}
+
+
+class BeatAlignedBoundariesResponse(BaseModel):
+    """Response for beat-aligned clip boundaries calculation."""
+
+    boundaries: List[ClipBoundaryMetadata] = Field(..., description="List of clip boundaries")
+    clip_count: int = Field(..., alias="clipCount", description="Number of clips")
+    song_duration: float = Field(..., alias="songDuration", description="Total song duration in seconds")
+    bpm: Optional[float] = Field(None, description="BPM used for calculation")
+    fps: float = Field(default=24.0, description="Video FPS")
+    total_beats: int = Field(..., alias="totalBeats", description="Total number of beats in song")
+    max_alignment_error: float = Field(..., alias="maxAlignmentError", description="Worst alignment error across all boundaries (seconds)")
+    avg_alignment_error: float = Field(..., alias="avgAlignmentError", description="Average alignment error (seconds)")
+    validation_status: str = Field(..., alias="validationStatus", description="Validation status: 'valid' or 'warning'")
+
+    model_config = {"populate_by_name": True}
+

@@ -589,6 +589,20 @@ export const UploadPage: React.FC = () => {
           `/songs/${songId}/clips/status`,
         )
         setClipSummary(data)
+        
+        // Update clip job status if there's an active job
+        if (data.clips && data.clips.length > 0) {
+          const hasActiveJob = data.clips.some(
+            (clip) => clip.status === 'processing' || clip.status === 'queued'
+          )
+          if (hasActiveJob && !clipJobId) {
+            const firstClipWithJob = data.clips.find((clip) => clip.rqJobId)
+            if (firstClipWithJob?.rqJobId) {
+              setClipJobId(firstClipWithJob.rqJobId)
+              setClipJobStatus('processing')
+            }
+          }
+        }
       } catch (err) {
         const message = extractErrorMessage(err, 'Unable to load clip status.')
         if (clipJobId) {
@@ -622,6 +636,56 @@ export const UploadPage: React.FC = () => {
       )
     }
   }, [])
+
+  // Load song from URL parameter if present
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const songIdParam = urlParams.get('songId')
+    
+    if (songIdParam && !result) {
+      // Load existing song by ID
+      const loadSongById = async () => {
+        try {
+          setStage('uploaded')
+          setResult({ songId: songIdParam } as SongUploadResponse)
+          
+          // Fetch song details and analysis
+          await fetchSongDetails(songIdParam)
+          const analysis = await apiClient.get<SongAnalysis>(`/songs/${songIdParam}/analysis`)
+          setAnalysisData(analysis.data)
+          setAnalysisState('completed')
+          
+          // Fetch clip summary
+          const { data: clipData } = await apiClient.get<ClipGenerationSummary>(
+            `/songs/${songIdParam}/clips/status`,
+          )
+          setClipSummary(clipData)
+          
+          // Check if there's an active clip job
+          if (clipData.clips && clipData.clips.length > 0) {
+            const hasActiveJob = clipData.clips.some(
+              (clip) => clip.status === 'processing' || clip.status === 'queued'
+            )
+            if (hasActiveJob) {
+              const firstClipWithJob = clipData.clips.find((clip) => clip.rqJobId)
+              if (firstClipWithJob?.rqJobId) {
+                setClipJobId(firstClipWithJob.rqJobId)
+                setClipJobStatus('processing')
+              }
+            } else if (clipData.completedClips === clipData.totalClips && clipData.totalClips > 0) {
+              setClipJobStatus('completed')
+            }
+          }
+        } catch (err) {
+          const errorMsg = extractErrorMessage(err, 'Unable to load song.')
+          setError(errorMsg)
+          setStage('error')
+        }
+      }
+      
+      void loadSongById()
+    }
+  }, [result, fetchSongDetails])
 
   useEffect(() => {
     if (!analysisJobId || !result?.songId) return
@@ -782,6 +846,34 @@ export const UploadPage: React.FC = () => {
     }
     void fetchClipSummary(result.songId)
   }, [result?.songId, clipJobId, clipSummary, fetchClipSummary])
+
+  // Poll for composed video if composition just completed
+  useEffect(() => {
+    if (!result?.songId || !clipSummary || clipSummary.composedVideoUrl) {
+      return
+    }
+    
+    // If all clips are completed but no composed video yet, poll for it
+    if (
+      clipSummary.completedClips === clipSummary.totalClips &&
+      clipSummary.totalClips > 0 &&
+      !clipSummary.composedVideoUrl
+    ) {
+      const pollInterval = setInterval(() => {
+        void fetchClipSummary(result.songId)
+      }, 2000) // Poll every 2 seconds
+
+      // Stop polling after 30 seconds
+      const timeout = setTimeout(() => {
+        clearInterval(pollInterval)
+      }, 30000)
+
+      return () => {
+        clearInterval(pollInterval)
+        clearTimeout(timeout)
+      }
+    }
+  }, [result?.songId, clipSummary, fetchClipSummary])
 
   useEffect(() => {
     if (!result?.songId) {

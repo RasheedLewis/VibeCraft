@@ -4,20 +4,55 @@ from functools import lru_cache
 from typing import Optional
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.core.config import get_settings
 
 
+def _get_bucket_region() -> str:
+    """Get the actual region of the S3 bucket.
+    
+    If S3_REGION is set, use it. Otherwise, detect the bucket's region.
+    """
+    settings = get_settings()
+    
+    # If region is explicitly set, use it
+    if settings.s3_region:
+        return settings.s3_region
+    
+    # Otherwise, detect the bucket's region
+    try:
+        # Create a client without region to query bucket location
+        temp_client = boto3.client(
+            "s3",
+            endpoint_url=settings.s3_endpoint_url,
+            aws_access_key_id=settings.s3_access_key_id,
+            aws_secret_access_key=settings.s3_secret_access_key,
+        )
+        response = temp_client.get_bucket_location(Bucket=settings.s3_bucket_name)
+        # get_bucket_location returns None for us-east-1 (legacy behavior)
+        region = response.get("LocationConstraint") or "us-east-1"
+        return region
+    except Exception:
+        # Fallback to us-east-1 if detection fails
+        return "us-east-1"
+
+
 @lru_cache
 def _get_s3_client():
     settings = get_settings()
+    # Explicitly use Signature Version 4 (AWS4-HMAC-SHA256) for presigned URLs
+    config = Config(signature_version='s3v4')
+    # Get the correct region (auto-detect if not set)
+    region = _get_bucket_region()
     return boto3.client(
         "s3",
-        region_name=settings.s3_region,
+        region_name=region,
         endpoint_url=settings.s3_endpoint_url,
         aws_access_key_id=settings.s3_access_key_id,
         aws_secret_access_key=settings.s3_secret_access_key,
+        config=config,
     )
 
 
@@ -58,10 +93,45 @@ def generate_presigned_get_url(
         ) from exc
 
 
+def check_s3_object_exists(*, bucket_name: str, key: str) -> bool:
+    """Check if an S3 object exists without downloading it."""
+    client = _get_s3_client()
+    try:
+        client.head_object(Bucket=bucket_name, Key=key)
+        return True
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        if error_code == "404" or error_code == "NoSuchKey":
+            return False
+        # Re-raise for other errors (permissions, etc.)
+        raise RuntimeError(f"Failed to check if object {key} exists in bucket {bucket_name}") from exc
+    except (BotoCoreError, ClientError) as exc:
+        raise RuntimeError(f"Failed to check if object {key} exists in bucket {bucket_name}") from exc
+
+
+def delete_s3_object(*, bucket_name: str, key: str) -> None:
+    """Delete an S3 object. Silently succeeds if object doesn't exist."""
+    client = _get_s3_client()
+    try:
+        client.delete_object(Bucket=bucket_name, Key=key)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        # Ignore 404/NoSuchKey errors (object already doesn't exist)
+        if error_code not in ("404", "NoSuchKey"):
+            raise RuntimeError(f"Failed to delete object {key} from bucket {bucket_name}") from exc
+    except (BotoCoreError, ClientError) as exc:
+        raise RuntimeError(f"Failed to delete object {key} from bucket {bucket_name}") from exc
+
+
 def download_bytes_from_s3(*, bucket_name: str, key: str) -> bytes:
     client = _get_s3_client()
     try:
         response = client.get_object(Bucket=bucket_name, Key=key)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        if error_code == "404" or error_code == "NoSuchKey":
+            raise RuntimeError(f"Object {key} does not exist in bucket {bucket_name}") from exc
+        raise RuntimeError(f"Failed to download object {key} from bucket {bucket_name}: {error_code}") from exc
     except (BotoCoreError, ClientError) as exc:
         raise RuntimeError(f"Failed to download object {key} from bucket {bucket_name}") from exc
 

@@ -292,28 +292,139 @@ def concatenate_clips(
             logger.debug(f"  Last 3: {normalized_clip_paths[-3:]}")
 
     try:
-        # Use concat demuxer for fast concatenation
-        # Then mux with audio - video should be full length, audio will loop or be trimmed
+        # First, get the total video duration after concatenation
+        # We'll use a temporary output to measure duration, or calculate from clips
+        # For now, let's use FFmpeg to get the concatenated video duration
+        temp_video_path = Path(output_path).parent / "temp_concatenated.mp4"
         try:
+            # Concatenate clips first (without audio) to get video duration
             video_input = ffmpeg.input(str(concat_path), format="concat", safe=0)
-            audio_input = ffmpeg.input(str(audio_path))
-            
-            # Output video and audio - let video be full length, audio will be trimmed to video length
-            # Use -map to explicitly map video from input 0 and audio from input 1
             (
                 ffmpeg.output(
                     video_input["v"],
+                    str(temp_video_path),
+                    vcodec=DEFAULT_VIDEO_CODEC,
+                )
+                .overwrite_output()
+                .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+            )
+            
+            # Get the concatenated video duration
+            probe_cmd = [
+                ffmpeg_bin.replace("ffmpeg", "ffprobe"),
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "json",
+                str(temp_video_path),
+            ]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True, timeout=30)
+            probe_data = json.loads(result.stdout)
+            video_duration = float(probe_data["format"]["duration"])
+            
+            logger.info(
+                f"Concatenated video duration: {video_duration:.2f}s, "
+                f"Song duration: {song_duration_sec:.2f}s"
+            )
+            
+            # If video is shorter than audio, loop it to match audio duration
+            if video_duration < song_duration_sec:
+                logger.info(
+                    f"Video ({video_duration:.2f}s) is shorter than audio ({song_duration_sec:.2f}s). "
+                    f"Looping video to match audio duration."
+                )
+                # Calculate how many times to loop
+                loop_count = int(song_duration_sec / video_duration) + 1
+                # Create a new concat file with looped clips
+                temp_dir = Path(temp_video_path).parent
+                loop_concat_path = temp_dir / "loop_concat.txt"
+                with open(loop_concat_path, "w") as loop_concat_file:
+                    # Use absolute path and proper escaping for concat demuxer
+                    abs_video_path = temp_video_path.resolve()
+                    # For concat demuxer, we need to escape single quotes and backslashes
+                    escaped_path = str(abs_video_path).replace("'", "'\\''").replace("\\", "\\\\")
+                    for _ in range(loop_count):
+                        loop_concat_file.write(f"file '{escaped_path}'\n")
+                
+                # Create output path for looped video (don't overwrite temp_video_path yet)
+                looped_output_path = temp_dir / "looped_video.mp4"
+                
+                try:
+                    # Now concatenate the looped video
+                    looped_video_input = ffmpeg.input(str(loop_concat_path), format="concat", safe=0)
+                    # Trim to exact song duration
+                    (
+                        ffmpeg.output(
+                            looped_video_input["v"],
+                            str(looped_output_path),
+                            vcodec=DEFAULT_VIDEO_CODEC,
+                            t=song_duration_sec,  # Trim to exact duration
+                        )
+                        .overwrite_output()
+                        .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+                    )
+                    
+                    # Replace temp_video_path with looped version
+                    temp_video_path.unlink(missing_ok=True)
+                    looped_output_path.rename(temp_video_path)
+                except ffmpeg.Error as e:  # type: ignore[attr-defined]
+                    stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+                    logger.error(f"Failed to loop video: {stderr}")
+                    raise RuntimeError(f"Failed to loop video: {stderr}") from e
+                finally:
+                    # Clean up loop concat file
+                    try:
+                        loop_concat_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            elif video_duration > song_duration_sec:
+                # Video is longer - trim it to match audio
+                logger.info(
+                    f"Video ({video_duration:.2f}s) is longer than audio ({song_duration_sec:.2f}s). "
+                    f"Trimming video to match audio duration."
+                )
+                trimmed_video_input = ffmpeg.input(str(temp_video_path))
+                (
+                    ffmpeg.output(
+                        trimmed_video_input["v"],
+                        str(temp_video_path),
+                        vcodec=DEFAULT_VIDEO_CODEC,
+                        t=song_duration_sec,  # Trim to exact duration
+                    )
+                    .overwrite_output()
+                    .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+                )
+            
+            # Now mux the video (which matches audio duration) with audio
+            final_video_input = ffmpeg.input(str(temp_video_path))
+            audio_input = ffmpeg.input(str(audio_path))
+            
+            (
+                ffmpeg.output(
+                    final_video_input["v"],
                     audio_input["a"],
                     str(output_path),
                     vcodec=DEFAULT_VIDEO_CODEC,
                     acodec=DEFAULT_AUDIO_CODEC,
                     audio_bitrate=DEFAULT_AUDIO_BITRATE,
+                    t=song_duration_sec,  # Ensure exact duration match
                     **{"async": 1},  # Audio resampling for sync
                 )
                 .overwrite_output()
                 .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
             )
+            
+            # Clean up temp video
+            try:
+                temp_video_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+                
         except ffmpeg.Error as e:  # type: ignore[attr-defined]
+            # Clean up temp video on error
+            try:
+                temp_video_path.unlink(missing_ok=True)
+            except Exception:
+                pass
             stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
             # Log concat file contents for debugging if concatenation fails
             logger.error(f"FFmpeg concatenation failed. Concat file had {len(normalized_clip_paths)} clips.")
@@ -321,6 +432,13 @@ def concatenate_clips(
                 logger.error(f"First clip: {normalized_clip_paths[0]}")
                 logger.error(f"Last clip: {normalized_clip_paths[-1]}")
             raise RuntimeError(f"Failed to concatenate clips: {stderr}") from e
+        except Exception as e:
+            # Clean up temp video on error
+            try:
+                temp_video_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise RuntimeError(f"Failed to concatenate clips: {e}") from e
 
         # Verify output using ffprobe
         result = verify_composed_video(str(output_path), ffmpeg_bin=ffmpeg_bin)

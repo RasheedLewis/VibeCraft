@@ -13,6 +13,9 @@ settings = get_settings()
 database_url = settings.database_url
 connect_args = {}
 if database_url.startswith("postgresql"):
+    # Convert postgresql:// to postgresql+psycopg:// to use psycopg3 driver
+    if database_url.startswith("postgresql://") and "+psycopg" not in database_url:
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
     # Disable GSS via connection string and connect_args
     if "gssencmode" not in database_url:
         separator = "&" if "?" in database_url else "?"

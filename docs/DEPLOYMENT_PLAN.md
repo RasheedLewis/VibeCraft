@@ -82,8 +82,8 @@ S3_ACCESS_KEY_ID=your-access-key
 S3_SECRET_ACCESS_KEY=your-secret-key
 S3_REGION=us-east-1
 
-# External APIs
-REPLICATE_API_TOKEN=your-replicate-token
+# External APIs (use your existing development token)
+REPLICATE_API_TOKEN=your-existing-replicate-token
 WHISPER_API_TOKEN=  # Optional
 LYRICS_API_KEY=  # Optional
 
@@ -151,8 +151,8 @@ S3_ACCESS_KEY_ID=your-access-key
 S3_SECRET_ACCESS_KEY=your-secret-key
 S3_REGION=us-east-1
 
-# External APIs
-REPLICATE_API_TOKEN=your-replicate-token
+# External APIs (use your existing development token)
+REPLICATE_API_TOKEN=your-existing-replicate-token
 ```
 
 **Railway Settings:**
@@ -315,9 +315,9 @@ Allow your Railway services to read/write:
    - Note the `REDIS_URL` (auto-injected)
 
 4. **Set up S3**
-   - Create bucket in AWS
-   - Create IAM user and access keys
-   - Configure bucket policy and CORS
+   - Use your existing development S3 bucket
+   - Use existing IAM credentials (or create new ones for Railway)
+   - Verify/update bucket CORS configuration if needed
 
 ### Phase 2: Backend Deployment
 

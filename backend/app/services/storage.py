@@ -24,12 +24,14 @@ def _get_bucket_region() -> str:
     # Otherwise, detect the bucket's region
     try:
         # Create a client without region to query bucket location
-        temp_client = boto3.client(
-            "s3",
-            endpoint_url=settings.s3_endpoint_url,
-            aws_access_key_id=settings.s3_access_key_id,
-            aws_secret_access_key=settings.s3_secret_access_key,
-        )
+        temp_kwargs = {}
+        if settings.s3_endpoint_url:
+            temp_kwargs["endpoint_url"] = settings.s3_endpoint_url
+        if settings.s3_access_key_id:
+            temp_kwargs["aws_access_key_id"] = settings.s3_access_key_id
+        if settings.s3_secret_access_key:
+            temp_kwargs["aws_secret_access_key"] = settings.s3_secret_access_key
+        temp_client = boto3.client("s3", **temp_kwargs)
         response = temp_client.get_bucket_location(Bucket=settings.s3_bucket_name)
         # get_bucket_location returns None for us-east-1 (legacy behavior)
         region = response.get("LocationConstraint") or "us-east-1"
@@ -46,14 +48,24 @@ def _get_s3_client():
     config = Config(signature_version='s3v4')
     # Get the correct region (auto-detect if not set)
     region = _get_bucket_region()
-    return boto3.client(
-        "s3",
-        region_name=region,
-        endpoint_url=settings.s3_endpoint_url,
-        aws_access_key_id=settings.s3_access_key_id,
-        aws_secret_access_key=settings.s3_secret_access_key,
-        config=config,
-    )
+    
+    # Build client kwargs - only include credentials if explicitly set
+    # Otherwise boto3 will use default credential chain (AWS_ACCESS_KEY_ID env vars, IAM roles, etc.)
+    client_kwargs = {
+        "region_name": region,
+        "config": config,
+    }
+    
+    if settings.s3_endpoint_url:
+        client_kwargs["endpoint_url"] = settings.s3_endpoint_url
+    
+    # Only pass credentials if explicitly set (allows fallback to AWS_ACCESS_KEY_ID env vars)
+    if settings.s3_access_key_id:
+        client_kwargs["aws_access_key_id"] = settings.s3_access_key_id
+    if settings.s3_secret_access_key:
+        client_kwargs["aws_secret_access_key"] = settings.s3_secret_access_key
+    
+    return boto3.client("s3", **client_kwargs)
 
 
 def upload_bytes_to_s3(

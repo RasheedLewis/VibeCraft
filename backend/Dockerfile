@@ -21,6 +21,7 @@ COPY . .
 EXPOSE 8000
 
 # Default command for API service
+# Railway sets PORT env var automatically
 # Override in Railway for worker service: rq worker ai_music_video --url $REDIS_URL
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 

@@ -27,6 +27,7 @@ from app.services.scene_planner import build_scene_spec
 from app.services.song_analysis import get_latest_analysis
 from app.services.video_generation import generate_section_video
 from app.services.storage import (
+    check_s3_object_exists,
     download_bytes_from_s3,
     generate_presigned_get_url,
     upload_bytes_to_s3,
@@ -217,14 +218,24 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
         settings = get_settings()
         bucket = settings.s3_bucket_name
         if song.composed_video_s3_key and bucket:
-            try:
-                composed_video_url = generate_presigned_get_url(
-                    bucket_name=bucket,
-                    key=song.composed_video_s3_key,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    "Failed to generate composed video URL for song %s: %s", song_id, exc
+            # Verify file exists before generating presigned URL
+            if check_s3_object_exists(bucket_name=bucket, key=song.composed_video_s3_key):
+                try:
+                    composed_video_url = generate_presigned_get_url(
+                        bucket_name=bucket,
+                        key=song.composed_video_s3_key,
+                        expires_in=3600 * 24,  # 24 hours for composed videos
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        "Failed to generate composed video URL for song %s: %s", song_id, exc
+                    )
+            else:
+                logger.warning(
+                    "Composed video S3 key %s does not exist in bucket %s for song %s",
+                    song.composed_video_s3_key,
+                    bucket,
+                    song_id,
                 )
         if song.composed_video_poster_s3_key and bucket:
             try:
@@ -316,14 +327,37 @@ def _determine_seed_for_clip(clip_id: UUID) -> Optional[int]:
 
 def _download_clip_to_path(url: str, destination: Path, timeout: float = 120.0) -> None:
     try:
-        with httpx.stream("GET", url, timeout=timeout) as response:
+        with httpx.stream("GET", url, timeout=timeout, follow_redirects=True) as response:
+            if response.status_code != 200:
+                # Log the response body for debugging
+                error_body = ""
+                try:
+                    error_body = response.read().decode('utf-8', errors='ignore')
+                except Exception:
+                    pass
+                logger.error(
+                    "Presigned URL download failed: status=%d, url=%s, error=%s",
+                    response.status_code,
+                    url[:200],  # Truncate URL for logging
+                    error_body[:500],
+                )
             response.raise_for_status()
             with destination.open("wb") as output_file:
                 for chunk in response.iter_bytes():
                     if chunk:
                         output_file.write(chunk)
+    except httpx.HTTPStatusError as exc:
+        error_detail = f"HTTP {exc.response.status_code}"
+        try:
+            error_body = exc.response.read().decode('utf-8', errors='ignore')
+            error_detail += f": {error_body[:200]}"
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Failed to download clip asset from presigned URL (status {exc.response.status_code}): {error_detail}"
+        ) from exc
     except httpx.HTTPError as exc:
-        raise RuntimeError(f"Failed to download clip asset from {url}") from exc
+        raise RuntimeError(f"Failed to download clip asset from {url}: {exc}") from exc
 
 
 def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
@@ -344,8 +378,66 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
         if not song:
             raise ValueError(f"Song {song_id} not found")
         audio_key = song.processed_s3_key or song.original_s3_key
+        
+        # Validate audio key exists in S3, or try to find it
         if not audio_key:
-            raise RuntimeError("Song audio is unavailable for composition.")
+            # No key in database, try to find audio in S3
+            possible_keys = [
+                f"songs/{song_id}/original.wav",
+                f"songs/{song_id}/original.mp3",
+                f"songs/{song_id}/processed.wav",
+                f"songs/{song_id}/processed.mp3",
+            ]
+            found_key = None
+            for key in possible_keys:
+                if check_s3_object_exists(bucket_name=bucket, key=key):
+                    found_key = key
+                    logger.info("Found audio at S3 key: %s (not in database)", found_key)
+                    # Update database with correct key
+                    song.original_s3_key = found_key
+                    session.add(song)
+                    session.commit()
+                    break
+            
+            if found_key:
+                audio_key = found_key
+            else:
+                raise RuntimeError(
+                    f"Song audio is unavailable for composition. "
+                    f"No S3 key in database and not found at any expected S3 location: "
+                    f"{', '.join(possible_keys)}"
+                )
+        elif not check_s3_object_exists(bucket_name=bucket, key=audio_key):
+            # Key exists in database but file doesn't exist in S3, try to find it
+            logger.warning(
+                "Audio key %s from database does not exist in S3, trying to find correct key",
+                audio_key,
+            )
+            possible_keys = [
+                f"songs/{song_id}/original.wav",
+                f"songs/{song_id}/original.mp3",
+                f"songs/{song_id}/processed.wav",
+                f"songs/{song_id}/processed.mp3",
+            ]
+            found_key = None
+            for key in possible_keys:
+                if check_s3_object_exists(bucket_name=bucket, key=key):
+                    found_key = key
+                    logger.info("Found audio at S3 key: %s, updating database", found_key)
+                    # Update database with correct key
+                    song.original_s3_key = found_key
+                    session.add(song)
+                    session.commit()
+                    break
+            
+            if found_key:
+                audio_key = found_key
+            else:
+                raise RuntimeError(
+                    f"Song audio is unavailable for composition. "
+                    f"Key in database ({audio_key}) doesn't exist in S3, "
+                    f"and not found at any expected S3 location: {', '.join(possible_keys)}"
+                )
 
         clips = session.exec(
             select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
@@ -377,11 +469,43 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
             source_path = temp_dir / f"clip_{clip.clip_index:03}.mp4"
             normalized_path = temp_dir / f"clip_{clip.clip_index:03}_normalized.mp4"
 
-            _download_clip_to_path(clip.video_url, source_path)
+            # Try to download from S3 key first (more reliable than presigned URL)
+            # S3 key pattern: songs/{song_id}/clips/{clip_index:03d}.mp4
+            clip_s3_key = f"songs/{song_id}/clips/{clip.clip_index:03d}.mp4"
+            
+            # Check if file exists in S3
+            if not check_s3_object_exists(bucket_name=bucket, key=clip_s3_key):
+                logger.warning(
+                    "Clip file does not exist at S3 key %s, trying presigned URL: %s",
+                    clip_s3_key,
+                    clip.video_url[:100] if clip.video_url else "None",
+                )
+                if not clip.video_url:
+                    raise RuntimeError(
+                        f"Clip {clip.clip_index} file not found at S3 key {clip_s3_key} and no video_url available"
+                    )
+                _download_clip_to_path(clip.video_url, source_path)
+            else:
+                try:
+                    clip_bytes = download_bytes_from_s3(bucket_name=bucket, key=clip_s3_key)
+                    source_path.write_bytes(clip_bytes)
+                except Exception as s3_err:
+                    # Fallback to presigned URL if S3 key download fails
+                    logger.warning(
+                        "Failed to download clip from S3 key %s, trying presigned URL: %s",
+                        clip_s3_key,
+                        s3_err,
+                    )
+                    if not clip.video_url:
+                        raise RuntimeError(
+                            f"Clip {clip.clip_index} has no video_url and S3 download failed: {s3_err}"
+                        ) from s3_err
+                    _download_clip_to_path(clip.video_url, source_path)
+            
             normalize_clip(str(source_path), str(normalized_path))
             normalized_paths.append(normalized_path)
 
-        # Download audio
+        # Download audio (key has already been validated to exist in S3 above)
         audio_bytes = download_bytes_from_s3(bucket_name=bucket, key=audio_key)
         audio_extension = Path(audio_key).suffix or ".wav"
         audio_path = temp_dir / f"song_audio{audio_extension}"

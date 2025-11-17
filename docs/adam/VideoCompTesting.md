@@ -2,6 +2,69 @@
 
 **Goal:** Go from local clips on your Mac Desktop → Final composition video in ONE command.
 
+## Plan: Enable Composition via Front-End Button Click
+
+**Current State:**
+- The "Compose when done" button exists in `UploadPage.tsx` (line ~1440) and calls `handleComposeClips`
+- The button is currently disabled until all clips are completed (`composeDisabled` logic)
+- The handler makes a POST request to `/songs/${songId}/clips/compose`
+
+**Implementation Plan:**
+1. **Backend API Endpoint** - Verify/implement the `/songs/{song_id}/clips/compose` endpoint:
+   - Should accept a song ID
+   - Fetch all completed clips for that song from the database
+   - Use the MVP-03 composition pipeline (`video_composition.py` services):
+     - Normalize clips to 1080p/24fps
+     - Stitch clips together
+     - Mux with the song's audio
+   - Store the composed video URL in the database
+   - Return the composition result
+
+2. **Front-End Integration** - The button already exists, but ensure:
+   - `handleComposeClips` properly handles the API response
+   - Updates `clipSummary` with `composedVideoUrl` when complete
+   - Shows appropriate loading/error states during composition
+   - The video player displays the composed video when available
+
+3. **Testing Flow:**
+   - Upload a song → Wait for analysis → Generate clips → Wait for all clips to complete
+   - Click "Compose when done" button → Verify composition runs → Check final video plays correctly
+
+**Reference:** The local composition script (`scripts/compose_local.py`) demonstrates the exact pipeline that should be called by the API endpoint.
+
+**Pre-loading Clips for Testing:**
+To test the composition button without waiting for clip generation, use `scripts/preload_test_clips.py`:
+
+```bash
+# First, list available songs to get a song ID
+python scripts/preload_test_clips.py --list-songs
+
+# Pre-load test clips (automatically plans clips if needed)
+python scripts/preload_test_clips.py --song-id <your-song-id>
+
+# Use clips from samples directory
+python scripts/preload_test_clips.py --song-id <your-song-id> --samples
+
+# Specify custom clip paths (supports glob patterns)
+python scripts/preload_test_clips.py --song-id <your-song-id> \
+    --clips ~/Desktop/clip*.mp4
+
+# Or specify individual files
+python scripts/preload_test_clips.py --song-id <your-song-id> \
+    --clips ~/Desktop/clip1.mp4 ~/Desktop/clip2.mp4 ~/Desktop/clip3.mp4 ~/Desktop/clip4.mp4
+```
+
+This script automatically handles all prerequisites:
+1. **Lists songs** - Use `--list-songs` to see available songs and their IDs
+2. **Plans clips** - Automatically plans clips if they don't exist (based on number of clip files)
+3. **Creates analysis** - Creates minimal analysis record if song doesn't have one
+4. **Calculates duration** - Uses clip durations if song duration is missing
+5. **Uploads clips** - Uploads your local clip files to S3
+6. **Generates URLs** - Creates presigned URLs for each clip
+7. **Updates database** - Marks clips as `status="completed"` with `video_url` set
+
+After running this, the "Compose when done" button should be enabled in the front-end.
+
 ## Quick Start
 
 ```bash

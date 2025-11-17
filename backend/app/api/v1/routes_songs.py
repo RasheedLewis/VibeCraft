@@ -528,9 +528,11 @@ async def compose_completed_clips(
         await asyncio.to_thread(compose_song_video, song_id)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to compose video for song %s", song_id)
+        # Include the actual error message for debugging
+        error_detail = str(exc) if exc else "Failed to compose video. Please try again later."
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to compose video. Please try again later.",
+            detail=f"Failed to compose video: {error_detail}",
         ) from exc
 
     return get_clip_generation_summary(song_id)

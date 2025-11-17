@@ -6,7 +6,7 @@ This document outlines the testing strategy for VibeCraft, starting with PER-PHA
 
 ## POST-PHASE TESTING & UI NOTES
 
-Each phase has a dedicated test script in `v2/scripts/for-development/test-phaseX.sh` that verifies all functionality for that phase. UI should be inspected and evaluated after each phase to ensure design system compliance, usability, and proper error handling.
+Each phase has a dedicated test script in `v2/scripts/for-development/test-phaseX.sh` that verifies all functionality for that phase. UI should be inspected and evaluated after each phase as well—run `make start` then go to the listed http://localhost:5173/
 
 ### Phase 0: Foundation & Setup
 
@@ -28,6 +28,14 @@ Each phase has a dedicated test script in `v2/scripts/for-development/test-phase
 - **Command**: `bash v2/scripts/for-development/test-phase2.sh`
 - **Git Checkout** (optional): `git checkout <phase-2-commit-hash>`
 - **UI Notes**: Upload page - verify drag & drop, file validation, progress indicators, error handling
+  - **Drag & Drop**: Test dragging MP3/WAV/M4A files onto drop zone, verify visual feedback (border highlight)
+  - **File Selection**: Test "browse to upload" button, verify file picker opens with correct accept filters
+  - **File Validation**: Test invalid formats (e.g., .txt, .pdf) - should show error message; test files >50MB - should show size error
+  - **Upload Progress**: Verify progress bar updates 0-100% during upload, percentage display updates correctly
+  - **Error Handling**: Test network errors, server errors (401, 500) - verify user-friendly error messages display
+  - **Success Flow**: Verify redirect to `/songs/{id}` after successful upload (or home if route doesn't exist yet)
+  - **Navigation**: Test "Upload Audio File" button on home page navigates to `/upload` route
+  - **UI States**: Verify disabled state during upload, file removal functionality, visual feedback for all interactions
 
 ### Phase 3: Audio Analysis
 

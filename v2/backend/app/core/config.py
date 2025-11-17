@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Find backend directory (where .env file is located)
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     aws_secret_access_key: Optional[str] = Field(
         default=None, alias="AWS_SECRET_ACCESS_KEY"
     )
-    aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
+    aws_region: str = Field(default="us-east-2", alias="AWS_REGION")
     cloudfront_domain: Optional[str] = Field(
         default=None, alias="CLOUDFRONT_DOMAIN"
     )
@@ -71,8 +71,9 @@ class Settings(BaseSettings):
     )  # For JWT signing
 
     # CORS configuration
-    cors_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://localhost:3000"],
+    # Store as string to avoid JSON parsing issues, then convert to list via computed field
+    cors_origins_str: str = Field(
+        default="http://localhost:5173,http://localhost:3000",
         alias="CORS_ORIGINS",
     )
 
@@ -81,6 +82,14 @@ class Settings(BaseSettings):
 
     # Librosa cache directory
     librosa_cache_dir: str = Field(default=".cache/librosa", alias="LIBROSA_CACHE_DIR")
+
+    @computed_field
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse CORS origins from comma-separated string."""
+        if not self.cors_origins_str:
+            return []
+        return [origin.strip() for origin in self.cors_origins_str.split(",") if origin.strip()]
 
     @field_validator(
         "aws_access_key_id",
@@ -95,16 +104,6 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
-
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, value: Any) -> list[str]:
-        """Parse CORS origins from comma-separated string or list."""
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        if isinstance(value, list):
-            return value
-        return []
 
 
 @lru_cache

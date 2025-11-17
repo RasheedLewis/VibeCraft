@@ -1,6 +1,6 @@
 """Authentication schemas for request/response validation."""
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class RegisterRequest(BaseModel):
@@ -40,16 +40,13 @@ class LoginRequest(BaseModel):
 class UserRead(BaseModel):
     """Public user information schema."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     email: str
     created_at: str
     video_count: int
     storage_bytes: int
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
 
 
 class AuthResponse(BaseModel):

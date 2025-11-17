@@ -2,25 +2,14 @@
 # Phase 1 test script
 # Tests: User registration, login, authentication, JWT tokens
 #
-# IMPORTANT: Before running this script, start the backend server in a separate terminal:
+# This script automatically handles all prerequisites:
+# - Starts PostgreSQL and Redis (via docker-compose) if needed
+# - Activates virtual environment
+# - Starts backend server in background if not running
+# - Runs all tests
+# - Cleans up background processes on exit
 #
-#   cd v2
-#   source .venv/bin/activate
-#   cd backend  # Must be in backend/ directory for 'app' module to be importable
-#   
-#   # Set DATABASE_URL if not already set (optional - server will start without it)
-#   # export DATABASE_URL="postgresql://vibecraft:vibecraft@localhost:5432/vibecraft"
-#   
-#   uvicorn app.main:app --reload
-#
-# Then run this script in another terminal tab/window.
-#
-# Note: Make sure you're in the 'backend' directory when running uvicorn,
-# otherwise you'll get "ModuleNotFoundError: No module named 'app'"
-#
-# Note: If you don't have a database set up, the server will start but auth
-# endpoints will fail. For testing, you can use the docker-compose setup:
-#   cd v2/infra && docker compose up -d postgres
+# Usage: bash scripts/for-development/test-phase1.sh
 
 set -e
 
@@ -40,14 +29,153 @@ echo "======================================"
 echo -e "${BLUE}Working directory: $(pwd)${NC}"
 echo ""
 
-# Check if backend is running
-echo -n "Checking if backend is running... "
-if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then
-    echo -e "${RED}✗ Backend is not running${NC}"
-    echo -e "${YELLOW}Please start the backend with: cd v2/backend && uvicorn app.main:app --reload${NC}"
+# Variables for cleanup
+BACKEND_PID=""
+STARTED_POSTGRES=false
+STARTED_REDIS=false
+
+# Cleanup function
+cleanup() {
+    echo ""
+    echo -e "${BLUE}Cleaning up...${NC}"
+    if [ -n "$BACKEND_PID" ] && ps -p "$BACKEND_PID" > /dev/null 2>&1; then
+        echo -n "  Stopping backend server... "
+        kill "$BACKEND_PID" 2>/dev/null || true
+        wait "$BACKEND_PID" 2>/dev/null || true
+        echo -e "${GREEN}✓${NC}"
+    fi
+    if [ "$STARTED_POSTGRES" = true ]; then
+        echo -n "  Stopping PostgreSQL... "
+        cd infra && docker compose stop postgres >/dev/null 2>&1 || true
+        cd ..
+        echo -e "${GREEN}✓${NC}"
+    fi
+    if [ "$STARTED_REDIS" = true ]; then
+        echo -n "  Stopping Redis... "
+        cd infra && docker compose stop redis >/dev/null 2>&1 || true
+        cd ..
+        echo -e "${GREEN}✓${NC}"
+    fi
+    echo -e "${GREEN}✓ Cleanup complete${NC}"
+}
+
+# Trap cleanup on exit
+trap cleanup EXIT INT TERM
+
+# Check for virtual environment
+echo -n "Checking virtual environment... "
+if [ ! -d ".venv" ]; then
+    echo -e "${RED}✗ Virtual environment not found${NC}"
+    echo -e "${YELLOW}Please run 'make install' first to create the virtual environment${NC}"
     exit 1
 fi
-echo -e "${GREEN}✓ Backend is running${NC}"
+echo -e "${GREEN}✓ Found${NC}"
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Check for Docker
+echo -n "Checking Docker... "
+if ! command -v docker >/dev/null 2>&1 || ! docker ps >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ Docker not available (skipping database/Redis setup)${NC}"
+    USE_DOCKER=false
+else
+    echo -e "${GREEN}✓ Available${NC}"
+    USE_DOCKER=true
+fi
+
+# Detect docker compose command
+USE_DOCKER_COMPOSE_V2=false
+if [ "$USE_DOCKER" = true ]; then
+    if docker compose version >/dev/null 2>&1; then
+        USE_DOCKER_COMPOSE_V2=true
+    elif command -v docker-compose >/dev/null 2>&1; then
+        USE_DOCKER_COMPOSE_V2=false
+    fi
+fi
+
+# Start PostgreSQL if needed
+if [ "$USE_DOCKER" = true ]; then
+    echo -n "Checking PostgreSQL... "
+    if ! docker ps | grep -q vibecraft-postgres; then
+        cd infra
+        if [ "$USE_DOCKER_COMPOSE_V2" = true ]; then
+            docker compose up -d postgres >/dev/null 2>&1 || true
+        else
+            docker-compose up -d postgres >/dev/null 2>&1 || true
+        fi
+        STARTED_POSTGRES=true
+        # Wait for PostgreSQL to be ready
+        for i in {1..30}; do
+            if [ "$USE_DOCKER_COMPOSE_V2" = true ]; then
+                if docker compose exec -T postgres pg_isready -U vibecraft >/dev/null 2>&1; then
+                    break
+                fi
+            else
+                if docker-compose exec -T postgres pg_isready -U vibecraft >/dev/null 2>&1; then
+                    break
+                fi
+            fi
+            sleep 1
+        done
+        cd ..
+        echo -e "${GREEN}✓ Started${NC}"
+    else
+        echo -e "${GREEN}✓ Already running${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ Skipping PostgreSQL check${NC}"
+fi
+
+# Start Redis if needed
+if [ "$USE_DOCKER" = true ]; then
+    echo -n "Checking Redis... "
+    if ! docker ps | grep -q redis-vibecraft; then
+        cd infra
+        if [ "$USE_DOCKER_COMPOSE_V2" = true ]; then
+            docker compose up -d redis >/dev/null 2>&1 || true
+        else
+            docker-compose up -d redis >/dev/null 2>&1 || true
+        fi
+        STARTED_REDIS=true
+        # Wait for Redis to be ready
+        sleep 2
+        cd ..
+        echo -e "${GREEN}✓ Started${NC}"
+    else
+        echo -e "${GREEN}✓ Already running${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ Skipping Redis check${NC}"
+fi
+
+# Check if backend is already running
+echo -n "Checking if backend is running... "
+if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Already running${NC}"
+else
+    echo -e "${YELLOW}Not running, starting...${NC}"
+    # Start backend server in background
+    cd backend
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/vibecraft-backend.log 2>&1 &
+    BACKEND_PID=$!
+    cd ..
+    
+    # Wait for backend to be ready
+    echo -n "  Waiting for backend to start... "
+    for i in {1..30}; do
+        if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ Ready${NC}"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo -e "${RED}✗ Timeout waiting for backend${NC}"
+            echo "  Check logs: tail -f /tmp/vibecraft-backend.log"
+            exit 1
+        fi
+        sleep 1
+    done
+fi
 echo ""
 
 # Test variables

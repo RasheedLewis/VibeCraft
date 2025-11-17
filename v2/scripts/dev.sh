@@ -183,7 +183,9 @@ cd backend
 if [ -z "$DATABASE_URL" ] && [ ! -f ../.env ]; then
     export DATABASE_URL="postgresql://vibecraft:vibecraft@localhost:5432/vibecraft"
 fi
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+# Run uvicorn in background
+# Note: Logs will appear in this terminal, but may be interleaved with other services
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 2>&1 &
 BACKEND_PID=$!
 cd ..
 

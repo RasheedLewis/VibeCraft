@@ -431,7 +431,7 @@ RQ_WORKER_QUEUE=ai_music_video
 S3_BUCKET_NAME=vibecraft-videos
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=us-east-1  # Or your preferred region
+AWS_REGION=us-east-2  # Or your preferred region
 
 # CloudFront (optional, for public video URLs)
 CLOUDFRONT_DOMAIN=d1234567890.cloudfront.net

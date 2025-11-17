@@ -38,9 +38,17 @@ export default function HomePage() {
               AI Music Video Generation Platform
             </h2>
             {user ? (
-              <p className="text-gray-600">
-                You're logged in! Video generation features will be available in future phases.
-              </p>
+              <div className="space-y-4">
+                <p className="text-gray-600">
+                  You're logged in! Upload an audio file to get started.
+                </p>
+                <Link
+                  to="/upload"
+                  className="inline-block px-6 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium"
+                >
+                  Upload Audio File
+                </Link>
+              </div>
             ) : (
               <div className="space-y-4">
                 <p className="text-gray-600">Please log in to continue.</p>

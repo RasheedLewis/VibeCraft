@@ -1,7 +1,7 @@
 """User model for authentication and user management."""
 
 import bcrypt
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlmodel import Field, SQLModel
@@ -22,7 +22,7 @@ class User(SQLModel, table=True):
     )
     email: str = Field(unique=True, index=True, max_length=256)
     password_hash: str = Field(max_length=255)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     video_count: int = Field(default=0)
     storage_bytes: int = Field(default=0)
 

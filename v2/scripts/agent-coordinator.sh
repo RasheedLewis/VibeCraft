@@ -1,4 +1,7 @@
 #!/bin/bash
+##########################################################################################################
+# DEPRECATED: This script is no longer used. But it would be nice if this coordination mechanism worked! #
+##########################################################################################################
 # Agent Coordination Script
 # Helps agents claim roles, track progress, and coordinate work
 

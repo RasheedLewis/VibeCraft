@@ -5,10 +5,9 @@
 ## 🚀 Production Deployment
 
 **Backend API:** `https://backend-api-production-c6ee.up.railway.app`  
-**RQ Worker:** `https://rq-worker-production.up.railway.app`  
-**Frontend:** `https://frontend-production.up.railway.app` (pending deployment)
+**Frontend:** `https://frontend-production-b530.up.railway.app`
 
-[Railway Dashboard](https://railway.app/project/9d147533-96b0-4aeb-ab3a-502138d87ae7) | [Health Check](https://backend-api-production.up.railway.app/healthz)
+[Railway Dashboard](https://railway.app/project/9d147533-96b0-4aeb-ab3a-502138d87ae7) | [Health Check](https://backend-api-production-c6ee.up.railway.app/healthz)
 
 ---
 

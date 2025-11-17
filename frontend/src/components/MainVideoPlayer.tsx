@@ -468,10 +468,14 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         audioEl.pause()
         videoEl?.pause()
       } else {
-        videoEl && (videoEl.muted = true)
+        if (videoEl) {
+          videoEl.muted = true
+        }
         const clip = resolveClipForTime(audioEl.currentTime)
         setVideoPlaybackTime(audioEl.currentTime, clip)
-        const playPromises: Array<Promise<unknown>> = [audioEl.play().catch(() => undefined)]
+        const playPromises: Array<Promise<unknown>> = [
+          audioEl.play().catch(() => undefined),
+        ]
         if (videoEl) {
           playPromises.push(videoEl.play().catch(() => undefined))
         }
@@ -587,6 +591,8 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     return line.text
   }, [current, lyrics])
 
+  const displayClips = clips
+
   const timelineActiveClip = useMemo(() => {
     if (!clips.length) return null
     if (activeClipId) {
@@ -601,7 +607,12 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   return (
     <div className="vc-card p-0 overflow-hidden" onKeyDown={onKey} tabIndex={0}>
       <div className="relative bg-black">
-        <audio ref={audioRef} src={audioUrl ?? undefined} preload="auto" className="hidden" />
+        <audio
+          ref={audioRef}
+          src={audioUrl ?? undefined}
+          preload="auto"
+          className="hidden"
+        />
         <video
           ref={videoRef}
           src={videoUrl || undefined}
@@ -618,7 +629,11 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
               <SkipBackIcon className="h-4 w-4" />
             </TransportButton>
             <TransportButton onClick={togglePlay} title="Play/Pause (Space/K)">
-              {isPlaying ? <PauseIcon className="h-5 w-5" /> : <PlayIcon className="h-5 w-5" />}
+              {isPlaying ? (
+                <PauseIcon className="h-5 w-5" />
+              ) : (
+                <PlayIcon className="h-5 w-5" />
+              )}
             </TransportButton>
             <TransportButton onClick={() => jump(5)} title="Forward 5s (L)">
               <SkipForwardIcon className="h-4 w-4" />
@@ -678,10 +693,14 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
             {pipSupported && Boolean(videoUrl) && (
               <TransportButton
                 onClick={async () => {
-                  const element: any = videoRef.current
+                  const pipDocument = document as Document & {
+                    pictureInPictureElement?: Element | null
+                    exitPictureInPicture?: () => Promise<void>
+                  }
+                  const element = videoRef.current
                   if (!element) return
-                  if (document.pictureInPictureElement) {
-                    await (document as any).exitPictureInPicture?.()
+                  if (pipDocument.pictureInPictureElement) {
+                    await pipDocument.exitPictureInPicture?.()
                   } else {
                     await element.requestPictureInPicture?.()
                   }
@@ -704,8 +723,16 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
 
         {(aMark != null || bMark != null) && (
           <div className="pointer-events-none absolute inset-x-0 bottom-20 h-0">
-            {aMark != null && <Marker time={aMark} duration={durationSec} color="bg-vc-accent-primary" />}
-            {bMark != null && <Marker time={bMark} duration={durationSec} color="bg-vc-accent-secondary" />}
+            {aMark != null && (
+              <Marker time={aMark} duration={durationSec} color="bg-vc-accent-primary" />
+            )}
+            {bMark != null && (
+              <Marker
+                time={bMark}
+                duration={durationSec}
+                color="bg-vc-accent-secondary"
+              />
+            )}
           </div>
         )}
 
@@ -746,10 +773,18 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
 
         <div className="mt-2 flex items-center gap-2">
           <span className="vc-badge">A/B Loop</span>
-          <button className="vc-btn-secondary vc-btn-sm" onClick={() => setAMark(current)} title="Set A (a)">
+          <button
+            className="vc-btn-secondary vc-btn-sm"
+            onClick={() => setAMark(current)}
+            title="Set A (a)"
+          >
             <ScissorsIcon className="mr-1 h-3.5 w-3.5" /> Set A
           </button>
-          <button className="vc-btn-secondary vc-btn-sm" onClick={() => setBMark(current)} title="Set B (b)">
+          <button
+            className="vc-btn-secondary vc-btn-sm"
+            onClick={() => setBMark(current)}
+            title="Set B (b)"
+          >
             <ScissorsIcon className="mr-1 h-3.5 w-3.5" /> Set B
           </button>
           <button
@@ -760,11 +795,65 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           </button>
           {(aMark != null || bMark != null) && (
             <span className="ml-2 text-[11px] text-vc-text-muted">
-              A: {aMark != null ? fmtTime(aMark) : '--:--'} • B: {bMark != null ? fmtTime(bMark) : '--:--'}
+              A: {aMark != null ? fmtTime(aMark) : '--:--'} • B:{' '}
+              {bMark != null ? fmtTime(bMark) : '--:--'}
             </span>
           )}
         </div>
       </div>
+
+      {displayClips.length > 0 && (
+        <div className="mt-4">
+          <div className="vc-label mb-1 px-3">Clips</div>
+          <div className="flex overflow-x-auto pb-2 px-3">
+            {displayClips.map((clip) => {
+              const thumbSrc = clip.thumbUrl ?? undefined
+              const clipDuration = Math.max(clip.endSec - clip.startSec, 0)
+              const widthPercent =
+                durationSec > 0
+                  ? (clipDuration / durationSec) * 100
+                  : 100 / displayClips.length
+              const minWidthRem = 4
+              const calculatedWidth = `max(${widthPercent}%, ${minWidthRem}rem)`
+              return (
+                <button
+                  key={clip.id}
+                  type="button"
+                  onClick={() => handleClipSelection(clip)}
+                  title={`Clip ${clip.index + 1}: ${fmtTime(clip.startSec)}-${fmtTime(clip.endSec)}`}
+                  className={clsx(
+                    'relative h-20 flex-shrink-0 overflow-hidden rounded-lg border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent-primary',
+                    clip.id === timelineActiveClip?.id
+                      ? 'border-vc-accent-primary shadow-[0_0_0_2px_rgba(110,107,255,0.35)]'
+                      : 'border-vc-border/40 hover:border-vc-accent-primary/60',
+                  )}
+                  style={{ width: calculatedWidth, minWidth: calculatedWidth }}
+                >
+                  {thumbSrc ? (
+                    <img
+                      src={thumbSrc}
+                      alt={`Clip ${clip.index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-[rgba(255,255,255,0.04)] text-[11px] text-vc-text-muted">
+                      No preview
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-transparent to-transparent px-2 py-1 text-left">
+                    <div className="text-[11px] font-medium text-white">
+                      #{clip.index + 1}
+                    </div>
+                    <div className="text-[10px] text-white/80">
+                      {fmtTime(clip.startSec)} – {fmtTime(clip.endSec)}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -778,7 +867,10 @@ const TransportButton: React.FC<{
   <button
     onClick={onClick}
     title={title}
-    className={clsx('pointer-events-auto vc-icon-btn', selected && 'vc-icon-btn-selected')}
+    className={clsx(
+      'pointer-events-auto vc-icon-btn',
+      selected && 'vc-icon-btn-selected',
+    )}
   >
     {children}
   </button>
@@ -862,4 +954,3 @@ const WaveBars: React.FC<{ duration: number; waveform?: number[] }> = ({ wavefor
     </div>
   )
 }
-

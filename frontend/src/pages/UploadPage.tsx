@@ -375,17 +375,23 @@ export const UploadPage: React.FC = () => {
   const [clipJobError, setClipJobError] = useState<string | null>(null)
   const [clipSummary, setClipSummary] = useState<ClipGenerationSummary | null>(null)
   const [isComposing, setIsComposing] = useState<boolean>(false)
+  const composedVideoUrlCurrent = clipSummary?.composedVideoUrl ?? null
+  const clipTotalClips = clipSummary?.totalClips ?? 0
+  const clipCompletedClips = clipSummary?.completedClips ?? 0
+  const clipFailedClips = clipSummary?.failedClips ?? 0
+  const hasClipSummary = clipSummary != null
   const [playerActiveClipId, setPlayerActiveClipId] = useState<string | null>(null)
-  const [playerClipSelectionLocked, setPlayerClipSelectionLocked] = useState<boolean>(false)
+  const [playerClipSelectionLocked, setPlayerClipSelectionLocked] =
+    useState<boolean>(false)
   const handleCancelClipJob = useCallback(() => {
     if (!clipJobId) return
     setClipJobError('Canceling clip generation is not available yet.')
   }, [clipJobId])
 
   const handleComposeClips = useCallback(async () => {
-    if (!result?.songId || !clipSummary) return
-    if (clipSummary.completedClips !== clipSummary.totalClips) return
-    if (clipSummary.failedClips > 0 || isComposing) return
+    if (!result?.songId || !hasClipSummary) return
+    if (clipCompletedClips !== clipTotalClips) return
+    if (clipFailedClips > 0 || isComposing || composedVideoUrlCurrent) return
 
     try {
       setIsComposing(true)
@@ -400,7 +406,15 @@ export const UploadPage: React.FC = () => {
     } finally {
       setIsComposing(false)
     }
-  }, [clipSummary, isComposing, result?.songId])
+  }, [
+    clipCompletedClips,
+    clipFailedClips,
+    clipTotalClips,
+    composedVideoUrlCurrent,
+    hasClipSummary,
+    isComposing,
+    result?.songId,
+  ])
 
   const handleGenerateClips = useCallback(async () => {
     if (!result?.songId) return
@@ -489,14 +503,14 @@ export const UploadPage: React.FC = () => {
       if (!targetClip) {
         return
       }
-      if (!clipSummary?.composedVideoUrl && !targetClip.videoUrl) {
+      if (!composedVideoUrlCurrent && !targetClip.videoUrl) {
         setClipJobError((prev) => prev ?? 'Clip video is still generating.')
         return
       }
       setPlayerClipSelectionLocked(true)
       setPlayerActiveClipId(clipId)
     },
-    [clipSummary?.clips],
+    [clipSummary?.clips, composedVideoUrlCurrent],
   )
   const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
@@ -689,13 +703,12 @@ export const UploadPage: React.FC = () => {
   }, [clipSummary?.analysis, analysisData])
 
   useEffect(() => {
-    if (!clipSummary?.composedVideoUrl) {
+    if (!composedVideoUrlCurrent) {
       return
     }
-
-    setPlayerClipSelectionLocked((locked) => (locked ? false : locked))
-    setPlayerActiveClipId((current) => (current !== null ? null : current))
-  }, [clipSummary?.composedVideoUrl])
+    setPlayerClipSelectionLocked(false)
+    setPlayerActiveClipId(null)
+  }, [composedVideoUrlCurrent])
 
   useEffect(() => {
     const completedClips =
@@ -1265,7 +1278,7 @@ export const UploadPage: React.FC = () => {
       clipSummary?.clips?.filter(
         (clip) => normalizeClipStatus(clip.status) === 'completed' && !!clip.videoUrl,
       ) ?? []
-    const composedVideoUrl = clipSummary?.composedVideoUrl ?? null
+    const composedVideoUrl = composedVideoUrlCurrent
     const composedPosterUrl = clipSummary?.composedVideoPosterUrl ?? null
     const activePlayerClip =
       completedClipEntries.find((clip) => clip.id === playerActiveClipId) ??
@@ -1273,8 +1286,7 @@ export const UploadPage: React.FC = () => {
       null
     const playerVideoUrl = composedVideoUrl ?? activePlayerClip?.videoUrl ?? null
     const playerPosterUrl = composedPosterUrl ?? activePlayerClip?.videoUrl ?? undefined
-    const playerAudioUrl =
-      composedVideoUrl || !result?.audioUrl ? null : result.audioUrl
+    const playerAudioUrl = composedVideoUrl || !result?.audioUrl ? null : result.audioUrl
     const playerDurationSec =
       clipSummary?.songDurationSec ?? durationValue ?? activePlayerClip?.endSec ?? null
     const playerClips =
@@ -1286,8 +1298,7 @@ export const UploadPage: React.FC = () => {
         videoUrl: composedVideoUrl ?? clip.videoUrl ?? undefined,
         thumbUrl: clip.videoUrl ?? composedPosterUrl ?? undefined,
       })) ?? []
-    const playerBeatGrid =
-      analysisData.beatTimes?.map((time) => ({ t: time })) ?? []
+    const playerBeatGrid = analysisData.beatTimes?.map((time) => ({ t: time })) ?? []
     const playerLyrics =
       analysisData.sectionLyrics?.map((line) => ({
         t: line.startSec,

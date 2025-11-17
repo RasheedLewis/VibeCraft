@@ -2,6 +2,8 @@
 
 ### *Transform any song into a cinematic, beat-synced visual experience.*
 
+> **🚀 [Production Deployment URLs](./docs/DEPLOYED_URLS.md)**
+
 VibeCraft is an end-to-end AI video generation pipeline built for musicians and creators.
 Upload a song → get a full music video.
 Generate visuals for individual sections → assemble a complete track-long video with beat-matched transitions and a cohesive aesthetic.

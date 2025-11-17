@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.routes_auth import router as auth_router
 from app.core.config import get_settings
 from app.core.database import init_db
 from app.core.logging import configure_logging
@@ -75,11 +76,17 @@ def create_app() -> FastAPI:
         # Validate environment variables
         validate_environment()
 
-        # Initialize database
-        init_db()
+        # Initialize database (handle connection errors gracefully)
+        try:
+            init_db()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Database initialization failed: {e}")
+            logger.warning("Server will start but database operations will fail until database is available")
 
-        # Router registration will be added in later phases
-        # app.include_router(api_router, prefix=settings.api_v1_prefix)
+        # Register routers
+        app.include_router(auth_router, prefix=f"{settings.api_v1_prefix}/auth", tags=["auth"])
 
     return app
 

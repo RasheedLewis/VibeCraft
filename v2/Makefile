@@ -24,20 +24,8 @@ start: dev
 
 install:
 	@echo "Installing backend dependencies..."
-	@PYTHON_CMD=python3; \
-	for py in python3.13 python3.12 python3.11 python3.10 python3; do \
-		if command -v $$py >/dev/null 2>&1; then \
-			PYTHON_VERSION=$$($$py --version 2>&1 | awk '{print $$2}'); \
-			PYTHON_MAJOR=$$(echo $$PYTHON_VERSION | cut -d. -f1); \
-			PYTHON_MINOR=$$(echo $$PYTHON_VERSION | cut -d. -f2); \
-			if [ "$$PYTHON_MAJOR" -eq 3 ] && [ "$$PYTHON_MINOR" -ge 10 ] && [ "$$PYTHON_MINOR" -le 13 ]; then \
-				PYTHON_CMD=$$py; \
-				break; \
-			fi; \
-		fi; \
-	done; \
-	if [ ! -d ".venv" ]; then \
-		$$PYTHON_CMD -m venv .venv; \
+	@if [ ! -d ".venv" ]; then \
+		python3.13 -m venv .venv; \
 	fi
 	@source .venv/bin/activate && pip install -r backend/requirements.txt && deactivate
 	@echo "Installing frontend dependencies..."

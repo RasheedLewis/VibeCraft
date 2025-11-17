@@ -20,27 +20,17 @@ echo "===================="
 echo -e "${BLUE}Working directory: $(pwd)${NC}"
 echo ""
 
-# Check Python version (3.10-3.13 supported, 3.14+ not yet supported by some packages)
-echo -n "Checking Python version (3.10-3.13)... "
-# Try to find a compatible Python version
-PYTHON_CMD="python3"
-for py in python3.13 python3.12 python3.11 python3.10 python3; do
-    if command -v $py >/dev/null 2>&1; then
-        PYTHON_VERSION=$($py --version 2>&1 | awk '{print $2}')
-        PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
-        PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
-        if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 10 ] && [ "$PYTHON_MINOR" -le 13 ]; then
-            PYTHON_CMD=$py
-            echo -e "${GREEN}✓ OK (Python $PYTHON_VERSION via $py)${NC}"
-            break
-        elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 14 ] && [ "$py" = "python3" ]; then
-            echo -e "${YELLOW}⚠ WARNING (Python $PYTHON_VERSION, some packages may not support 3.14+)${NC}"
-            echo -e "${YELLOW}  Consider installing Python 3.10-3.13 for compatibility${NC}"
-            echo -e "${YELLOW}  Continuing anyway...${NC}"
-            break
-        fi
-    fi
-done
+# Check Python version (using Python 3.13)
+echo -n "Checking Python version (3.13)... "
+PYTHON_CMD="python3.13"
+if command -v $PYTHON_CMD >/dev/null 2>&1; then
+    PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')
+    echo -e "${GREEN}✓ OK (Python $PYTHON_VERSION via $PYTHON_CMD)${NC}"
+else
+    echo -e "${RED}✗ FAILED (python3.13 not found)${NC}"
+    echo -e "${YELLOW}  Please install Python 3.13${NC}"
+    exit 1
+fi
 
 # Check Node version
 echo -n "Checking Node version (18+)... "

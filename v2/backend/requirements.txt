@@ -9,7 +9,13 @@ psycopg[binary]>=3.1.0  # PostgreSQL adapter for Python
 # Configuration & Validation
 pydantic>=2.5.0  # Data validation using Python type annotations
 pydantic-settings>=2.1.0  # Settings management using Pydantic models
+pydantic[email]>=2.5.0  # Email validation support (includes email-validator)
+email-validator>=2.0.0  # Email validation for Pydantic EmailStr
 python-dotenv>=1.0.0  # Load environment variables from .env files
+
+# Authentication
+python-jose[cryptography]>=3.3.0  # JWT token encoding/decoding
+bcrypt>=4.0.0  # Password hashing with bcrypt (direct usage, not via passlib)
 
 # File Upload
 python-multipart>=0.0.6  # Support for multipart/form-data (file uploads)

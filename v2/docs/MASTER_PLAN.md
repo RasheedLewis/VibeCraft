@@ -264,21 +264,36 @@ At each phase:
 6. **Incremental**: Implement one service/component at a time
 7. **Document**: Add docstrings, comments (especially librosa)
 8. **Verify**: Run test script, confirm all tests pass
-9. **Refactor**: Clean up, remove dead code, simplify
-10. **Update Memory for Next Phase**: **BEFORE finishing current phase**, update `v2/docs/memory.md` with a 2-or-3-Agent Split Strategy for the *next* phase:
+9. **UI Testing (Frontend Work)**: **MANDATORY** - For any phase that includes frontend work:
+    - **Start frontend dev server**: `cd v2/frontend && npm run dev`
+    - **Manually test all UI components** in the browser:
+      - Navigate to all pages/routes
+      - Test form validation (try invalid inputs, empty fields, etc.)
+      - Test error messages display correctly
+      - Test success states and redirects
+      - Test loading states
+      - Test responsive design (mobile/desktop)
+      - Verify API integration works (check browser Network tab)
+      - Test authentication flows (login, register, logout, protected routes)
+    - **Document UI testing steps** in test script comments or README
+    - **Verify visual appearance** matches design system (if applicable)
+    - **Check browser console** for errors/warnings
+    - **Test with different browsers** if time permits (Chrome, Firefox, Safari)
+10. **Refactor**: Clean up, remove dead code, simplify
+11. **Update Memory for Next Phase**: **BEFORE finishing current phase**, update `v2/docs/memory.md` with a 2-or-3-Agent Split Strategy for the *next* phase:
     - Analyze the next phase's subtasks from `IMPLEMENTATION_PHASES.md`
     - Create a split strategy (2 or 3 agents) with clear role assignments
     - Use descriptive names (e.g., "Backend Agent", "Frontend Agent", "Infrastructure Agent")
     - List subtasks, files to create/update, and dependencies for each agent
     - Note coordination requirements (parallel work, handoff points, etc.)
     - This helps agents coordinate when working on the next phase
-11. **Pre-Commit Verification**: **CRITICAL** - Before committing a phase:
+12. **Pre-Commit Verification**: **CRITICAL** - Before committing a phase:
     - Run `make lint` - Must pass with 0 errors
     - Run `make build` - Must pass with 0 errors
     - Run `make test` - Must pass with 0 failures
     - Verify both frontend AND backend pass all checks
     - **DO NOT commit if any lint/build/test fails**
-12. **Commit Strategy**: Commit entire phase at once, only after all checks pass
+13. **Commit Strategy**: Commit entire phase at once, only after all checks pass
 
 ### Code Quality Standards
 

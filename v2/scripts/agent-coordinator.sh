@@ -29,27 +29,19 @@ init_status_file() {
     if [ ! -f "$STATUS_FILE_PATH" ]; then
         cat > "$STATUS_FILE_PATH" << 'EOF'
 {
-  "phase": 0,
+  "phase": 1,
   "roles": {
-    "backend": {
+    "backend-auth": {
       "assigned": false,
       "agent": null,
       "status": "available",
       "started_at": null,
       "completed_at": null
     },
-    "frontend": {
+    "frontend-auth": {
       "assigned": false,
       "agent": null,
       "status": "available",
-      "started_at": null,
-      "completed_at": null
-    },
-    "infrastructure": {
-      "assigned": false,
-      "agent": null,
-      "status": "blocked",
-      "blocked_by": ["backend", "frontend"],
       "started_at": null,
       "completed_at": null
     }
@@ -80,8 +72,8 @@ write_status() {
 is_role_available() {
     local role=$1
     local status=$(read_status)
-    local assigned=$(echo "$status" | jq -r ".roles.$role.assigned // false")
-    local role_status=$(echo "$status" | jq -r ".roles.$role.status // \"unknown\"")
+    local assigned=$(echo "$status" | jq -r ".roles[\"$role\"].assigned // false")
+    local role_status=$(echo "$status" | jq -r ".roles[\"$role\"].status // \"unknown\"")
     local lock_file="$LOCKS_DIR_PATH/${role}-*.lock"
     
     # Check marker file
@@ -104,7 +96,7 @@ claim_role() {
     if [ -z "$role" ]; then
         echo -e "${RED}Error: Role name required${NC}"
         echo "Usage: $0 claim <role>"
-        echo "Available roles: backend, frontend, infrastructure"
+        echo "Available roles: backend-auth, frontend-auth"
         exit 1
     fi
     
@@ -128,10 +120,10 @@ claim_role() {
     # Update status file
     local status=$(read_status)
     local updated_status=$(echo "$status" | jq \
-        ".roles.$role.assigned = true | \
-         .roles.$role.agent = \"$WORKTREE_ID\" | \
-         .roles.$role.status = \"in_progress\" | \
-         .roles.$role.started_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"")
+        ".roles[\"$role\"].assigned = true | \
+         .roles[\"$role\"].agent = \"$WORKTREE_ID\" | \
+         .roles[\"$role\"].status = \"in_progress\" | \
+         .roles[\"$role\"].started_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"")
     
     write_status "$updated_status"
     
@@ -154,7 +146,7 @@ complete_role() {
     
     # Verify agent owns this role
     local status=$(read_status)
-    local assigned_agent=$(echo "$status" | jq -r ".roles.$role.agent // \"\"")
+    local assigned_agent=$(echo "$status" | jq -r ".roles[\"$role\"].agent // \"\"")
     
     if [ "$assigned_agent" != "$WORKTREE_ID" ]; then
         echo -e "${RED}✗ You don't own role '$role' (owned by: $assigned_agent)${NC}"
@@ -167,22 +159,10 @@ complete_role() {
     
     # Update status file
     local updated_status=$(echo "$status" | jq \
-        ".roles.$role.status = \"completed\" | \
-         .roles.$role.completed_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"")
+        ".roles[\"$role\"].status = \"completed\" | \
+         .roles[\"$role\"].completed_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"")
     
-    # Check if this unblocks other roles
-    # For infrastructure, check if backend and frontend are completed
-    if [ "$role" = "backend" ] || [ "$role" = "frontend" ]; then
-        local backend_status=$(echo "$updated_status" | jq -r ".roles.backend.status")
-        local frontend_status=$(echo "$updated_status" | jq -r ".roles.frontend.status")
-        
-        if [ "$backend_status" = "completed" ] && [ "$frontend_status" = "completed" ]; then
-            updated_status=$(echo "$updated_status" | jq \
-                ".roles.infrastructure.status = \"available\" | \
-                 .roles.infrastructure.blocked_by = []")
-            echo -e "${GREEN}✓ Infrastructure role is now available${NC}"
-        fi
-    fi
+    # Phase 1 roles are independent - no blocking logic needed
     
     write_status "$updated_status"
     
@@ -268,9 +248,9 @@ case "${1:-}" in
         echo "  cleanup           Remove stale lock files"
         echo ""
         echo "Examples:"
-        echo "  $0 claim backend"
+        echo "  $0 claim backend-auth"
         echo "  $0 status"
-        echo "  $0 complete backend"
+        echo "  $0 complete backend-auth"
         exit 1
         ;;
 esac

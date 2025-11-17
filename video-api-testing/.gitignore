@@ -1,0 +1,29 @@
+# Environment
+.env
+
+# Output videos and metadata
+output/
+*.mp4
+*.mov
+*.webm
+
+# Logs
+api_calls.log
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+

@@ -1,0 +1,15 @@
+# Example prompts for testing
+# Lines starting with # are ignored
+# One prompt per line
+
+A futuristic cityscape at sunset with neon lights
+Abstract shapes floating in space with vibrant colors
+Neon lights in Tokyo at night, cyberpunk aesthetic
+Floating geometric shapes in a void, minimalist
+Cinematic landscape with dramatic clouds and lighting
+Particle effects swirling in darkness
+Abstract visualizer with pulsing colors
+Dreamy forest with fog and ethereal light
+Hyperlapse of a city skyline at golden hour
+Vaporwave aesthetic with retro colors and grids
+

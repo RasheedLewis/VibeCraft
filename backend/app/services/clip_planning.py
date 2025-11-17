@@ -32,7 +32,7 @@ def plan_beat_aligned_clips(
     analysis: SongAnalysis,
     clip_count: int,
     min_clip_sec: float = 3.0,
-    max_clip_sec: float = 15.0,
+    max_clip_sec: float = 6.0,
     generator_fps: int = 8,
 ) -> List[ClipPlan]:
     """Plan clip boundaries snapped to beat grid and frame intervals.
@@ -43,7 +43,7 @@ def plan_beat_aligned_clips(
         clip_count: Desired number of clips to produce.
         min_clip_sec: Minimum allowed clip duration.
         max_clip_sec: Maximum allowed clip duration (limited by generation API).
-        generator_fps: Frame rate of the generation model (defaults to 8 for Zeroscope).
+        generator_fps: Frame rate of the generation model (defaults to 8 for Minimax Hailuo).
 
     Returns:
         A list of ClipPlan entries ordered by the clip index.

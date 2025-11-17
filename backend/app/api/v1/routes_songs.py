@@ -358,7 +358,7 @@ def plan_clips_for_song(
     song_id: UUID,
     clip_count: Optional[int] = Query(None, ge=1, le=64),
     min_clip_sec: float = Query(3.0, ge=0.5),
-    max_clip_sec: float = Query(15.0, ge=1.0),
+    max_clip_sec: float = Query(6.0, ge=1.0),
     db: Session = Depends(get_db),
 ) -> ClipPlanBatchResponse:
     song = db.get(Song, song_id)

@@ -21,6 +21,10 @@ class SongRead(BaseModel):
     duration_sec: Optional[float] = None
     description: Optional[str] = None
     attribution: Optional[str] = None
+    composed_video_s3_key: Optional[str] = None
+    composed_video_poster_s3_key: Optional[str] = None
+    composed_video_duration_sec: Optional[float] = None
+    composed_video_fps: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

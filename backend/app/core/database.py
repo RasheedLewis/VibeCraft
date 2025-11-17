@@ -35,6 +35,10 @@ EXPECTED_SONG_COLUMNS: set[str] = {
     "duration_sec",
     "description",
     "attribution",
+        "composed_video_s3_key",
+        "composed_video_poster_s3_key",
+        "composed_video_duration_sec",
+        "composed_video_fps",
     "created_at",
     "updated_at",
 }

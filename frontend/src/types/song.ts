@@ -41,6 +41,8 @@ export interface ClipGenerationSummary {
   progressTotal: number
   clips: SongClipStatus[]
   analysis?: SongAnalysis
+  composedVideoUrl?: string | null
+  composedVideoPosterUrl?: string | null
 }
 
 export interface JobStatusResponse {
@@ -115,6 +117,10 @@ export interface SongRead {
   duration_sec?: number | null
   description?: string | null
   attribution?: string | null
+  composed_video_s3_key?: string | null
+  composed_video_poster_s3_key?: string | null
+  composed_video_duration_sec?: number | null
+  composed_video_fps?: number | null
   created_at: string
   updated_at: string
 }

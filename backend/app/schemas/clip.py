@@ -71,7 +71,9 @@ class ClipGenerationSummary(BaseModel):
     progress_completed: int = Field(..., alias="progressCompleted", ge=0)
     progress_total: int = Field(..., alias="progressTotal", ge=0)
     clips: List[SongClipStatus]
-    analysis: Optional[SongAnalysis]
+    analysis: Optional[SongAnalysis] = None
+    composed_video_url: Optional[str] = Field(None, alias="composedVideoUrl")
+    composed_video_poster_url: Optional[str] = Field(None, alias="composedVideoPosterUrl")
 
     model_config = {"populate_by_name": True, "from_attributes": True}
 

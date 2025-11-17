@@ -28,6 +28,7 @@ from app.services.beat_alignment import (
 )
 from app.services.clip_generation import (
     DEFAULT_MAX_CONCURRENCY,
+    compose_song_video,
     get_clip_generation_summary,
     start_clip_generation_job,
 )
@@ -481,6 +482,58 @@ def generate_clip_batch(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/{song_id}/clips/compose",
+    response_model=ClipGenerationSummary,
+    summary="Compose completed clips into a single video",
+)
+async def compose_completed_clips(
+    song_id: UUID,
+    db: Session = Depends(get_db),
+) -> ClipGenerationSummary:
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    try:
+        summary = get_clip_generation_summary(song_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No clip plans found for this song.",
+        ) from exc
+
+    if summary.total_clips == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No clips available for composition.",
+        )
+    if summary.failed_clips > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Resolve failed clips before composing.",
+        )
+    if summary.completed_clips != summary.total_clips:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Clip generation must be complete before composing.",
+        )
+
+    if summary.composed_video_url:
+        return summary
+
+    try:
+        await asyncio.to_thread(compose_song_video, song_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to compose video for song %s", song_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to compose video. Please try again later.",
+        ) from exc
+
+    return get_clip_generation_summary(song_id)
 
 
 @router.post(

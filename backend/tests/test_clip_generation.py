@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import select
 
+from app.core.config import get_settings
 from app.core.database import init_db, session_scope
 from app.main import create_app
 from app.models.analysis import ClipGenerationJob, SongAnalysisRecord
@@ -281,6 +282,7 @@ def test_get_clip_generation_summary():
     assert summary.failed_clips == 1
     assert summary.processing_clips == 1
     assert len(summary.clips) == 3
+    assert summary.composed_video_url is None
 
     with TestClient(create_app()) as client:
         response = client.get(f"/api/v1/songs/{song_id}/clips/status")
@@ -290,6 +292,66 @@ def test_get_clip_generation_summary():
         assert data["progressCompleted"] == 1
         statuses = {clip["status"] for clip in data["clips"]}
         assert statuses == {"completed", "processing", "failed"}
+
+    _cleanup_song(song_id)
+
+
+def test_compose_endpoint_generates_urls(monkeypatch):
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(16)], clip_count=2)
+
+    with session_scope() as session:
+        clips = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).all()
+        for clip in clips:
+            clip.status = "completed"
+            clip.video_url = f"https://example.com/clip{clip.clip_index}.mp4"
+            session.add(clip)
+        session.commit()
+
+    composed_called: dict[str, bool] = {}
+
+    def _fake_compose(target_song_id: UUID) -> tuple[str, Optional[str]]:
+        composed_called["called"] = True
+        with session_scope() as session:
+            song = session.get(Song, target_song_id)
+            assert song is not None
+            song.composed_video_s3_key = "composed/video.mp4"
+            song.composed_video_poster_s3_key = "composed/poster.jpg"
+            song.composed_video_duration_sec = 42.0
+            song.composed_video_fps = 24
+            session.add(song)
+            session.commit()
+        return "composed/video.mp4", "composed/poster.jpg"
+
+    monkeypatch.setattr("app.services.clip_generation.compose_song_video", _fake_compose)
+    monkeypatch.setattr("app.api.v1.routes_songs.compose_song_video", _fake_compose)
+
+    def _fake_presigned(*, bucket_name: str, key: str, expires_in: int = 3600) -> str:
+        return f"https://cdn/{key}"
+
+    monkeypatch.setattr(
+        "app.services.clip_generation.generate_presigned_get_url",
+        _fake_presigned,
+    )
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "s3_bucket_name", "unit-test-bucket", raising=False)
+
+    with TestClient(create_app()) as client:
+        response = client.post(f"/api/v1/songs/{song_id}/clips/compose")
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["composedVideoUrl"] == "https://cdn/composed/video.mp4"
+        assert data["composedVideoPosterUrl"] == "https://cdn/composed/poster.jpg"
+
+    assert composed_called.get("called") is True
+
+    with session_scope() as session:
+        song = session.get(Song, song_id)
+        assert song is not None
+        assert song.composed_video_s3_key == "composed/video.mp4"
+        assert song.composed_video_poster_s3_key == "composed/poster.jpg"
 
     _cleanup_song(song_id)
 

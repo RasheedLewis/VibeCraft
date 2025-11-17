@@ -14,6 +14,7 @@ import type {
   MoodVector,
   SongUploadResponse,
 } from '../types/song'
+import { MainVideoPlayer } from '../components/MainVideoPlayer'
 
 const ACCEPTED_MIME_TYPES = [
   'audio/mpeg',
@@ -373,16 +374,33 @@ export const UploadPage: React.FC = () => {
   const [clipJobProgress, setClipJobProgress] = useState<number>(0)
   const [clipJobError, setClipJobError] = useState<string | null>(null)
   const [clipSummary, setClipSummary] = useState<ClipGenerationSummary | null>(null)
+  const [isComposing, setIsComposing] = useState<boolean>(false)
+  const [playerActiveClipId, setPlayerActiveClipId] = useState<string | null>(null)
+  const [playerClipSelectionLocked, setPlayerClipSelectionLocked] = useState<boolean>(false)
   const handleCancelClipJob = useCallback(() => {
     if (!clipJobId) return
     setClipJobError('Canceling clip generation is not available yet.')
   }, [clipJobId])
 
-  const handleComposeClips = useCallback(() => {
-    if (!clipSummary) return
+  const handleComposeClips = useCallback(async () => {
+    if (!result?.songId || !clipSummary) return
     if (clipSummary.completedClips !== clipSummary.totalClips) return
-    console.info('Compose action not yet implemented.')
-  }, [clipSummary])
+    if (clipSummary.failedClips > 0 || isComposing) return
+
+    try {
+      setIsComposing(true)
+      setClipJobError(null)
+      const { data } = await apiClient.post<ClipGenerationSummary>(
+        `/songs/${result.songId}/clips/compose`,
+      )
+      setClipSummary(data)
+      setPlayerClipSelectionLocked(false)
+    } catch (err) {
+      setClipJobError(extractErrorMessage(err, 'Unable to compose clips at this time.'))
+    } finally {
+      setIsComposing(false)
+    }
+  }, [clipSummary, isComposing, result?.songId])
 
   const handleGenerateClips = useCallback(async () => {
     if (!result?.songId) return
@@ -439,6 +457,8 @@ export const UploadPage: React.FC = () => {
   const handlePreviewClip = useCallback(
     (clip: SongClipStatus) => {
       if (clip.videoUrl) {
+        setPlayerClipSelectionLocked(true)
+        setPlayerActiveClipId(clip.id)
         window.open(clip.videoUrl, '_blank', 'noopener,noreferrer')
       } else {
         setClipJobError('Preview not available for this clip yet.')
@@ -461,6 +481,22 @@ export const UploadPage: React.FC = () => {
       setClipJobError('Retry is not available yet.')
     },
     [setClipJobError],
+  )
+
+  const handlePlayerClipSelect = useCallback(
+    (clipId: string) => {
+      const targetClip = clipSummary?.clips?.find((clip) => clip.id === clipId)
+      if (!targetClip) {
+        return
+      }
+      if (!clipSummary?.composedVideoUrl && !targetClip.videoUrl) {
+        setClipJobError((prev) => prev ?? 'Clip video is still generating.')
+        return
+      }
+      setPlayerClipSelectionLocked(true)
+      setPlayerActiveClipId(clipId)
+    },
+    [clipSummary?.clips],
   )
   const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
@@ -511,6 +547,9 @@ export const UploadPage: React.FC = () => {
     setClipJobProgress(0)
     setClipJobError(null)
     setClipSummary(null)
+    setIsComposing(false)
+    setPlayerActiveClipId(null)
+    setPlayerClipSelectionLocked(false)
     if (highlightTimeoutRef.current) {
       window.clearTimeout(highlightTimeoutRef.current)
       highlightTimeoutRef.current = null
@@ -648,6 +687,40 @@ export const UploadPage: React.FC = () => {
       setAnalysisData(clipSummary.analysis)
     }
   }, [clipSummary?.analysis, analysisData])
+
+  useEffect(() => {
+    if (!clipSummary?.composedVideoUrl) {
+      return
+    }
+
+    setPlayerClipSelectionLocked((locked) => (locked ? false : locked))
+    setPlayerActiveClipId((current) => (current !== null ? null : current))
+  }, [clipSummary?.composedVideoUrl])
+
+  useEffect(() => {
+    const completedClips =
+      clipSummary?.clips?.filter(
+        (clip) => normalizeClipStatus(clip.status) === 'completed' && !!clip.videoUrl,
+      ) ?? []
+
+    if (!completedClips.length) {
+      setPlayerActiveClipId(null)
+      setPlayerClipSelectionLocked(false)
+      return
+    }
+
+    setPlayerActiveClipId((current) => {
+      if (
+        playerClipSelectionLocked &&
+        current &&
+        completedClips.some((clip) => clip.id === current)
+      ) {
+        return current
+      }
+      const latest = completedClips[completedClips.length - 1]
+      return latest?.id ?? null
+    })
+  }, [clipSummary, playerClipSelectionLocked])
 
   useEffect(() => {
     if (!clipJobId || !result?.songId) return
@@ -1188,6 +1261,40 @@ export const UploadPage: React.FC = () => {
       : (metadata?.fileName ?? songDetails.original_filename)
     const sectionMood = mapMoodToMoodKind(analysisData.moodPrimary ?? '')
 
+    const completedClipEntries =
+      clipSummary?.clips?.filter(
+        (clip) => normalizeClipStatus(clip.status) === 'completed' && !!clip.videoUrl,
+      ) ?? []
+    const composedVideoUrl = clipSummary?.composedVideoUrl ?? null
+    const composedPosterUrl = clipSummary?.composedVideoPosterUrl ?? null
+    const activePlayerClip =
+      completedClipEntries.find((clip) => clip.id === playerActiveClipId) ??
+      completedClipEntries[completedClipEntries.length - 1] ??
+      null
+    const playerVideoUrl = composedVideoUrl ?? activePlayerClip?.videoUrl ?? null
+    const playerPosterUrl = composedPosterUrl ?? activePlayerClip?.videoUrl ?? undefined
+    const playerAudioUrl =
+      composedVideoUrl || !result?.audioUrl ? null : result.audioUrl
+    const playerDurationSec =
+      clipSummary?.songDurationSec ?? durationValue ?? activePlayerClip?.endSec ?? null
+    const playerClips =
+      clipSummary?.clips?.map((clip) => ({
+        id: clip.id,
+        index: clip.clipIndex,
+        startSec: clip.startSec,
+        endSec: clip.endSec,
+        videoUrl: composedVideoUrl ?? clip.videoUrl ?? undefined,
+        thumbUrl: clip.videoUrl ?? composedPosterUrl ?? undefined,
+      })) ?? []
+    const playerBeatGrid =
+      analysisData.beatTimes?.map((time) => ({ t: time })) ?? []
+    const playerLyrics =
+      analysisData.sectionLyrics?.map((line) => ({
+        t: line.startSec,
+        text: line.text,
+        dur: line.endSec - line.startSec,
+      })) ?? []
+
     const clipPanel =
       clipSummary && clipSummary.totalClips > 0
         ? (() => {
@@ -1256,10 +1363,20 @@ export const UploadPage: React.FC = () => {
                 ? `(${clipSummary.processingClips} concurrent)`
                 : undefined
 
+            const hasComposedVideo = Boolean(clipSummary.composedVideoUrl)
             const composeDisabled =
-              total === 0 || completed < total || clipJobStatus === 'failed'
+              total === 0 ||
+              completed < total ||
+              clipJobStatus === 'failed' ||
+              isComposing ||
+              hasComposedVideo
             const cancelDisabled =
               !clipJobId || clipJobStatus === 'completed' || clipJobStatus === 'failed'
+            const composeButtonLabel = isComposing
+              ? 'Composing…'
+              : hasComposedVideo
+                ? 'Composed'
+                : 'Compose when done'
 
             return (
               <section className="space-y-3">
@@ -1327,7 +1444,7 @@ export const UploadPage: React.FC = () => {
                         disabled={composeDisabled}
                         onClick={handleComposeClips}
                       >
-                        Compose when done
+                        {composeButtonLabel}
                       </VCButton>
                     </div>
                   </div>
@@ -1534,6 +1651,34 @@ export const UploadPage: React.FC = () => {
             )}
           </div>
         </div>
+
+        {playerVideoUrl && playerDurationSec ? (
+          <section className="space-y-3">
+            <div className="vc-label">
+              Preview
+              {clipSummary?.completedClips && clipSummary.totalClips
+                ? ` (${clipSummary.completedClips}/${clipSummary.totalClips} clips)`
+                : null}
+            </div>
+            <MainVideoPlayer
+              videoUrl={playerVideoUrl}
+              audioUrl={playerAudioUrl ?? undefined}
+              posterUrl={playerPosterUrl}
+              durationSec={playerDurationSec}
+              clips={playerClips}
+              activeClipId={activePlayerClip?.id ?? undefined}
+              onClipSelect={handlePlayerClipSelect}
+              beatGrid={playerBeatGrid}
+              lyrics={playerLyrics}
+              waveform={waveformValues}
+              onDownload={
+                playerVideoUrl
+                  ? () => window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
+                  : undefined
+              }
+            />
+          </section>
+        ) : null}
 
         {clipPanel}
 

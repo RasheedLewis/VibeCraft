@@ -599,3 +599,35 @@ def verify_composed_video(
     except (KeyError, ValueError, json.JSONDecodeError) as e:
         raise RuntimeError(f"Failed to parse video metadata: {e}") from e
 
+
+def generate_video_poster(
+    video_path: str | Path,
+    output_path: str | Path,
+    time_offset_sec: float = 0.5,
+    ffmpeg_bin: str | None = None,
+) -> None:
+    """
+    Capture a single frame from the composed video to use as a poster/thumbnail.
+
+    Args:
+        video_path: Path to the input video file.
+        output_path: Path where the poster image will be written.
+        time_offset_sec: Timestamp (in seconds) to capture the frame from.
+        ffmpeg_bin: Path to the ffmpeg binary (defaults to config).
+    """
+
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+    offset = max(time_offset_sec, 0.0)
+
+    try:
+        (
+            ffmpeg.input(str(video_path), ss=offset)
+            .output(str(output_path), vframes=1)
+            .overwrite_output()
+            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+        )
+    except ffmpeg.Error as e:  # type: ignore[attr-defined]
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+        raise RuntimeError(f"Failed to generate poster frame: {stderr}") from e
+

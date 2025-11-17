@@ -27,6 +27,10 @@ class Song(SQLModel, table=True):
     duration_sec: Optional[float] = Field(default=None, ge=0)
     description: Optional[str] = Field(default=None)
     attribution: Optional[str] = Field(default=None, max_length=512)
+    composed_video_s3_key: Optional[str] = Field(default=None, max_length=1024)
+    composed_video_poster_s3_key: Optional[str] = Field(default=None, max_length=1024)
+    composed_video_duration_sec: Optional[float] = Field(default=None, ge=0)
+    composed_video_fps: Optional[int] = Field(default=None, ge=1)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(
         default_factory=datetime.utcnow,

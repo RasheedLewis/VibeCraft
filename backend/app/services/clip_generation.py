@@ -3,9 +3,12 @@ from __future__ import annotations
 import logging
 import random
 from collections import Counter
+from pathlib import Path
 from typing import Iterable, List, Optional
 from uuid import UUID, uuid4
+import tempfile
 
+import httpx
 import redis
 from rq import Queue
 from rq.job import Job, get_current_job
@@ -23,6 +26,16 @@ from app.schemas.scene import SceneSpec
 from app.services.scene_planner import build_scene_spec
 from app.services.song_analysis import get_latest_analysis
 from app.services.video_generation import generate_section_video
+from app.services.storage import (
+    download_bytes_from_s3,
+    generate_presigned_get_url,
+    upload_bytes_to_s3,
+)
+from app.services.video_composition import (
+    concatenate_clips,
+    generate_video_poster,
+    normalize_clip,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +192,7 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
 
 def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
     with session_scope() as session:
+        song = session.get(Song, song_id)
         clips = session.exec(
             select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
         ).all()
@@ -195,8 +209,42 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
 
     clip_statuses = [SongClipStatus.model_validate(clip) for clip in clips]
 
-    summary = ClipGenerationSummary(
+    composed_video_url: Optional[str] = None
+    composed_video_poster_url: Optional[str] = None
+    song_duration = float(song.duration_sec) if song and song.duration_sec is not None else None
+
+    if song:
+        settings = get_settings()
+        bucket = settings.s3_bucket_name
+        if song.composed_video_s3_key and bucket:
+            try:
+                composed_video_url = generate_presigned_get_url(
+                    bucket_name=bucket,
+                    key=song.composed_video_s3_key,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Failed to generate composed video URL for song %s: %s", song_id, exc
+                )
+        if song.composed_video_poster_s3_key and bucket:
+            try:
+                composed_video_poster_url = generate_presigned_get_url(
+                    bucket_name=bucket,
+                    key=song.composed_video_poster_s3_key,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Failed to generate composed poster URL for song %s: %s", song_id, exc
+                )
+
+    try:
+        analysis = get_latest_analysis(song_id)
+    except Exception:
+        analysis = None
+
+    return ClipGenerationSummary(
         songId=song_id,
+        songDurationSec=song_duration,
         totalClips=total,
         completedClips=completed,
         failedClips=failed,
@@ -205,21 +253,10 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
         progressCompleted=completed,
         progressTotal=total,
         clips=clip_statuses,
+        analysis=analysis,
+        composedVideoUrl=composed_video_url,
+        composedVideoPosterUrl=composed_video_poster_url,
     )
-
-    with session_scope() as session:
-        song = session.get(Song, song_id)
-        if song and song.duration_sec is not None:
-            summary.songDurationSec = float(song.duration_sec)
-
-    try:
-        analysis = get_latest_analysis(song_id)
-    except Exception:
-        analysis = None
-    if analysis:
-        summary.analysis = analysis
-
-    return summary
 
 
 def _mark_clip_failed(clip_id: UUID, message: str, *, batch_job_id: Optional[str] = None) -> None:
@@ -275,6 +312,132 @@ def _determine_seed_for_clip(clip_id: UUID) -> Optional[int]:
         session.add(clip)
         session.commit()
         return seed
+
+
+def _download_clip_to_path(url: str, destination: Path, timeout: float = 120.0) -> None:
+    try:
+        with httpx.stream("GET", url, timeout=timeout) as response:
+            response.raise_for_status()
+            with destination.open("wb") as output_file:
+                for chunk in response.iter_bytes():
+                    if chunk:
+                        output_file.write(chunk)
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Failed to download clip asset from {url}") from exc
+
+
+def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
+    """
+    Stitch all completed clips for a song into a single video using the processed audio track.
+
+    Returns:
+        Tuple of (video_s3_key, poster_s3_key)
+    """
+
+    settings = get_settings()
+    bucket = settings.s3_bucket_name
+    if not bucket:
+        raise RuntimeError("S3 bucket name is not configured; cannot store composed video.")
+
+    with session_scope() as session:
+        song = session.get(Song, song_id)
+        if not song:
+            raise ValueError(f"Song {song_id} not found")
+        audio_key = song.processed_s3_key or song.original_s3_key
+        if not audio_key:
+            raise RuntimeError("Song audio is unavailable for composition.")
+
+        clips = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).all()
+
+    if not clips:
+        raise RuntimeError("No clips found to compose.")
+
+    completed_clips = [
+        clip for clip in clips if clip.status == "completed" and clip.video_url
+    ]
+    if len(completed_clips) != len(clips):
+        raise RuntimeError("Cannot compose video until all clips are completed.")
+
+    song_duration = None
+    with session_scope() as session:
+        song = session.get(Song, song_id)
+        if song:
+            song_duration = song.duration_sec
+    if song_duration is None:
+        song_duration = sum(clip.duration_sec or 0 for clip in completed_clips)
+
+    with tempfile.TemporaryDirectory(prefix=f"compose-{song_id}-") as tmpdir:
+        temp_dir = Path(tmpdir)
+        normalized_paths: list[Path] = []
+
+        # Download clips and normalize them
+        for clip in completed_clips:
+            source_path = temp_dir / f"clip_{clip.clip_index:03}.mp4"
+            normalized_path = temp_dir / f"clip_{clip.clip_index:03}_normalized.mp4"
+
+            _download_clip_to_path(clip.video_url, source_path)
+            normalize_clip(str(source_path), str(normalized_path))
+            normalized_paths.append(normalized_path)
+
+        # Download audio
+        audio_bytes = download_bytes_from_s3(bucket_name=bucket, key=audio_key)
+        audio_extension = Path(audio_key).suffix or ".wav"
+        audio_path = temp_dir / f"song_audio{audio_extension}"
+        audio_path.write_bytes(audio_bytes)
+
+        # Concatenate clips with audio
+        output_path = temp_dir / "composed_video.mp4"
+        composition_result = concatenate_clips(
+            [str(path) for path in normalized_paths],
+            str(audio_path),
+            str(output_path),
+            song_duration_sec=float(song_duration),
+        )
+
+        # Generate poster frame
+        poster_path = temp_dir / "poster.jpg"
+        try:
+            generate_video_poster(str(output_path), str(poster_path))
+            poster_bytes = poster_path.read_bytes()
+        except Exception:
+            logger.exception("Failed to generate composed video poster for song %s", song_id)
+            poster_bytes = None
+
+        video_bytes = output_path.read_bytes()
+
+    # Upload assets
+    video_key = f"songs/{song_id}/composed/{uuid4()}.mp4"
+    upload_bytes_to_s3(
+        bucket_name=bucket,
+        key=video_key,
+        data=video_bytes,
+        content_type="video/mp4",
+    )
+
+    poster_key: Optional[str] = None
+    if poster_bytes:
+        poster_key = f"songs/{song_id}/composed/{uuid4()}.jpg"
+        upload_bytes_to_s3(
+            bucket_name=bucket,
+            key=poster_key,
+            data=poster_bytes,
+            content_type="image/jpeg",
+        )
+
+    with session_scope() as session:
+        song = session.get(Song, song_id)
+        if not song:
+            raise ValueError(f"Song {song_id} disappeared during composition update.")
+        song.composed_video_s3_key = video_key
+        song.composed_video_poster_s3_key = poster_key
+        song.composed_video_duration_sec = composition_result.duration_sec
+        song.composed_video_fps = composition_result.fps
+        session.add(song)
+        session.commit()
+
+    return video_key, poster_key
 
 
 def _update_clip_generation_job(
@@ -382,6 +545,14 @@ def start_clip_generation_job(
         ).first()
         if existing:
             raise ValueError("A clip generation job is already in progress for this song.")
+
+        song = session.get(Song, song_id)
+        if song:
+            song.composed_video_s3_key = None
+            song.composed_video_poster_s3_key = None
+            song.composed_video_duration_sec = None
+            song.composed_video_fps = None
+            session.add(song)
 
         job_record = ClipGenerationJob(
             id=job_id,

@@ -183,6 +183,10 @@ cython_debug/
 scripts/for-development/output/
 scripts/for-development/tmp/
 
+# Agent coordination (runtime files, not committed)
+.agent-status.json
+.agent-locks/
+
 # Sample/test outputs
 samples/output/
 samples/test-output/

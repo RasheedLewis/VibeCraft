@@ -62,3 +62,4 @@ samples/compTest/testComp*.mp4
 
 
 .trigger
+backend/app.db

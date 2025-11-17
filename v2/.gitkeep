@@ -1,0 +1,7 @@
+# This file ensures the v2/ directory is tracked by git
+# When ready to move v2/ to its own repo:
+# 1. Copy the entire v2/ directory to a new location
+# 2. Initialize a new git repo there: git init
+# 3. Commit all files
+# 4. Optionally remove v2/ from this repo if no longer needed
+

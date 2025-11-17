@@ -1,0 +1,90 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+ENV/
+
+# Build outputs
+dist/
+build/
+frontend/dist/
+frontend/build/
+*.egg-info/
+
+# Cache directories
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.vite/
+.vite-cache/
+.tox/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Media files (large binary files)
+*.mp4
+*.mp3
+*.wav
+*.m4a
+*.flac
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment files (may contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Storage directories (may contain large files)
+storage/
+uploads/
+downloads/
+s3-test/
+
+# Git
+.git/
+
+# Docker
+.dockerignore
+
+# Railway / Vercel
+.railway/
+.vercel/
+
+# Test outputs
+samples/output/
+samples/test-output/
+scripts/for-development/output/
+scripts/for-development/tmp/
+

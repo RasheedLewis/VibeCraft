@@ -2,7 +2,15 @@
 
 ### *Transform any song into a cinematic, beat-synced visual experience.*
 
-> **🚀 [Production Deployment URLs](./docs/DEPLOYED_URLS.md)**
+## 🚀 Production Deployment
+
+**Backend API:** `https://backend-api-production.up.railway.app`  
+**RQ Worker:** `https://rq-worker-production.up.railway.app`  
+**Frontend:** `https://frontend-production.up.railway.app` (pending deployment)
+
+[Railway Dashboard](https://railway.app/project/9d147533-96b0-4aeb-ab3a-502138d87ae7) | [Health Check](https://backend-api-production.up.railway.app/healthz)
+
+---
 
 VibeCraft is an end-to-end AI video generation pipeline built for musicians and creators.
 Upload a song → get a full music video.

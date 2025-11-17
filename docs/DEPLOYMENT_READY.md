@@ -2,8 +2,6 @@
 
 All deployment files have been created and are ready to use. Here's what's been set up:
 
-> **📋 See [DEPLOYED_URLS.md](./DEPLOYED_URLS.md) for production service URLs**
-
 ## Files Created
 
 ### Docker Configuration

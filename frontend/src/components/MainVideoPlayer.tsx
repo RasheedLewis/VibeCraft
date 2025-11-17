@@ -468,10 +468,14 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         audioEl.pause()
         videoEl?.pause()
       } else {
-        videoEl && (videoEl.muted = true)
+        if (videoEl) {
+          videoEl.muted = true
+        }
         const clip = resolveClipForTime(audioEl.currentTime)
         setVideoPlaybackTime(audioEl.currentTime, clip)
-        const playPromises: Array<Promise<unknown>> = [audioEl.play().catch(() => undefined)]
+        const playPromises: Array<Promise<unknown>> = [
+          audioEl.play().catch(() => undefined),
+        ]
         if (videoEl) {
           playPromises.push(videoEl.play().catch(() => undefined))
         }
@@ -601,7 +605,12 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   return (
     <div className="vc-card p-0 overflow-hidden" onKeyDown={onKey} tabIndex={0}>
       <div className="relative bg-black">
-        <audio ref={audioRef} src={audioUrl ?? undefined} preload="auto" className="hidden" />
+        <audio
+          ref={audioRef}
+          src={audioUrl ?? undefined}
+          preload="auto"
+          className="hidden"
+        />
         <video
           ref={videoRef}
           src={videoUrl || undefined}
@@ -618,7 +627,11 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
               <SkipBackIcon className="h-4 w-4" />
             </TransportButton>
             <TransportButton onClick={togglePlay} title="Play/Pause (Space/K)">
-              {isPlaying ? <PauseIcon className="h-5 w-5" /> : <PlayIcon className="h-5 w-5" />}
+              {isPlaying ? (
+                <PauseIcon className="h-5 w-5" />
+              ) : (
+                <PlayIcon className="h-5 w-5" />
+              )}
             </TransportButton>
             <TransportButton onClick={() => jump(5)} title="Forward 5s (L)">
               <SkipForwardIcon className="h-4 w-4" />
@@ -678,12 +691,14 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
             {pipSupported && Boolean(videoUrl) && (
               <TransportButton
                 onClick={async () => {
-                  const element: any = videoRef.current
+                  const element = videoRef.current
                   if (!element) return
                   if (document.pictureInPictureElement) {
-                    await (document as any).exitPictureInPicture?.()
+                    await (
+                      document as { exitPictureInPicture?: () => Promise<void> }
+                    ).exitPictureInPicture?.()
                   } else {
-                    await element.requestPictureInPicture?.()
+                    await (element as HTMLVideoElement).requestPictureInPicture?.()
                   }
                 }}
                 title="Picture-in-picture"
@@ -704,8 +719,16 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
 
         {(aMark != null || bMark != null) && (
           <div className="pointer-events-none absolute inset-x-0 bottom-20 h-0">
-            {aMark != null && <Marker time={aMark} duration={durationSec} color="bg-vc-accent-primary" />}
-            {bMark != null && <Marker time={bMark} duration={durationSec} color="bg-vc-accent-secondary" />}
+            {aMark != null && (
+              <Marker time={aMark} duration={durationSec} color="bg-vc-accent-primary" />
+            )}
+            {bMark != null && (
+              <Marker
+                time={bMark}
+                duration={durationSec}
+                color="bg-vc-accent-secondary"
+              />
+            )}
           </div>
         )}
 
@@ -746,10 +769,18 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
 
         <div className="mt-2 flex items-center gap-2">
           <span className="vc-badge">A/B Loop</span>
-          <button className="vc-btn-secondary vc-btn-sm" onClick={() => setAMark(current)} title="Set A (a)">
+          <button
+            className="vc-btn-secondary vc-btn-sm"
+            onClick={() => setAMark(current)}
+            title="Set A (a)"
+          >
             <ScissorsIcon className="mr-1 h-3.5 w-3.5" /> Set A
           </button>
-          <button className="vc-btn-secondary vc-btn-sm" onClick={() => setBMark(current)} title="Set B (b)">
+          <button
+            className="vc-btn-secondary vc-btn-sm"
+            onClick={() => setBMark(current)}
+            title="Set B (b)"
+          >
             <ScissorsIcon className="mr-1 h-3.5 w-3.5" /> Set B
           </button>
           <button
@@ -760,7 +791,8 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           </button>
           {(aMark != null || bMark != null) && (
             <span className="ml-2 text-[11px] text-vc-text-muted">
-              A: {aMark != null ? fmtTime(aMark) : '--:--'} • B: {bMark != null ? fmtTime(bMark) : '--:--'}
+              A: {aMark != null ? fmtTime(aMark) : '--:--'} • B:{' '}
+              {bMark != null ? fmtTime(bMark) : '--:--'}
             </span>
           )}
         </div>
@@ -778,7 +810,10 @@ const TransportButton: React.FC<{
   <button
     onClick={onClick}
     title={title}
-    className={clsx('pointer-events-auto vc-icon-btn', selected && 'vc-icon-btn-selected')}
+    className={clsx(
+      'pointer-events-auto vc-icon-btn',
+      selected && 'vc-icon-btn-selected',
+    )}
   >
     {children}
   </button>
@@ -862,4 +897,3 @@ const WaveBars: React.FC<{ duration: number; waveform?: number[] }> = ({ wavefor
     </div>
   )
 }
-

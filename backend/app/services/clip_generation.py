@@ -32,6 +32,7 @@ from app.services.storage import (
     generate_presigned_get_url,
     upload_bytes_to_s3,
 )
+from app.services.composition_job import update_job_progress
 from app.services.video_composition import (
     concatenate_clips,
     generate_video_poster,
@@ -372,7 +373,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         Tuple of (video_s3_key, poster_s3_key)
     """
     if job_id:
-        from app.services.composition_job import update_job_progress
         update_job_progress(job_id, 10, "processing")
 
     settings = get_settings()
@@ -468,7 +468,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         song_duration = sum(clip.duration_sec or 0 for clip in completed_clips)
 
     if job_id:
-        from app.services.composition_job import update_job_progress
         update_job_progress(job_id, 20, "processing")  # Starting download
 
     with tempfile.TemporaryDirectory(prefix=f"compose-{song_id}-") as tmpdir:
@@ -528,7 +527,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
             
             # Update progress: 20-40% for downloading clips
             if job_id:
-                from app.services.composition_job import update_job_progress
                 download_progress = 20 + int((idx + 1) / total_clips * 20)
                 update_job_progress(job_id, download_progress, "processing")
             
@@ -537,7 +535,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
             
             # Update progress: 40-65% for normalizing clips
             if job_id:
-                from app.services.composition_job import update_job_progress
                 normalize_progress = 40 + int((idx + 1) / total_clips * 25)
                 update_job_progress(job_id, normalize_progress, "processing")
 
@@ -548,7 +545,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         audio_path.write_bytes(audio_bytes)
 
         if job_id:
-            from app.services.composition_job import update_job_progress
             update_job_progress(job_id, 65, "processing")  # Starting concatenation
 
         # Concatenate clips with audio
@@ -562,7 +558,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         )
         
         if job_id:
-            from app.services.composition_job import update_job_progress
             update_job_progress(job_id, 85, "processing")  # Concatenation complete
 
         # Generate poster frame
@@ -577,7 +572,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         video_bytes = output_path.read_bytes()
 
     if job_id:
-        from app.services.composition_job import update_job_progress
         update_job_progress(job_id, 90, "processing")  # Starting upload
 
     # Upload assets
@@ -600,7 +594,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         )
     
     if job_id:
-        from app.services.composition_job import update_job_progress
         update_job_progress(job_id, 95, "processing")  # Upload complete
 
     with session_scope() as session:
@@ -615,7 +608,6 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         session.commit()
 
     if job_id:
-        from app.services.composition_job import update_job_progress
         update_job_progress(job_id, 100, "completed")  # Composition complete
 
     return video_key, poster_key

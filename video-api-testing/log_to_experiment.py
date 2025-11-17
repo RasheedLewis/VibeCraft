@@ -75,33 +75,64 @@ def format_experiment_entry(data: dict) -> str:
     else:
         exp_name = data["timestamp_str"]
     
-    # Extract parameters
-    num_frames = data["params"].get("num_frames", "N/A")
-    fps = data["params"].get("fps", "N/A")
-    width = data["params"].get("width", "N/A")
-    height = data["params"].get("height", "N/A")
-    seed = data["params"].get("seed")
+    model = data["model"]
+    params = data["params"]
     
-    # Format parameters line
-    params_parts = []
-    if num_frames != "N/A" and fps != "N/A":
-        params_parts.append(f"{num_frames} frames @ {fps}fps")
-    resolution = f"{width}x{height}" if width != "N/A" and height != "N/A" else None
-    if resolution:
-        params_parts.append(resolution)
-    if seed is not None:
-        params_parts.append(f"seed: {seed}")
-    params_str = ", ".join(params_parts) if params_parts else "N/A"
+    # Check if this is a minimax/hailuo model
+    is_minimax = "minimax" in model.lower() or "hailuo" in model.lower()
     
-    # Calculate video duration from num_frames / fps
-    if num_frames != "N/A" and fps != "N/A":
-        try:
-            video_duration = float(num_frames) / float(fps)
-            video_duration_str = f"{video_duration:.1f}s"
-        except (ValueError, TypeError):
-            video_duration_str = "N/A"
+    # Format parameters and calculate video duration based on model type
+    if is_minimax:
+        # Minimax/Hailuo schema: duration, resolution, prompt_optimizer
+        params_parts = []
+        duration = params.get("duration")
+        resolution = params.get("resolution")
+        prompt_optimizer = params.get("prompt_optimizer")
+        
+        if duration is not None:
+            params_parts.append(f"duration: {duration}s")
+        if resolution:
+            params_parts.append(f"resolution: {resolution}")
+        if prompt_optimizer is not None:
+            params_parts.append(f"prompt_optimizer: {prompt_optimizer}")
+        if params.get("first_frame_image"):
+            params_parts.append("first_frame_image: [provided]")
+        
+        params_str = ", ".join(params_parts) if params_parts else "default"
+        
+        # Video duration is directly from duration parameter
+        if duration is not None:
+            video_duration_str = f"{duration}.0s"
+        else:
+            video_duration_str = "N/A (using model default)"
     else:
-        video_duration_str = "N/A"
+        # Standard schema: num_frames, fps, width, height, seed
+        num_frames = params.get("num_frames", "N/A")
+        fps = params.get("fps", "N/A")
+        width = params.get("width", "N/A")
+        height = params.get("height", "N/A")
+        seed = params.get("seed")
+        
+        # Format parameters line
+        params_parts = []
+        if num_frames != "N/A" and fps != "N/A":
+            params_parts.append(f"{num_frames} frames @ {fps}fps")
+        resolution = f"{width}x{height}" if width != "N/A" and height != "N/A" else None
+        if resolution:
+            params_parts.append(resolution)
+        if seed is not None:
+            params_parts.append(f"seed: {seed}")
+        params_str = ", ".join(params_parts) if params_parts else "N/A"
+        
+        # Calculate video duration from num_frames / fps
+        if num_frames != "N/A" and fps != "N/A":
+            try:
+                video_duration = float(num_frames) / float(fps)
+                video_duration_str = f"{video_duration:.1f}s"
+            except (ValueError, TypeError):
+                video_duration_str = "N/A"
+        else:
+            video_duration_str = "N/A"
     
     # Format API call duration
     if data["duration"]:
@@ -122,7 +153,7 @@ def format_experiment_entry(data: dict) -> str:
 **Model:** {data['model']}  
 **Parameters:** {params_str}  
 **Video URL:** {video_url}  
-**Video Duration:** {video_duration_str} (calculated from frames/fps)  
+**Video Duration:** {video_duration_str}  
 **API Call Duration:** {api_duration_str}  
 **Observations:** [Your notes about quality, style, what worked/didn't work]
 

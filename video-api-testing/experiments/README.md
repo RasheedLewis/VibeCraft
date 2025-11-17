@@ -37,3 +37,13 @@ Create markdown files or use the template below to track:
 **API Call Duration:** 58.6s  
 **Observations:** [Your notes about quality, style, what worked/didn't work]
 
+## Experiment: 2025-11-17 12:18:48
+
+**Prompt:** A futuristic cityscape at sunset with neon lights  
+**Model:** minimax/hailuo-2.3  
+**Parameters:** default  
+**Video URL:** https://replicate.delivery/xezq/a7m1aPdMIVI7ApeG4Ad6IoVzTIvbPr80nn0TrI72EVyCyI1KA/tmph07ow0du.mp4  
+**Video Duration:** N/A (using model default)  
+**API Call Duration:** 104.5s  
+**Observations:** So much better than crappy zeroscope
+

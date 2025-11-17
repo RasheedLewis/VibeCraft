@@ -88,6 +88,15 @@ fi
 cd ..
 
 echo -e "\n${GREEN}✓ All checks passed!${NC}\n"
+
+# Run database migrations
+echo -e "${YELLOW}Running database migrations...${NC}"
+make migrate || {
+    echo -e "${RED}✗ Migration failed${NC}"
+    exit 1
+}
+echo -e "${GREEN}✓ Migrations complete${NC}\n"
+
 echo -e "${BLUE}Starting VibeCraft development environment...${NC}"
 
 # Function to cleanup on exit

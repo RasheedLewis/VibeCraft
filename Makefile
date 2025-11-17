@@ -1,10 +1,11 @@
-.PHONY: help lint lint-fix format format-fix lint-all build test dev start stop clean
+.PHONY: help lint lint-fix format format-fix lint-all build test dev start stop clean migrate
 
 help:
 	@echo "VibeCraft Development Commands"
 	@echo ""
 	@echo "  make dev          - Start all services (backend, worker, frontend)"
 	@echo "  make start        - Alias for 'make dev'"
+	@echo "  make migrate      - Run database migrations"
 	@echo "  make lint         - Run all linters"
 	@echo "  make lint-fix     - Auto-fix linting issues"
 	@echo "  make format       - Check code formatting"
@@ -19,6 +20,11 @@ dev:
 	@bash scripts/dev.sh
 
 start: dev
+
+migrate:
+	@echo "Running database migrations..."
+	@bash -c "source .venv/bin/activate && cd backend && python -m app.core.migrations && deactivate"
+	@echo "✓ Migrations complete"
 
 lint:
 	@echo "Linting frontend..."

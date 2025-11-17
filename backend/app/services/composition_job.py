@@ -135,6 +135,104 @@ def run_composition_job(
         raise
 
 
+def enqueue_song_clip_composition(song_id: UUID) -> tuple[str, CompositionJob]:
+    """
+    Create a composition job for SongClips, enqueue to RQ, and return job ID.
+    
+    This function automatically gets all completed SongClips for the song.
+
+    Args:
+        song_id: Song ID
+
+    Returns:
+        Tuple of (job_id, CompositionJob record)
+
+    Raises:
+        ValueError: If song not found or no completed clips available
+    """
+    from app.models.clip import SongClip
+    from sqlmodel import select
+
+    with session_scope() as session:
+        # Verify song exists
+        song = session.get(Song, song_id)
+        if not song:
+            raise ValueError(f"Song {song_id} not found")
+
+        # Get all completed SongClips for this song
+        statement = (
+            select(SongClip)
+            .where(SongClip.song_id == song_id)
+            .where(SongClip.status == "completed")
+            .where(SongClip.video_url.isnot(None))  # type: ignore[attr-defined]
+            .order_by(SongClip.clip_index)
+        )
+        clips = session.exec(statement).all()
+
+        if not clips:
+            raise ValueError(f"No completed clips found for song {song_id}")
+
+        # Store clip IDs as JSON (no metadata needed for SongClip composition)
+        clip_ids_json = json.dumps([str(clip.id) for clip in clips])
+        clip_metadata_json = json.dumps([])  # Empty metadata for SongClip-based composition
+
+        # Enqueue to RQ
+        queue = _get_queue()
+        job_id = f"composition-songclip-{uuid4()}"
+        job: Job = queue.enqueue(
+            run_song_clip_composition_job,
+            song_id,
+            job_id=job_id,
+            meta={"progress": 0},
+        )
+
+        # Create job record
+        composition_job = CompositionJob(
+            id=job.id,
+            song_id=song_id,
+            status="queued",
+            progress=0,
+            clip_ids=clip_ids_json,
+            clip_metadata=clip_metadata_json,
+        )
+        session.add(composition_job)
+        session.commit()
+        session.refresh(composition_job)
+
+        logger.info(
+            f"Enqueued SongClip composition job {job.id} for song {song_id} with {len(clips)} clips"
+        )
+
+        return job.id, composition_job
+
+
+def run_song_clip_composition_job(song_id: UUID) -> dict[str, Any]:
+    """
+    RQ worker function to run SongClip-based composition job.
+
+    Args:
+        song_id: Song ID
+
+    Returns:
+        Dict with job result
+    """
+    current_job = get_current_job()
+    job_id = current_job.id if current_job else None
+
+    if job_id is None:
+        raise RuntimeError("Cannot run composition job: no RQ job context")
+
+    try:
+        from app.services.clip_generation import compose_song_video
+
+        compose_song_video(song_id, job_id=job_id)
+        return {"status": "completed", "song_id": str(song_id)}
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("SongClip composition failed for song_id=%s", song_id)
+        fail_job(job_id, str(exc))
+        raise
+
+
 def get_job_status(job_id: str) -> CompositionJobStatusResponse:
     """
     Get composition job status.

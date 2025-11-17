@@ -5,6 +5,8 @@ import { SectionCard, SectionMoodTag, VCCard, VCButton } from '../components/vib
 import type { MoodKind } from '../components/vibecraft/SectionMoodTag'
 import type {
   ClipGenerationSummary,
+  ComposeVideoResponse,
+  CompositionJobStatusResponse,
   JobStatusResponse,
   SongAnalysis,
   SongAnalysisJobResponse,
@@ -375,8 +377,11 @@ export const UploadPage: React.FC = () => {
   const [clipJobError, setClipJobError] = useState<string | null>(null)
   const [clipSummary, setClipSummary] = useState<ClipGenerationSummary | null>(null)
   const [isComposing, setIsComposing] = useState<boolean>(false)
+  const [composeJobId, setComposeJobId] = useState<string | null>(null)
+  const [composeJobProgress, setComposeJobProgress] = useState<number>(0)
   const [playerActiveClipId, setPlayerActiveClipId] = useState<string | null>(null)
-  const [playerClipSelectionLocked, setPlayerClipSelectionLocked] = useState<boolean>(false)
+  const [playerClipSelectionLocked, setPlayerClipSelectionLocked] =
+    useState<boolean>(false)
   const handleCancelClipJob = useCallback(() => {
     if (!clipJobId) return
     setClipJobError('Canceling clip generation is not available yet.')
@@ -390,14 +395,14 @@ export const UploadPage: React.FC = () => {
     try {
       setIsComposing(true)
       setClipJobError(null)
-      const { data } = await apiClient.post<ClipGenerationSummary>(
-        `/songs/${result.songId}/clips/compose`,
+      setComposeJobProgress(0)
+      // Use async endpoint that returns job ID
+      const { data } = await apiClient.post<ComposeVideoResponse>(
+        `/songs/${result.songId}/clips/compose/async`,
       )
-      setClipSummary(data)
-      setPlayerClipSelectionLocked(false)
+      setComposeJobId(data.jobId)
     } catch (err) {
       setClipJobError(extractErrorMessage(err, 'Unable to compose clips at this time.'))
-    } finally {
       setIsComposing(false)
     }
   }, [clipSummary, isComposing, result?.songId])
@@ -496,7 +501,7 @@ export const UploadPage: React.FC = () => {
       setPlayerClipSelectionLocked(true)
       setPlayerActiveClipId(clipId)
     },
-    [clipSummary?.clips],
+    [clipSummary?.clips, clipSummary?.composedVideoUrl],
   )
   const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
@@ -589,11 +594,11 @@ export const UploadPage: React.FC = () => {
           `/songs/${songId}/clips/status`,
         )
         setClipSummary(data)
-        
+
         // Update clip job status if there's an active job
         if (data.clips && data.clips.length > 0) {
           const hasActiveJob = data.clips.some(
-            (clip) => clip.status === 'processing' || clip.status === 'queued'
+            (clip) => clip.status === 'processing' || clip.status === 'queued',
           )
           if (hasActiveJob && !clipJobId) {
             const firstClipWithJob = data.clips.find((clip) => clip.rqJobId)
@@ -641,30 +646,32 @@ export const UploadPage: React.FC = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const songIdParam = urlParams.get('songId')
-    
+
     if (songIdParam && !result) {
       // Load existing song by ID
       const loadSongById = async () => {
         try {
           setStage('uploaded')
           setResult({ songId: songIdParam } as SongUploadResponse)
-          
+
           // Fetch song details and analysis
           await fetchSongDetails(songIdParam)
-          const analysis = await apiClient.get<SongAnalysis>(`/songs/${songIdParam}/analysis`)
+          const analysis = await apiClient.get<SongAnalysis>(
+            `/songs/${songIdParam}/analysis`,
+          )
           setAnalysisData(analysis.data)
           setAnalysisState('completed')
-          
+
           // Fetch clip summary
           const { data: clipData } = await apiClient.get<ClipGenerationSummary>(
             `/songs/${songIdParam}/clips/status`,
           )
           setClipSummary(clipData)
-          
+
           // Check if there's an active clip job
           if (clipData.clips && clipData.clips.length > 0) {
             const hasActiveJob = clipData.clips.some(
-              (clip) => clip.status === 'processing' || clip.status === 'queued'
+              (clip) => clip.status === 'processing' || clip.status === 'queued',
             )
             if (hasActiveJob) {
               const firstClipWithJob = clipData.clips.find((clip) => clip.rqJobId)
@@ -672,7 +679,10 @@ export const UploadPage: React.FC = () => {
                 setClipJobId(firstClipWithJob.rqJobId)
                 setClipJobStatus('processing')
               }
-            } else if (clipData.completedClips === clipData.totalClips && clipData.totalClips > 0) {
+            } else if (
+              clipData.completedClips === clipData.totalClips &&
+              clipData.totalClips > 0
+            ) {
               setClipJobStatus('completed')
             }
           }
@@ -682,7 +692,7 @@ export const UploadPage: React.FC = () => {
           setStage('error')
         }
       }
-      
+
       void loadSongById()
     }
   }, [result, fetchSongDetails])
@@ -847,33 +857,58 @@ export const UploadPage: React.FC = () => {
     void fetchClipSummary(result.songId)
   }, [result?.songId, clipJobId, clipSummary, fetchClipSummary])
 
-  // Poll for composed video if composition just completed
+  // Poll for composition job progress
   useEffect(() => {
-    if (!result?.songId || !clipSummary || clipSummary.composedVideoUrl) {
-      return
-    }
-    
-    // If all clips are completed but no composed video yet, poll for it
-    if (
-      clipSummary.completedClips === clipSummary.totalClips &&
-      clipSummary.totalClips > 0 &&
-      !clipSummary.composedVideoUrl
-    ) {
-      const pollInterval = setInterval(() => {
-        void fetchClipSummary(result.songId)
-      }, 2000) // Poll every 2 seconds
+    if (!composeJobId || !result?.songId) return
 
-      // Stop polling after 30 seconds
-      const timeout = setTimeout(() => {
-        clearInterval(pollInterval)
-      }, 30000)
+    let cancelled = false
+    let timeoutId: number | undefined
 
-      return () => {
-        clearInterval(pollInterval)
-        clearTimeout(timeout)
+    const pollComposeJob = async () => {
+      try {
+        const { data } = await apiClient.get<CompositionJobStatusResponse>(
+          `/songs/${result.songId}/compose/${composeJobId}/status`,
+        )
+        if (cancelled) return
+
+        setComposeJobProgress(data.progress ?? 0)
+
+        if (data.status === 'completed') {
+          setIsComposing(false)
+          setComposeJobId(null)
+          // Refresh clip summary to get composed video URL
+          void fetchClipSummary(result.songId)
+          return
+        }
+
+        if (data.status === 'failed') {
+          setIsComposing(false)
+          setComposeJobId(null)
+          setClipJobError(data.error ?? 'Composition failed')
+          return
+        }
+
+        // Continue polling
+        timeoutId = window.setTimeout(pollComposeJob, 2_000) // Poll every 2 seconds
+      } catch (err) {
+        if (!cancelled) {
+          setClipJobError(
+            extractErrorMessage(err, 'Unable to fetch composition progress.'),
+          )
+          timeoutId = window.setTimeout(pollComposeJob, 5_000) // Retry after 5 seconds on error
+        }
       }
     }
-  }, [result?.songId, clipSummary, fetchClipSummary])
+
+    pollComposeJob()
+
+    return () => {
+      cancelled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [composeJobId, result?.songId, fetchClipSummary])
 
   useEffect(() => {
     if (!result?.songId) {
@@ -1365,8 +1400,7 @@ export const UploadPage: React.FC = () => {
       null
     const playerVideoUrl = composedVideoUrl ?? activePlayerClip?.videoUrl ?? null
     const playerPosterUrl = composedPosterUrl ?? activePlayerClip?.videoUrl ?? undefined
-    const playerAudioUrl =
-      composedVideoUrl || !result?.audioUrl ? null : result.audioUrl
+    const playerAudioUrl = composedVideoUrl || !result?.audioUrl ? null : result.audioUrl
     const playerDurationSec =
       clipSummary?.songDurationSec ?? durationValue ?? activePlayerClip?.endSec ?? null
     const playerClips =
@@ -1378,8 +1412,7 @@ export const UploadPage: React.FC = () => {
         videoUrl: composedVideoUrl ?? clip.videoUrl ?? undefined,
         thumbUrl: clip.videoUrl ?? composedPosterUrl ?? undefined,
       })) ?? []
-    const playerBeatGrid =
-      analysisData.beatTimes?.map((time) => ({ t: time })) ?? []
+    const playerBeatGrid = analysisData.beatTimes?.map((time) => ({ t: time })) ?? []
     const playerLyrics =
       analysisData.sectionLyrics?.map((line) => ({
         t: line.startSec,
@@ -1508,17 +1541,39 @@ export const UploadPage: React.FC = () => {
                     </p>
                   )}
 
+                  {isComposing && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">
+                        <span>Composing video…</span>
+                        <span>{Math.round(composeJobProgress)}%</span>
+                      </div>
+                      <div className="relative h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
+                        <div
+                          className={clsx(
+                            'absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary transition-all duration-500',
+                            'vc-gradient-shift-animate',
+                          )}
+                          style={{
+                            width: `${Math.min(100, Math.max(2, composeJobProgress))}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div className="text-xs text-vc-text-muted">
-                      {clipJobStatus === 'failed' && !clipJobError
-                        ? 'Clip generation failed. Retry once available.'
-                        : clipJobStatus === 'processing'
-                          ? 'Clip generation is running in the background.'
-                          : clipJobStatus === 'completed'
-                            ? 'All clips are ready for composition.'
-                            : clipJobStatus === 'queued'
-                              ? 'Clip jobs are queued and will start soon.'
-                              : null}
+                      {isComposing
+                        ? 'Composition is running in the background.'
+                        : clipJobStatus === 'failed' && !clipJobError
+                          ? 'Clip generation failed. Retry once available.'
+                          : clipJobStatus === 'processing'
+                            ? 'Clip generation is running in the background.'
+                            : clipJobStatus === 'completed'
+                              ? 'All clips are ready for composition.'
+                              : clipJobStatus === 'queued'
+                                ? 'Clip jobs are queued and will start soon.'
+                                : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <VCButton

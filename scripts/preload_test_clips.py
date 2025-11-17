@@ -18,15 +18,18 @@ Usage:
     # List available songs
     python scripts/preload_test_clips.py --list-songs
 
-    # Upload clips from Desktop (default names) - auto-plans clips and starts servers
+    # Upload clips from Desktop (default names) - auto-detects most recent song
+    python scripts/preload_test_clips.py
+
+    # Use clips from samples directory (auto-detects most recent song)
+    python scripts/preload_test_clips.py --samples
+
+    # Specify a song ID explicitly
     python scripts/preload_test_clips.py --song-id <song_id>
 
     # Upload specific clip files
     python scripts/preload_test_clips.py --song-id <song_id> \
         --clips ~/Desktop/clip1.mp4 ~/Desktop/clip2.mp4 ~/Desktop/clip3.mp4 ~/Desktop/clip4.mp4
-
-    # Use clips from samples directory
-    python scripts/preload_test_clips.py --song-id <song_id> --samples
 
     # Auto-detect number of clips from files provided
     python scripts/preload_test_clips.py --song-id <song_id> --clips ~/Desktop/clip*.mp4
@@ -206,6 +209,8 @@ def start_servers_and_open_browser(song_id: Optional[UUID] = None) -> None:
     backend_process = Popen(
         [str(venv_python), "-m", "uvicorn", "app.main:app", "--reload"],
         cwd=project_root / "backend",
+        stdout=None,  # Let output go to terminal
+        stderr=None,  # Let errors go to terminal
     )
     
     # Wait for backend to be ready
@@ -215,10 +220,14 @@ def start_servers_and_open_browser(song_id: Optional[UUID] = None) -> None:
         return
     
     print("Starting RQ worker...")
+    print("  Note: RQ worker logs will appear below")
+    print("  " + "-" * 56)
     worker_process = Popen(
-        [str(venv_bin / "rq"), "worker", "ai_music_video"],
+        [str(venv_bin / "rq"), "worker", "ai_music_video", "--verbose"],
         cwd=project_root / "backend",
         env={**os.environ, "OBJC_DISABLE_INITIALIZE_FORK_SAFETY": "YES"},
+        stdout=None,  # Let output go to terminal
+        stderr=None,  # Let errors go to terminal
     )
     time.sleep(1)
     
@@ -226,6 +235,8 @@ def start_servers_and_open_browser(song_id: Optional[UUID] = None) -> None:
     frontend_process = Popen(
         ["npm", "run", "dev", "--", "--host"],
         cwd=project_root / "frontend",
+        stdout=None,  # Let output go to terminal
+        stderr=None,  # Let errors go to terminal
     )
     time.sleep(3)  # Give frontend time to start
     
@@ -244,10 +255,19 @@ def start_servers_and_open_browser(song_id: Optional[UUID] = None) -> None:
     webbrowser.open(url)
     print(f"\nOpened: {url}")
     
-    print("\nServers are running in the background.")
-    print("Press Ctrl+C to stop all servers (or close this terminal)")
-    print("\nNote: The servers will continue running after this script exits.")
-    print("      To stop them, run: make stop")
+    print("\n" + "="*60)
+    print("Servers are running in the background.")
+    print("="*60)
+    print("\n📋 Logs:")
+    print("  - Backend API: Check the terminal output above")
+    print("  - RQ Worker:   Check the terminal output above (look for 'INFO' messages)")
+    print("  - Frontend:    Check the terminal output above")
+    print("\n💡 Tip: Watch for RQ worker logs like:")
+    print("     'INFO - Enqueued SongClip composition job...'")
+    print("     'INFO - SongClip composition failed...' (if errors occur)")
+    print("\n⚠️  Press Ctrl+C to stop all servers (or close this terminal)")
+    print("   Note: The servers will continue running after this script exits.")
+    print("         To stop them, run: make stop")
 
 
 def check_song_audio_in_s3(song: Song, song_id: UUID) -> tuple[bool, Optional[str]]:
@@ -395,7 +415,7 @@ def ensure_song_analysis(song_id: UUID, song_duration: float) -> None:
 
 
 def plan_clips_if_needed(song_id: UUID, clip_count: int, song_duration: float) -> None:
-    """Plan clips for song if they don't exist."""
+    """Plan clips for song if they don't exist or if count doesn't match."""
     with session_scope() as session:
         statement = (
             select(SongClip)
@@ -404,8 +424,17 @@ def plan_clips_if_needed(song_id: UUID, clip_count: int, song_duration: float) -
         )
         existing_clips = session.exec(statement).all()
 
-        if existing_clips:
+        # If clips exist and count matches, we're good
+        if existing_clips and len(existing_clips) == clip_count:
             return
+        
+        # If clips exist but count doesn't match, delete them and re-plan
+        if existing_clips:
+            print(f"  Re-planning clips: existing count ({len(existing_clips)}) doesn't match required ({clip_count})")
+            for clip in existing_clips:
+                session.delete(clip)
+            session.commit()
+            print("  ✓ Deleted existing clips for re-planning")
 
         print(f"  Planning {clip_count} clips for song...")
 
@@ -418,18 +447,34 @@ def plan_clips_if_needed(song_id: UUID, clip_count: int, song_duration: float) -
         if not analysis:
             raise RuntimeError("Failed to create analysis for song")
 
+        # Plan clips with adaptive constraints based on duration
+        # For pre-generated clips, we want to match the actual clip durations
+        # Minimum: use the smallest clip duration, but at least 1 second
+        # Maximum: use the largest clip duration, but allow some flexibility
+        avg_clip_duration = song_duration / clip_count
+        min_clip_sec = max(1.0, avg_clip_duration * 0.8)  # 80% of average
+        min_clip_sec = min(min_clip_sec, 3.0)  # Cap at 3 seconds minimum
+        max_clip_sec = max(min_clip_sec * 1.5, avg_clip_duration * 1.2)  # 120% of average
+        max_clip_sec = min(max_clip_sec, 15.0)  # Cap at 15 seconds maximum
+        
+        print(f"  Planning {clip_count} clips for {song_duration:.1f}s total")
+        print(f"  Using adaptive constraints: min={min_clip_sec:.1f}s, max={max_clip_sec:.1f}s per clip")
+        
         # Plan clips
         try:
             plans = plan_beat_aligned_clips(
                 duration_sec=song_duration,
                 analysis=analysis,
                 clip_count=clip_count,
-                min_clip_sec=3.0,
-                max_clip_sec=15.0,
+                min_clip_sec=min_clip_sec,
+                max_clip_sec=max_clip_sec,
                 generator_fps=8,
             )
         except ClipPlanningError as e:
-            raise RuntimeError(f"Failed to plan clips: {e}") from e
+            raise RuntimeError(
+                f"Failed to plan {clip_count} clips for song duration {song_duration:.1f}s: {e}. "
+                f"Try providing fewer clip files or use a longer song."
+            ) from e
 
         # Persist plans
         persist_clip_plans(
@@ -489,7 +534,7 @@ def list_songs() -> None:
 
 
 def check_existing_clips(song_id: UUID) -> tuple[list[SongClip], bool]:
-    """Check if clips already exist and have video URLs.
+    """Check if clips already exist and have valid video URLs.
     
     Returns:
         Tuple of (existing_clips, all_have_videos)
@@ -505,8 +550,18 @@ def check_existing_clips(song_id: UUID) -> tuple[list[SongClip], bool]:
         if not existing_clips:
             return [], False
         
+        # Check if clips have valid video URLs (not fake test URLs)
+        def is_valid_video_url(url: str | None) -> bool:
+            if not url:
+                return False
+            # Reject obviously fake test URLs
+            if "example.com" in url or "localhost" in url:
+                return False
+            # Valid URLs should be S3 presigned URLs or actual S3 URLs
+            return True
+        
         all_have_videos = all(
-            clip.status == "completed" and clip.video_url is not None
+            clip.status == "completed" and is_valid_video_url(clip.video_url)
             for clip in existing_clips
         )
         
@@ -648,9 +703,14 @@ def preload_clips(song_id: UUID, clip_paths: list[Path], force: bool = False, cl
                 print(f"  Cannot proceed without audio in S3")
                 sys.exit(1)
 
-        # Get actual audio duration from S3 file if song doesn't have it or seems wrong
+        # Get actual clip durations and count
         clip_count = len(clip_paths)
-        total_clip_duration = sum(get_clip_duration(path) for path in clip_paths)
+        clip_durations = [get_clip_duration(path) for path in clip_paths]
+        total_clip_duration = sum(clip_durations)
+        
+        print(f"  Clip files: {clip_count} clips, total duration: {total_clip_duration:.1f}s")
+        if clip_durations:
+            print(f"    Individual durations: {', '.join(f'{d:.1f}s' for d in clip_durations)}")
         
         # Check if duration is missing or suspiciously matches clip durations (likely wrong)
         should_probe = False
@@ -720,8 +780,13 @@ def preload_clips(song_id: UUID, clip_paths: list[Path], force: bool = False, cl
         else:
             print(f"  Duration: {song.duration_sec:.1f}s")
 
-        # Ensure analysis exists
-        ensure_song_analysis(song_id, song.duration_sec)
+        # Use clip durations for planning (not song duration) since we're using pre-generated clips
+        # The clips define the actual timing, not the song
+        planning_duration = total_clip_duration
+        
+        # Ensure analysis exists (use clip duration if song duration is missing/wrong)
+        analysis_duration = song.duration_sec if song.duration_sec and abs(song.duration_sec - total_clip_duration) > 1.0 else planning_duration
+        ensure_song_analysis(song_id, analysis_duration)
 
         # Check if clips already exist
         existing_clips, all_have_videos = check_existing_clips(song_id)
@@ -745,8 +810,9 @@ def preload_clips(song_id: UUID, clip_paths: list[Path], force: bool = False, cl
             print("  ✓ Existing clips deleted")
             existing_clips = []
         
-        # Plan clips if needed
-        plan_clips_if_needed(song_id, clip_count, song.duration_sec)
+        # Plan clips based on actual clip durations, not song duration
+        # This ensures the plan matches the actual clip files
+        plan_clips_if_needed(song_id, clip_count, planning_duration)
 
         # Get clips for this song (may have been just created)
         statement = (
@@ -763,7 +829,7 @@ def preload_clips(song_id: UUID, clip_paths: list[Path], force: bool = False, cl
             )
             print(f"  Planned clips: {len(existing_clips)}")
             print(f"  Provided files: {len(clip_paths)}")
-            print("\nTip: The script will auto-plan clips based on the number of files provided")
+            print("\nTip: Use --cleanup to delete existing clips and re-plan based on file count")
             sys.exit(1)
 
         print(f"\nUploading {len(clip_paths)} clips...")
@@ -802,7 +868,7 @@ def main():
     parser.add_argument(
         "--song-id",
         type=str,
-        help="Song ID (UUID) to associate clips with. Use --list-songs to see available songs.",
+        help="Song ID (UUID) to associate clips with. If not provided, uses the most recent song. Use --list-songs to see available songs.",
     )
     parser.add_argument(
         "--list-songs",
@@ -838,10 +904,28 @@ def main():
         list_songs()
         return
 
-    # Require song ID if not listing
+    # Auto-detect song ID if not provided
     if not args.song_id:
-        print("Error: --song-id is required (or use --list-songs to see available songs)")
-        sys.exit(1)
+        print("No song ID provided, auto-detecting most recent song...")
+        with session_scope() as session:
+            from sqlalchemy import text
+            try:
+                result = session.exec(
+                    text("SELECT id FROM songs ORDER BY created_at DESC LIMIT 1")  # type: ignore[arg-type]
+                )
+                row = result.first()
+                if row:
+                    song_id_str = str(row[0]) if isinstance(row, tuple) else str(row.id if hasattr(row, 'id') else row)
+                    print(f"  Found most recent song: {song_id_str}")
+                    args.song_id = song_id_str
+                else:
+                    print("Error: No songs found in database")
+                    print("  Use --list-songs to see available songs, or upload a song first")
+                    sys.exit(1)
+            except Exception as e:
+                print(f"Error: Could not query songs table: {e}")
+                print("  Use --list-songs to see available songs")
+                sys.exit(1)
 
     # Parse song ID
     try:

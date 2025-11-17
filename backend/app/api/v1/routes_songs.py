@@ -40,6 +40,7 @@ from app.services.clip_planning import (
 from app.services.composition_job import (
     cancel_job,
     enqueue_composition,
+    enqueue_song_clip_composition,
     get_composed_video,
     get_job_status,
 )
@@ -536,6 +537,76 @@ async def compose_completed_clips(
         ) from exc
 
     return get_clip_generation_summary(song_id)
+
+
+@router.post(
+    "/{song_id}/clips/compose/async",
+    response_model=ComposeVideoResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Enqueue async composition job for SongClips",
+)
+def compose_song_clips_async(
+    song_id: UUID,
+    db: Session = Depends(get_db),
+) -> ComposeVideoResponse:
+    """
+    Enqueue an async composition job to stitch all completed SongClips into a single video.
+    
+    This endpoint automatically uses all completed SongClips for the song and returns
+    a job ID that can be polled for progress.
+
+    Args:
+        song_id: Song ID
+
+    Returns:
+        ComposeVideoResponse with job ID for polling
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    try:
+        summary = get_clip_generation_summary(song_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No clip plans found for this song.",
+        ) from exc
+
+    if summary.total_clips == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No clips available for composition.",
+        )
+    if summary.failed_clips > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Resolve failed clips before composing.",
+        )
+    if summary.completed_clips != summary.total_clips:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Clip generation must be complete before composing.",
+        )
+
+    if summary.composed_video_url:
+        # Already composed, but we'll still return a job ID for consistency
+        # In practice, the frontend should check for composed_video_url first
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Video already composed. Refresh to see the result.",
+        )
+
+    try:
+        job_id, _ = enqueue_song_clip_composition(song_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+    return ComposeVideoResponse(
+        job_id=job_id,
+        status="queued",
+        song_id=str(song_id),
+    )
 
 
 @router.post(

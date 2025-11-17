@@ -254,6 +254,7 @@ def concatenate_clips(
     output_path: str | Path,
     song_duration_sec: float,
     ffmpeg_bin: str | None = None,
+    job_id: str | None = None,
 ) -> CompositionResult:
     """
     Concatenate normalized clips and mux with audio.
@@ -298,6 +299,10 @@ def concatenate_clips(
         temp_video_path = Path(output_path).parent / "temp_concatenated.mp4"
         try:
             # Concatenate clips first (without audio) to get video duration
+            if job_id:
+                from app.services.composition_job import update_job_progress
+                update_job_progress(job_id, 70, "processing")  # Concatenating clips
+            
             video_input = ffmpeg.input(str(concat_path), format="concat", safe=0)
             (
                 ffmpeg.output(
@@ -328,6 +333,9 @@ def concatenate_clips(
             
             # If video is shorter than audio, loop it to match audio duration
             if video_duration < song_duration_sec:
+                if job_id:
+                    from app.services.composition_job import update_job_progress
+                    update_job_progress(job_id, 75, "processing")  # Looping video to match duration
                 logger.info(
                     f"Video ({video_duration:.2f}s) is shorter than audio ({song_duration_sec:.2f}s). "
                     f"Looping video to match audio duration."
@@ -378,6 +386,9 @@ def concatenate_clips(
                         pass
             elif video_duration > song_duration_sec:
                 # Video is longer - trim it to match audio
+                if job_id:
+                    from app.services.composition_job import update_job_progress
+                    update_job_progress(job_id, 75, "processing")  # Trimming video to match duration
                 logger.info(
                     f"Video ({video_duration:.2f}s) is longer than audio ({song_duration_sec:.2f}s). "
                     f"Trimming video to match audio duration."
@@ -395,6 +406,10 @@ def concatenate_clips(
                 )
             
             # Now mux the video (which matches audio duration) with audio
+            if job_id:
+                from app.services.composition_job import update_job_progress
+                update_job_progress(job_id, 80, "processing")  # Muxing video with audio
+            
             final_video_input = ffmpeg.input(str(temp_video_path))
             audio_input = ffmpeg.input(str(audio_path))
             

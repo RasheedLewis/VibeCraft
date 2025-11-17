@@ -55,6 +55,23 @@ export interface JobStatusResponse {
   result?: SongAnalysis | ClipGenerationSummary | null
 }
 
+export interface ComposeVideoResponse {
+  jobId: string
+  status: string
+  songId: string
+}
+
+export interface CompositionJobStatusResponse {
+  jobId: string
+  songId: string
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | string
+  progress: number
+  composedVideoId?: string | null
+  error?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface MoodVector {
   energy: number
   valence: number

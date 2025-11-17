@@ -335,6 +335,15 @@ def test_compose_endpoint_generates_urls(monkeypatch):
         _fake_presigned,
     )
 
+    def _fake_check_s3_object_exists(*, bucket_name: str, key: str) -> bool:
+        # In tests, assume objects exist if they're in the expected format
+        return True
+
+    monkeypatch.setattr(
+        "app.services.clip_generation.check_s3_object_exists",
+        _fake_check_s3_object_exists,
+    )
+
     settings = get_settings()
     monkeypatch.setattr(settings, "s3_bucket_name", "unit-test-bucket", raising=False)
 

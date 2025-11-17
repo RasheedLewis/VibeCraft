@@ -360,13 +360,20 @@ def _download_clip_to_path(url: str, destination: Path, timeout: float = 120.0) 
         raise RuntimeError(f"Failed to download clip asset from {url}: {exc}") from exc
 
 
-def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
+def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str, Optional[str]]:
     """
     Stitch all completed clips for a song into a single video using the processed audio track.
+
+    Args:
+        song_id: Song ID
+        job_id: Optional job ID for progress tracking
 
     Returns:
         Tuple of (video_s3_key, poster_s3_key)
     """
+    if job_id:
+        from app.services.composition_job import update_job_progress
+        update_job_progress(job_id, 10, "processing")
 
     settings = get_settings()
     bucket = settings.s3_bucket_name
@@ -460,12 +467,17 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
     if song_duration is None:
         song_duration = sum(clip.duration_sec or 0 for clip in completed_clips)
 
+    if job_id:
+        from app.services.composition_job import update_job_progress
+        update_job_progress(job_id, 20, "processing")  # Starting download
+
     with tempfile.TemporaryDirectory(prefix=f"compose-{song_id}-") as tmpdir:
         temp_dir = Path(tmpdir)
         normalized_paths: list[Path] = []
 
         # Download clips and normalize them
-        for clip in completed_clips:
+        total_clips = len(completed_clips)
+        for idx, clip in enumerate(completed_clips):
             source_path = temp_dir / f"clip_{clip.clip_index:03}.mp4"
             normalized_path = temp_dir / f"clip_{clip.clip_index:03}_normalized.mp4"
 
@@ -484,6 +496,12 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
                     raise RuntimeError(
                         f"Clip {clip.clip_index} file not found at S3 key {clip_s3_key} and no video_url available"
                     )
+                # Skip obviously fake/test URLs (like example.com)
+                if "example.com" in clip.video_url or "localhost" in clip.video_url:
+                    raise RuntimeError(
+                        f"Clip {clip.clip_index} has invalid test URL: {clip.video_url}. "
+                        f"Please re-run the preload script to upload clips to S3."
+                    )
                 _download_clip_to_path(clip.video_url, source_path)
             else:
                 try:
@@ -500,16 +518,38 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
                         raise RuntimeError(
                             f"Clip {clip.clip_index} has no video_url and S3 download failed: {s3_err}"
                         ) from s3_err
+                    # Skip obviously fake/test URLs (like example.com)
+                    if "example.com" in clip.video_url or "localhost" in clip.video_url:
+                        raise RuntimeError(
+                            f"Clip {clip.clip_index} has invalid test URL: {clip.video_url}. "
+                            f"Please re-run the preload script to upload clips to S3."
+                        )
                     _download_clip_to_path(clip.video_url, source_path)
+            
+            # Update progress: 20-40% for downloading clips
+            if job_id:
+                from app.services.composition_job import update_job_progress
+                download_progress = 20 + int((idx + 1) / total_clips * 20)
+                update_job_progress(job_id, download_progress, "processing")
             
             normalize_clip(str(source_path), str(normalized_path))
             normalized_paths.append(normalized_path)
+            
+            # Update progress: 40-65% for normalizing clips
+            if job_id:
+                from app.services.composition_job import update_job_progress
+                normalize_progress = 40 + int((idx + 1) / total_clips * 25)
+                update_job_progress(job_id, normalize_progress, "processing")
 
         # Download audio (key has already been validated to exist in S3 above)
         audio_bytes = download_bytes_from_s3(bucket_name=bucket, key=audio_key)
         audio_extension = Path(audio_key).suffix or ".wav"
         audio_path = temp_dir / f"song_audio{audio_extension}"
         audio_path.write_bytes(audio_bytes)
+
+        if job_id:
+            from app.services.composition_job import update_job_progress
+            update_job_progress(job_id, 65, "processing")  # Starting concatenation
 
         # Concatenate clips with audio
         output_path = temp_dir / "composed_video.mp4"
@@ -518,7 +558,12 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
             str(audio_path),
             str(output_path),
             song_duration_sec=float(song_duration),
+            job_id=job_id,
         )
+        
+        if job_id:
+            from app.services.composition_job import update_job_progress
+            update_job_progress(job_id, 85, "processing")  # Concatenation complete
 
         # Generate poster frame
         poster_path = temp_dir / "poster.jpg"
@@ -530,6 +575,10 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
             poster_bytes = None
 
         video_bytes = output_path.read_bytes()
+
+    if job_id:
+        from app.services.composition_job import update_job_progress
+        update_job_progress(job_id, 90, "processing")  # Starting upload
 
     # Upload assets
     video_key = f"songs/{song_id}/composed/{uuid4()}.mp4"
@@ -549,6 +598,10 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
             data=poster_bytes,
             content_type="image/jpeg",
         )
+    
+    if job_id:
+        from app.services.composition_job import update_job_progress
+        update_job_progress(job_id, 95, "processing")  # Upload complete
 
     with session_scope() as session:
         song = session.get(Song, song_id)
@@ -560,6 +613,10 @@ def compose_song_video(song_id: UUID) -> tuple[str, Optional[str]]:
         song.composed_video_fps = composition_result.fps
         session.add(song)
         session.commit()
+
+    if job_id:
+        from app.services.composition_job import update_job_progress
+        update_job_progress(job_id, 100, "completed")  # Composition complete
 
     return video_key, poster_key
 

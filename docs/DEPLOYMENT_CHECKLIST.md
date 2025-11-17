@@ -1,6 +1,31 @@
-# VibeCraft Deployment Checklist
+# VibeCraft Deployment Guide
 
-This is a step-by-step checklist for deploying VibeCraft to Railway. Follow these steps in order.
+Complete step-by-step guide for deploying VibeCraft to Railway.
+
+## Quick Reference
+
+**Required Environment Variables:**
+- `S3_BUCKET_NAME=ai-music-video`
+- `S3_REGION=us-east-2`
+- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (or `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`)
+- `REPLICATE_API_TOKEN`
+- `VITE_API_BASE_URL` (frontend only - your backend Railway URL)
+
+**Auto-provided by Railway:**
+- `DATABASE_URL` (from PostgreSQL addon)
+- `REDIS_URL` (from Redis addon)
+- `PORT` (set automatically)
+
+**Service Start Commands:**
+- Backend API: (default from Dockerfile - `uvicorn app.main:app`)
+- RQ Worker: `rq worker ai_music_video` (no `--url` flag needed, uses `REDIS_URL` env var)
+- Frontend: (default from Dockerfile - nginx)
+
+---
+
+## Deployment Checklist
+
+Follow these steps in order:
 
 ## Prerequisites
 

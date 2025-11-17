@@ -4,7 +4,7 @@
 
 ## 🚀 Production Deployment
 
-**Backend API:** `https://backend-api-production.up.railway.app`  
+**Backend API:** `https://backend-api-production-c6ee.up.railway.app`  
 **RQ Worker:** `https://rq-worker-production.up.railway.app`  
 **Frontend:** `https://frontend-production.up.railway.app` (pending deployment)
 

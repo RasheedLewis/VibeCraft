@@ -300,12 +300,45 @@ Or migrations run automatically on startup via `init_db()`.
 
 ### 7.3 Test End-to-End
 
-1. Upload a test audio file via frontend
-2. Verify it appears in backend
-3. Check S3 bucket for uploaded file
-4. Trigger analysis job
-5. Verify worker processes the job
-6. Check logs for any errors
+#### Quick Health Checks
+
+**Backend API:**
+```bash
+curl https://backend-api-production-c6ee.up.railway.app/healthz
+```
+Expected: `{"status":"ok"}`
+
+```bash
+curl https://backend-api-production-c6ee.up.railway.app/api/v1/songs/
+```
+Expected: `[]` (empty list) or list of songs
+
+**Frontend:**
+Open in browser: `https://frontend-production-b530.up.railway.app`
+Should show the VibeCraft upload page.
+
+#### Full End-to-End Test
+
+1. **Upload a song:**
+   - Go to frontend URL: `https://frontend-production-b530.up.railway.app`
+   - Upload a test audio file (MP3, WAV, etc.)
+   - Should see upload progress
+
+2. **Verify in backend:**
+   ```bash
+   curl https://backend-api-production-c6ee.up.railway.app/api/v1/songs/
+   ```
+   Should show the uploaded song
+
+3. **Check worker processing:**
+   - Railway dashboard → rq-worker → Logs
+   - Should see job processing messages
+
+4. **Verify S3:**
+   - Check S3 bucket for uploaded file
+   - Trigger analysis job
+   - Verify worker processes the job
+   - Check logs for any errors
 
 ## Phase 8: Monitoring & Optimization
 

@@ -1,22 +1,15 @@
 import axios from 'axios'
 
-// Use Vite's build-time env var to completely exclude localhost from production builds
-// import.meta.env.DEV is replaced at build time, and dead code elimination removes the localhost string
-// This prevents browsers from detecting localhost references in production bundles
-const getDefaultApiBaseUrl = (): string | undefined => {
-  // This entire block is eliminated from production builds by Vite's dead code elimination
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8000/api/v1'
-  }
-  return undefined
-}
-
-const DEFAULT_API_BASE_URL = getDefaultApiBaseUrl()
+// Use build-time replacement to completely exclude localhost from production builds
+// Vite will replace __DEV_DEFAULT_API__ at build time, ensuring localhost never appears in production bundle
+// In production: __DEV_DEFAULT_API__ becomes null, so DEFAULT_API_BASE_URL becomes null
+// In development: __DEV_DEFAULT_API__ becomes the localhost URL string
+const DEFAULT_API_BASE_URL: string | null = __DEV_DEFAULT_API__
 
 const normalizeBaseUrl = (rawUrl: string | undefined): string => {
   if (!rawUrl) {
     if (DEFAULT_API_BASE_URL) {
-      // Only in development builds - this code is tree-shaken out of production
+      // Only in development builds - this branch is eliminated in production
       return DEFAULT_API_BASE_URL
     }
     // In production, require the env var to be set
@@ -28,7 +21,7 @@ const normalizeBaseUrl = (rawUrl: string | undefined): string => {
   const trimmed = rawUrl.replace(/\s+/g, '').replace(/\/+$/, '')
   if (!trimmed) {
     if (DEFAULT_API_BASE_URL) {
-      // Only in development builds - this code is tree-shaken out of production
+      // Only in development builds - this branch is eliminated in production
       return DEFAULT_API_BASE_URL
     }
     throw new Error('VITE_API_BASE_URL cannot be empty in production')

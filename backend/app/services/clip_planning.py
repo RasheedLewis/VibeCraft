@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
 from uuid import UUID
@@ -32,7 +33,7 @@ def plan_beat_aligned_clips(
     analysis: SongAnalysis,
     clip_count: int,
     min_clip_sec: float = 3.0,
-    max_clip_sec: float = 15.0,
+    max_clip_sec: float = 6.0,
     generator_fps: int = 8,
 ) -> List[ClipPlan]:
     """Plan clip boundaries snapped to beat grid and frame intervals.
@@ -62,12 +63,12 @@ def plan_beat_aligned_clips(
         raise ValueError("min_clip_sec must be less than max_clip_sec")
 
     frame_interval = 1.0 / generator_fps
-    beat_times = sorted(_unique_floats(getattr(analysis, "beat_times", []) or []))
-    target_length = max(min(max_clip_sec, duration_sec / clip_count), min_clip_sec)
-
-    plans: list[ClipPlan] = []
-    current_start = 0.0
-    start_beat_index: Optional[int] = None
+    tolerance = 1e-3
+    duration_tolerance = max(frame_interval, 1e-3)
+    raw_beats = getattr(analysis, "beat_times", []) or []
+    beat_times = sorted(_unique_floats(raw_beats))
+    beat_times = [beat for beat in beat_times if -tolerance <= beat <= duration_sec + tolerance]
+    beat_times = [beat for beat in beat_times if 0.0 <= beat <= duration_sec]
 
     if not beat_times:
         return _plan_without_beats(
@@ -77,6 +78,11 @@ def plan_beat_aligned_clips(
             max_clip_sec=max_clip_sec,
             generator_fps=generator_fps,
         )
+
+    plans: list[ClipPlan] = []
+    current_start = 0.0
+    start_beat_index: Optional[int] = _find_beat_index_at_time(beat_times, current_start)
+    beat_search_idx = bisect_right(beat_times, current_start + tolerance)
 
     for index in range(clip_count):
         remaining_time = duration_sec - current_start
@@ -100,73 +106,88 @@ def plan_beat_aligned_clips(
         min_remaining_needed = min_clip_sec * max(0, trailing_clips)
         max_remaining_allowed = max_clip_sec * max(0, trailing_clips)
 
-        max_allowable_for_remaining = (
-            remaining_time - min_remaining_needed if trailing_clips > 0 else remaining_time
-        )
-        max_possible = min(max_clip_sec, max_allowable_for_remaining)
-
-        if max_possible < min_possible - 1e-3:
-            raise ClipPlanningError("Not enough duration remaining to satisfy clip constraints")
-
-        desired_length = target_length if not is_last_clip else remaining_time
-        desired_length = max(min(desired_length, max_possible), min_possible)
-
-        min_end = current_start + min_possible
-        max_end = current_start + max_possible
-
-        raw_end = None
-        end_beat_index: Optional[int] = None
-
-        if not is_last_clip and beat_times:
-            raw_end, end_beat_index = _pick_boundary_from_beats(
-                beat_times=beat_times,
-                desired_end=current_start + desired_length,
-                min_end=min_end,
-                max_end=max_end,
+        if is_last_clip:
+            last_duration = remaining_time
+            if last_duration > max_clip_sec + duration_tolerance:
+                raise ClipPlanningError(
+                    f"Planned clip {index} exceeds max duration ({last_duration:.2f}s > {max_clip_sec}s)"
+                )
+            min_end = current_start + min_possible
+            max_end = duration_sec
+            raw_end = duration_sec
+            end_beat_index = _find_beat_index_at_time(beat_times, raw_end)
+        else:
+            max_allowable_for_remaining = (
+                remaining_time - min_remaining_needed if trailing_clips > 0 else remaining_time
             )
+            max_possible = min(max_clip_sec, max_allowable_for_remaining)
 
-        if raw_end is None:
-            raw_end = current_start + desired_length
+            if max_possible < min_possible - 1e-3:
+                raise ClipPlanningError("Not enough duration remaining to satisfy clip constraints")
+
+            min_end = current_start + min_possible
+            max_end = current_start + max_possible
+            max_end = min(max_end, duration_sec)
+
+            target_length = remaining_time / clips_left
+            target_length = max(min(target_length, max_possible), min_possible)
+            target_end = current_start + target_length
+
+            candidate_start = bisect_left(beat_times, min_end - tolerance, lo=beat_search_idx)
+            candidate_end = bisect_right(beat_times, max_end + tolerance, lo=beat_search_idx)
+
+            raw_end: float
             end_beat_index = None
 
-        raw_end = max(min(raw_end, max_end), min_end) if not is_last_clip else min(raw_end, duration_sec)
+            if candidate_start < candidate_end:
+                candidate_range = range(candidate_start, candidate_end)
+                best_index = min(
+                    candidate_range,
+                    key=lambda idx: abs(beat_times[idx] - target_end),
+                )
+                raw_end = beat_times[best_index]
+                end_beat_index = best_index
+            else:
+                raw_end = target_end
+
+            raw_end = min(max(raw_end, min_end), max_end)
+
         snapped_end = _snap_to_frame(raw_end, frame_interval, duration_sec)
 
         if snapped_end < min_end - 1e-3:
-            snapped_end = min(_snap_to_frame(min_end, frame_interval, duration_sec), duration_sec)
+            snapped_end = _snap_to_frame(min_end, frame_interval, duration_sec)
+            if snapped_end < min_end - 1e-3:
+                snapped_end = min(min_end, duration_sec)
 
         if not is_last_clip and snapped_end > max_end + 1e-3:
             snapped_end = max_end
+            end_beat_index = None
 
-        if not is_last_clip:
+        if is_last_clip:
+            snapped_end = duration_sec
+        else:
             remaining_after = duration_sec - snapped_end
+
             if remaining_after > max_remaining_allowed + 1e-3:
                 target_end = duration_sec - max_remaining_allowed
                 snapped_end = _snap_to_frame(target_end, frame_interval, duration_sec)
                 if snapped_end < min_end:
-                    snapped_end = min_end
+                    snapped_end = min(_snap_to_frame(min_end, frame_interval, duration_sec), max_end)
                 if snapped_end > max_end:
                     snapped_end = max_end
                 remaining_after = duration_sec - snapped_end
                 end_beat_index = None
+
             if remaining_after < min_remaining_needed - 1e-3:
                 raise ClipPlanningError(
                     "Unable to balance clip durations within constraints. "
                     "Consider increasing clip_count or adjusting clip duration bounds."
                 )
 
-        if is_last_clip:
-            last_duration = duration_sec - current_start
-            if last_duration > max_clip_sec + 1e-3:
-                raise ClipPlanningError(
-                    f"Planned clip {index} exceeds max duration ({last_duration:.2f}s > {max_clip_sec}s)"
-                )
-            snapped_end = duration_sec
-
         duration = max(snapped_end - current_start, frame_interval)
-        if not is_last_clip and duration > max_possible + 1e-3:
+        if not is_last_clip and duration > (max_end - current_start) + duration_tolerance:
             raise ClipPlanningError(
-                f"Planned clip {index} exceeds max duration ({duration:.2f}s > {max_possible:.2f}s)"
+                f"Planned clip {index} exceeds max duration ({duration:.2f}s > {(max_end - current_start):.2f}s)"
             )
 
         num_frames = max(int(round(duration * generator_fps)), 1)
@@ -184,6 +205,7 @@ def plan_beat_aligned_clips(
 
         current_start = snapped_end
         start_beat_index = end_beat_index
+        beat_search_idx = bisect_right(beat_times, current_start + tolerance, lo=beat_search_idx)
 
     if abs(plans[-1].end_sec - duration_sec) > max(frame_interval, 0.25):
         raise ClipPlanningError(
@@ -344,26 +366,20 @@ def persist_clip_plans(
         return song_clips
 
 
-def _pick_boundary_from_beats(
-    *,
+def _find_beat_index_at_time(
     beat_times: list[float],
-    desired_end: float,
-    min_end: float,
-    max_end: float,
-) -> tuple[Optional[float], Optional[int]]:
+    time: float,
+    tolerance: float = 1e-3,
+) -> Optional[int]:
     if not beat_times:
-        return None, None
+        return None
 
-    candidates = [
-        (idx, beat)
-        for idx, beat in enumerate(beat_times)
-        if min_end - 1e-6 <= beat <= max_end + 1e-6
-    ]
-    if not candidates:
-        return None, None
-
-    best_idx, best_time = min(candidates, key=lambda item: abs(item[1] - desired_end))
-    return best_time, best_idx
+    idx = bisect_left(beat_times, time - tolerance)
+    if idx < len(beat_times) and abs(beat_times[idx] - time) <= tolerance:
+        return idx
+    if idx > 0 and abs(beat_times[idx - 1] - time) <= tolerance:
+        return idx - 1
+    return None
 
 
 def _snap_to_frame(value: float, interval: float, max_value: float) -> float:

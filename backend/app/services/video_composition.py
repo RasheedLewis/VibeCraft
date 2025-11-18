@@ -391,17 +391,23 @@ def concatenate_clips(
                     f"Video ({video_duration:.2f}s) is longer than audio ({song_duration_sec:.2f}s). "
                     f"Trimming video to match audio duration."
                 )
+                trimmed_output_path = temp_video_path.parent / "temp_trimmed.mp4"
                 trimmed_video_input = ffmpeg.input(str(temp_video_path))
-                (
-                    ffmpeg.output(
-                        trimmed_video_input["v"],
-                        str(temp_video_path),
-                        vcodec=DEFAULT_VIDEO_CODEC,
-                        t=song_duration_sec,  # Trim to exact duration
+                try:
+                    (
+                        ffmpeg.output(
+                            trimmed_video_input["v"],
+                            str(trimmed_output_path),
+                            vcodec=DEFAULT_VIDEO_CODEC,
+                            t=song_duration_sec,  # Trim to exact duration
+                        )
+                        .overwrite_output()
+                        .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
                     )
-                    .overwrite_output()
-                    .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
-                )
+                    temp_video_path.unlink(missing_ok=True)
+                    trimmed_output_path.rename(temp_video_path)
+                finally:
+                    trimmed_output_path.unlink(missing_ok=True)
             
             # Now mux the video (which matches audio duration) with audio
             if job_id:

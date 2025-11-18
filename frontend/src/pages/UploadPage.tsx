@@ -419,7 +419,7 @@ export const UploadPage: React.FC = () => {
         clipSummary?.clips.reduce((total, clip) => total + clip.durationSec, 0) ??
         null
 
-      const maxClipSeconds = 15
+      const maxClipSeconds = 6
       const minClips = 3
       const maxClips = 64
       const computedClipCount =
@@ -430,11 +430,13 @@ export const UploadPage: React.FC = () => {
             )
           : minClips
 
-      if (
+      const needsReplan =
         !clipSummary ||
         clipSummary.totalClips === 0 ||
-        clipSummary.completedClips === clipSummary.totalClips
-      ) {
+        clipSummary.completedClips === clipSummary.totalClips ||
+        clipSummary.clips.some((clip) => clip.durationSec > maxClipSeconds + 0.1)
+
+      if (needsReplan) {
         await apiClient.post(`/songs/${result.songId}/clips/plan`, null, {
           params: {
             clip_count: computedClipCount,

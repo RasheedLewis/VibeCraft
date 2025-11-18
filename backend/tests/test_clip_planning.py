@@ -83,6 +83,29 @@ def test_plan_clips_handles_sparse_beats():
     assert plans[-1].end_sec == pytest.approx(duration, abs=0.25)
 
 
+def test_plan_clips_splits_long_intervals_when_no_mid_beats():
+    analysis = make_analysis([0.0, 10.0, 20.0])
+    duration = 22.0
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=duration,
+        analysis=analysis,
+        clip_count=4,
+        min_clip_sec=3.0,
+        max_clip_sec=6.0,
+        generator_fps=8,
+    )
+
+    assert len(plans) == 4
+    assert plans[-1].end_sec == pytest.approx(duration, abs=0.25)
+    assert sum(plan.duration_sec for plan in plans) == pytest.approx(duration, abs=0.5)
+    for plan in plans:
+        assert plan.duration_sec >= 3.0 - 1e-3
+        assert plan.duration_sec <= 6.0 + 1e-3
+
+    assert any(plan.end_beat_index is None for plan in plans[:-1])
+
+
 def test_plan_clips_falls_back_when_beats_missing():
     analysis = make_analysis([])
 

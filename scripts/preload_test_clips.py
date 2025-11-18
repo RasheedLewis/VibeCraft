@@ -455,7 +455,7 @@ def plan_clips_if_needed(song_id: UUID, clip_count: int, song_duration: float) -
         min_clip_sec = max(1.0, avg_clip_duration * 0.8)  # 80% of average
         min_clip_sec = min(min_clip_sec, 3.0)  # Cap at 3 seconds minimum
         max_clip_sec = max(min_clip_sec * 1.5, avg_clip_duration * 1.2)  # 120% of average
-        max_clip_sec = min(max_clip_sec, 15.0)  # Cap at 15 seconds maximum
+        max_clip_sec = min(max_clip_sec, 6.0)  # Cap at 6 seconds maximum
         
         print(f"  Planning {clip_count} clips for {song_duration:.1f}s total")
         print(f"  Using adaptive constraints: min={min_clip_sec:.1f}s, max={max_clip_sec:.1f}s per clip")

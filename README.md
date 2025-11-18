@@ -2,6 +2,10 @@
 
 ### *Transform any song into a cinematic, beat-synced visual experience.*
 
+## 🚨 URGENT TODO
+
+- [ ] **URGENT:** Adam can't upload a file, only Rasheed can
+
 ## 📋 TODO
 
 - [ ] Resolve browser issues: thousands of Chrome warnings in console + permission prompt for local network access on first load

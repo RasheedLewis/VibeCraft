@@ -12,6 +12,9 @@ RUN npm ci
 COPY . .
 
 # Build the application
+# VITE_API_BASE_URL must be available at build time (Railway passes env vars automatically)
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 
 # Production stage with nginx

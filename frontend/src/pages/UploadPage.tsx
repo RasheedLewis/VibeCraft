@@ -916,10 +916,17 @@ export const UploadPage: React.FC = () => {
       return
     }
 
+    // STOP ALL POLLING if composed video exists - we're completely done!
+    if (clipSummary?.composedVideoUrl) {
+      return
+    }
+
+    // Stop polling if no active job and all clips are completed
     if (
       !clipJobId &&
       clipSummary &&
-      clipSummary.completedClips === clipSummary.totalClips
+      clipSummary.completedClips === clipSummary.totalClips &&
+      !isComposing
     ) {
       return
     }
@@ -933,6 +940,12 @@ export const UploadPage: React.FC = () => {
           `/songs/${result.songId}/clips/status`,
         )
         if (cancelled) return
+
+        // STOP POLLING if composed video now exists
+        if (data.composedVideoUrl) {
+          setClipSummary(data)
+          return // Stop all polling - we're done!
+        }
 
         setClipSummary(data)
 
@@ -969,7 +982,14 @@ export const UploadPage: React.FC = () => {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [result?.songId, clipJobId, clipJobStatus, clipJobProgress, clipSummary])
+  }, [
+    result?.songId,
+    clipJobId,
+    clipJobStatus,
+    clipJobProgress,
+    clipSummary,
+    isComposing,
+  ])
 
   useEffect(() => {
     if (clipJobError) {

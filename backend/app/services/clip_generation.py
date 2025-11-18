@@ -48,8 +48,8 @@ QUEUE_TIMEOUT_SEC = 20 * 60  # 20 minutes per clip generation
 def _get_clip_queue() -> Queue:
     settings = get_settings()
     connection = redis.from_url(settings.redis_url)
-    queue_name = f"{settings.rq_worker_queue}:clip-generation"
-    return Queue(queue_name, connection=connection, default_timeout=QUEUE_TIMEOUT_SEC)
+    # Use the same queue name as the worker listens to
+    return Queue(settings.rq_worker_queue, connection=connection, default_timeout=QUEUE_TIMEOUT_SEC)
 
 
 def enqueue_clip_generation_batch(
@@ -199,17 +199,23 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
             select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
         ).all()
 
+    # Handle case where no clips have been planned yet (return empty summary)
     if not clips:
-        raise ValueError("No planned clips found for song.")
-
-    status_counts = Counter(clip.status for clip in clips)
-    total = len(clips)
-    completed = status_counts.get("completed", 0)
-    failed = status_counts.get("failed", 0)
-    processing = status_counts.get("processing", 0)
-    queued = status_counts.get("queued", 0)
-
-    clip_statuses = [SongClipStatus.model_validate(clip) for clip in clips]
+        status_counts = Counter()
+        total = 0
+        completed = 0
+        failed = 0
+        processing = 0
+        queued = 0
+        clip_statuses: list[SongClipStatus] = []
+    else:
+        status_counts = Counter(clip.status for clip in clips)
+        total = len(clips)
+        completed = status_counts.get("completed", 0)
+        failed = status_counts.get("failed", 0)
+        processing = status_counts.get("processing", 0)
+        queued = status_counts.get("queued", 0)
+        clip_statuses = [SongClipStatus.model_validate(clip) for clip in clips]
 
     composed_video_url: Optional[str] = None
     composed_video_poster_url: Optional[str] = None

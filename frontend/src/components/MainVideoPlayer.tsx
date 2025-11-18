@@ -452,12 +452,18 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     }
   }, [current, loopAB, aMark, bMark, usingExternalAudio, setVideoPlaybackTime])
 
+  // Reset state only when switching between external audio and embedded audio modes
+  // Don't reset on every videoUrl/audioUrl change to avoid infinite loops
+  const prevUsingExternalAudioRef = useRef(usingExternalAudio)
   useEffect(() => {
-    if (!usingExternalAudio) {
-      setIsPlaying(false)
-      setCurrent(0)
+    if (prevUsingExternalAudioRef.current !== usingExternalAudio) {
+      prevUsingExternalAudioRef.current = usingExternalAudio
+      if (!usingExternalAudio) {
+        setIsPlaying(false)
+        setCurrent(0)
+      }
     }
-  }, [audioUrl, videoUrl, usingExternalAudio])
+  }, [usingExternalAudio])
 
   const togglePlay = () => {
     const audioEl = usingExternalAudio ? audioRef.current : null
@@ -474,10 +480,18 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         const clip = resolveClipForTime(audioEl.currentTime)
         setVideoPlaybackTime(audioEl.currentTime, clip)
         const playPromises: Array<Promise<unknown>> = [
-          audioEl.play().catch(() => undefined),
+          audioEl.play().catch((err) => {
+            console.error('[MainVideoPlayer] Audio play failed:', err)
+            return undefined
+          }),
         ]
         if (videoEl) {
-          playPromises.push(videoEl.play().catch(() => undefined))
+          playPromises.push(
+            videoEl.play().catch((err) => {
+              console.error('[MainVideoPlayer] Video play failed:', err)
+              return undefined
+            }),
+          )
         }
         void Promise.all(playPromises)
       }
@@ -488,7 +502,9 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     if (isPlaying) {
       videoEl.pause()
     } else {
-      videoEl.play().catch(() => undefined)
+      videoEl.play().catch((err) => {
+        console.error('[MainVideoPlayer] Video play failed:', err)
+      })
     }
   }
 
@@ -612,6 +628,17 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           className="hidden"
         />
         <video
+          key={(() => {
+            if (!videoUrl) return 'video-none'
+            try {
+              // Use S3 key path as stable identifier (doesn't change when presigned URL regenerates)
+              const url = new URL(videoUrl)
+              return `video-${url.pathname}`
+            } catch {
+              // Fallback to full URL if parsing fails
+              return `video-${videoUrl}`
+            }
+          })()}
           ref={videoRef}
           src={videoUrl || undefined}
           poster={posterUrl ?? undefined}
@@ -620,6 +647,13 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           muted={usingExternalAudio ? true : muted}
           controls={false}
           playsInline
+          onError={() => {
+            console.error('[MainVideoPlayer] Video error', {
+              error: videoRef.current?.error,
+              networkState: videoRef.current?.networkState,
+              readyState: videoRef.current?.readyState,
+            })
+          }}
         />
         <div className="pointer-events-none absolute inset-0 flex items-end justify-between p-3">
           <div className="pointer-events-auto flex items-center gap-2">

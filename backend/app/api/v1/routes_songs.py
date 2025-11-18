@@ -452,13 +452,7 @@ def get_clip_generation_status(song_id: UUID, db: Session = Depends(get_db)) -> 
     if not song:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
 
-    try:
-        return get_clip_generation_summary(song_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clip plans found for this song.",
-        ) from exc
+    return get_clip_generation_summary(song_id)
 
 
 @router.post(

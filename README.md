@@ -2,12 +2,30 @@
 
 ### *Transform any song into a cinematic, beat-synced visual experience.*
 
+## 📋 TODO
+
+- [ ] Resolve browser issues: thousands of Chrome warnings in console + permission prompt for local network access on first load
+
+**Notes:**
+- `VITE_API_BASE_URL` is correctly set in Railway environment variables
+- **Theories:**
+  - The fallback `DEFAULT_API_BASE_URL = 'http://localhost:8000/api/v1'` in code might trigger browser warnings/permission prompts even if not used
+  - Browser security feature detecting potential localhost access (even if not used)
+  - Cached build from before env var was set (may need rebuild)
+  - Browser extension triggering the prompt
+  - React strict mode double-rendering warnings
+  - Console logging or error handling issues
+
 ## 🚀 Production Deployment
 
 **Backend API:** `https://backend-api-production-c6ee.up.railway.app`  
 **Frontend:** `https://frontend-production-b530.up.railway.app`
 
 [Railway Dashboard](https://railway.app/project/9d147533-96b0-4aeb-ab3a-502138d87ae7) | [Health Check](https://backend-api-production-c6ee.up.railway.app/healthz)
+
+**Redeploy:**
+- Backend: `cd backend && railway up`
+- Frontend: `cd frontend && railway up`
 
 ---
 

@@ -12,12 +12,10 @@ from app.schemas.scene import SceneSpec
 logger = logging.getLogger(__name__)
 
 # Replicate video generation model
-# Using Zeroscope v2 XL for text-to-video generation (no image required)
-# Cost: ~$0.035 per run (one of the cheapest text-to-video models on Replicate)
-# Model: anotherjesse/zeroscope-v2-xl
+# Using Minimax Hailuo 2.3 for text-to-video generation
+# Model: minimax/hailuo-2.3
 # Note: Using model owner/name format - Replicate will use latest version
-# TODO: Consider switching to more expensive/higher-quality models later
-VIDEO_MODEL = "anotherjesse/zeroscope-v2-xl"
+VIDEO_MODEL = "minimax/hailuo-2.3"
 
 
 def generate_section_video(
@@ -50,9 +48,8 @@ def generate_section_video(
         # Create Replicate client
         client = replicate.Client(api_token=settings.replicate_api_token)
 
-        # Prepare input parameters for Zeroscope v2 XL (text-to-video, no image required)
-        # Based on model schema: prompt, num_frames, width, height, fps, seed, batch_size, init_video, init_weight, model
-        # Note: 576x320 is the default for 576w, but XL supports up to 1024x576
+        # Prepare input parameters for Minimax Hailuo 2.3 (text-to-video)
+        # Parameters: prompt, num_frames, width, height, fps, seed
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
         input_params = {

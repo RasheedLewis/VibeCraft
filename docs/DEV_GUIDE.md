@@ -604,7 +604,29 @@ docker compose up --build
 
 ---
 
-## 7. Next Steps
+## 7. Deployment
+
+### 7.1 Redeploying Services
+
+To redeploy the backend or frontend after making changes:
+
+**Backend:**
+```bash
+cd backend
+railway up
+```
+
+**Frontend:**
+```bash
+cd frontend
+railway up
+```
+
+This will build and deploy the service to Railway. Make sure you're logged in (`railway login`) and have the service linked (`railway link`).
+
+---
+
+## 8. Next Steps
 
 1. Add `.env` and `.env.example` files with keys for Postgres, Redis, S3, Replicate, and any AI providers.
 2. Scaffold FastAPI routers, schemas, and services as outlined in `PRD.md`.

@@ -53,9 +53,10 @@ samples/audio/**/*.mp3
 samples/audio/**/*.wav
 samples/audio/**/*.m4a
 samples/audio/**/*.flac
-# Keep metadata and README files
+# Keep metadata, README, and short files
 !samples/README.md
 !samples/metadata/
+!samples/audio/short/*
 
 # Test composition outputs (large files)
 samples/compTest/testComp*.mp4

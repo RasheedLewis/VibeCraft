@@ -760,8 +760,22 @@ class TestBuildSceneSpec:
         assert spec.intensity > 0
 
     def test_build_without_analysis(self):
-        """Test building scene spec without analysis uses mock data."""
-        spec = build_scene_spec("section-4")
+        """Test building scene spec with analysis object."""
+        analysis = SongAnalysis(
+            duration_sec=240.0,
+            bpm=120.0,
+            sections=[
+                SongSection(
+                    id="section-4", type="chorus", startSec=64.0, endSec=96.0, confidence=0.9
+                )
+            ],
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            mood_vector=MoodVector(energy=0.8, valence=0.7, danceability=0.7, tension=0.5),
+            primary_genre="Electronic",
+            lyrics_available=False,
+        )
+        spec = build_scene_spec("section-4", analysis=analysis)
 
         assert spec.section_id == "section-4"
         assert spec.template == "abstract"
@@ -770,7 +784,21 @@ class TestBuildSceneSpec:
 
     def test_build_with_custom_template(self):
         """Test building scene spec with custom template."""
-        spec = build_scene_spec("section-4", template="environment")
+        analysis = SongAnalysis(
+            duration_sec=240.0,
+            bpm=120.0,
+            sections=[
+                SongSection(
+                    id="section-4", type="chorus", startSec=64.0, endSec=96.0, confidence=0.9
+                )
+            ],
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            mood_vector=MoodVector(energy=0.8, valence=0.7, danceability=0.7, tension=0.5),
+            primary_genre="Electronic",
+            lyrics_available=False,
+        )
+        spec = build_scene_spec("section-4", analysis=analysis, template="environment")
 
         assert spec.template == "environment"
 

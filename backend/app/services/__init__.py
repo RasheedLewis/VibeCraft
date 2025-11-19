@@ -19,16 +19,7 @@ from app.services.lyric_extraction import (
     extract_lyrics_with_whisper,
     segment_lyrics_into_lines,
 )
-from app.services.mock_analysis import (
-    get_mock_analysis_ambient,
-    get_mock_analysis_by_section_id,
-    get_mock_analysis_by_song_id,
-    get_mock_analysis_country,
-    get_mock_analysis_electronic,
-    get_mock_analysis_hip_hop,
-    get_mock_analysis_melancholic,
-    get_mock_analysis_metal,
-    get_mock_analysis_pop_rock,
+from app.services.scene_planner import (
     get_section_from_analysis,
     get_section_lyrics_from_analysis,
 )
@@ -54,15 +45,6 @@ __all__ = [
     "extract_and_align_lyrics",
     "extract_lyrics_with_whisper",
     "generate_section_video",
-    "get_mock_analysis_ambient",
-    "get_mock_analysis_by_section_id",
-    "get_mock_analysis_by_song_id",
-    "get_mock_analysis_country",
-    "get_mock_analysis_electronic",
-    "get_mock_analysis_hip_hop",
-    "get_mock_analysis_melancholic",
-    "get_mock_analysis_metal",
-    "get_mock_analysis_pop_rock",
     "get_section_from_analysis",
     "get_section_lyrics_from_analysis",
     "poll_video_generation_status",

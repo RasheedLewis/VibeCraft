@@ -43,6 +43,7 @@ from app.services.clip_planning import (
 )
 from app.exceptions import (
     ClipGenerationError,
+    ClipNotFoundError,
     CompositionError,
     JobNotFoundError,
     JobStateError,

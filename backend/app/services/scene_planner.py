@@ -6,7 +6,7 @@ Maps song analysis data (mood, genre, section type) to visual prompts and parame
 import logging
 from typing import Optional
 
-from app.schemas.analysis import SongAnalysis, SongSection
+from app.schemas.analysis import SectionLyrics, SongAnalysis, SongSection
 from app.schemas.scene import (
     CameraMotion,
     ColorPalette,
@@ -14,16 +14,49 @@ from app.schemas.scene import (
     ShotPattern,
     TemplateType,
 )
-from app.services.mock_analysis import (
-    get_mock_analysis_by_section_id,
-    get_section_from_analysis,
-    get_section_lyrics_from_analysis,
-)
 
 logger = logging.getLogger(__name__)
 
 # Default template (can be extended later)
 DEFAULT_TEMPLATE: TemplateType = "abstract"
+
+
+def get_section_from_analysis(analysis: SongAnalysis, section_id: str) -> SongSection | None:
+    """
+    Get a section from analysis by section ID.
+
+    Args:
+        analysis: SongAnalysis object
+        section_id: Section ID to find
+
+    Returns:
+        SongSection if found, None otherwise
+    """
+    for section in analysis.sections:
+        if section.id == section_id:
+            return section
+    return None
+
+
+def get_section_lyrics_from_analysis(
+    analysis: SongAnalysis, section_id: str
+) -> SectionLyrics | None:
+    """
+    Get section lyrics from analysis by section ID.
+
+    Args:
+        analysis: SongAnalysis object
+        section_id: Section ID to find lyrics for
+
+    Returns:
+        SectionLyrics if found, None otherwise
+    """
+    if not analysis.section_lyrics:
+        return None
+    for section_lyrics in analysis.section_lyrics:
+        if section_lyrics.section_id == section_id:
+            return section_lyrics
+    return None
 
 
 def map_mood_to_color_palette(mood_primary: str, mood_vector) -> ColorPalette:
@@ -322,7 +355,7 @@ def build_prompt(
 
 def build_scene_spec(
     section_id: str,
-    analysis: Optional[SongAnalysis] = None,
+    analysis: SongAnalysis,
     template: TemplateType = DEFAULT_TEMPLATE,
 ) -> SceneSpec:
     """
@@ -330,15 +363,15 @@ def build_scene_spec(
 
     Args:
         section_id: Section identifier
-        analysis: Optional SongAnalysis object (if None, uses mock data)
+        analysis: SongAnalysis object
         template: Template type (default: "abstract")
 
     Returns:
         SceneSpec object with complete scene parameters
+
+    Raises:
+        ValueError: If section not found in analysis
     """
-    # Get analysis (use mock if not provided)
-    if analysis is None:
-        analysis = get_mock_analysis_by_section_id(section_id)
 
     # Find the section
     section = get_section_from_analysis(analysis, section_id)

@@ -16,10 +16,9 @@ from app.core.config import get_settings
 from app.core.constants import ANALYSIS_QUEUE_TIMEOUT_SEC
 from app.core.database import session_scope
 from app.core.queue import get_queue
-from app.exceptions import AnalysisError, JobNotFoundError, SongNotFoundError
+from app.exceptions import AnalysisError, JobNotFoundError
 from app.repositories import SongRepository
 from app.models.analysis import AnalysisJob, SongAnalysisRecord
-from app.models.song import Song
 from app.schemas.analysis import SongAnalysis, SongSection
 from app.schemas.job import JobStatusResponse, SongAnalysisJobResponse
 from app.services.genre_mood_analysis import (

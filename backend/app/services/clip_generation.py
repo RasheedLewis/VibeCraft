@@ -20,14 +20,11 @@ from app.exceptions import (
     ClipGenerationError,
     ClipNotFoundError,
     CompositionError,
-    JobNotFoundError,
     SongNotFoundError,
     StorageError,
 )
 from app.repositories import ClipRepository, SongRepository
 from app.models.analysis import ClipGenerationJob
-from app.models.clip import SongClip
-from app.models.song import Song
 from app.schemas.analysis import SongAnalysis, SongSection
 from app.schemas.clip import ClipGenerationSummary, SongClipStatus
 from app.schemas.job import ClipGenerationJobResponse, JobStatusResponse
@@ -78,7 +75,8 @@ def enqueue_clip_generation_batch(
     if not clips:
         raise ValueError("No clips found to enqueue")
 
-        jobs: list[Job] = []
+    jobs: list[Job] = []
+    with session_scope() as session:
         for idx, clip in enumerate(clips):
             depends_on = jobs[idx - max_parallel] if idx >= max_parallel else None
             job_id = f"clip-gen-{clip.id}"

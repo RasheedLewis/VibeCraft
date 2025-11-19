@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from rq.job import Job, get_current_job
+from sqlmodel import select
 
 from app.core.constants import COMPOSITION_QUEUE_TIMEOUT_SEC
 from app.core.database import session_scope
@@ -17,14 +18,11 @@ from app.exceptions import (
     CompositionError,
     JobNotFoundError,
     JobStateError,
-    SongNotFoundError,
 )
 from app.repositories import ClipRepository, SongRepository
 from app.models.composition import ComposedVideo, CompositionJob
 from app.models.section_video import SectionVideo
-from app.models.song import Song
 from app.schemas.composition import CompositionJobStatusResponse
-from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 
@@ -150,9 +148,6 @@ def enqueue_song_clip_composition(song_id: UUID) -> tuple[str, CompositionJob]:
     Raises:
         ValueError: If song not found or no completed clips available
     """
-    from app.models.clip import SongClip
-    from sqlmodel import select
-
     # Verify song exists
     SongRepository.get_by_id(song_id)
 
@@ -162,21 +157,22 @@ def enqueue_song_clip_composition(song_id: UUID) -> tuple[str, CompositionJob]:
     if not clips:
         raise CompositionError(f"No completed clips found for song {song_id}")
 
-        # Store clip IDs as JSON (no metadata needed for SongClip composition)
-        clip_ids_json = json.dumps([str(clip.id) for clip in clips])
-        clip_metadata_json = json.dumps([])  # Empty metadata for SongClip-based composition
+    # Store clip IDs as JSON (no metadata needed for SongClip composition)
+    clip_ids_json = json.dumps([str(clip.id) for clip in clips])
+    clip_metadata_json = json.dumps([])  # Empty metadata for SongClip-based composition
 
-        # Enqueue to RQ
-        queue = get_queue(timeout=COMPOSITION_QUEUE_TIMEOUT_SEC)
-        job_id = f"composition-songclip-{uuid4()}"
-        job: Job = queue.enqueue(
-            run_song_clip_composition_job,
-            song_id,
-            job_id=job_id,
-            meta={"progress": 0},
-        )
+    # Enqueue to RQ
+    queue = get_queue(timeout=COMPOSITION_QUEUE_TIMEOUT_SEC)
+    job_id = f"composition-songclip-{uuid4()}"
+    job: Job = queue.enqueue(
+        run_song_clip_composition_job,
+        song_id,
+        job_id=job_id,
+        meta={"progress": 0},
+    )
 
-        # Create job record
+    # Create job record
+    with session_scope() as session:
         composition_job = CompositionJob(
             id=job.id,
             song_id=song_id,
@@ -189,11 +185,11 @@ def enqueue_song_clip_composition(song_id: UUID) -> tuple[str, CompositionJob]:
         session.commit()
         session.refresh(composition_job)
 
-        logger.info(
-            f"Enqueued SongClip composition job {job.id} for song {song_id} with {len(clips)} clips"
-        )
+    logger.info(
+        f"Enqueued SongClip composition job {job.id} for song {song_id} with {len(clips)} clips"
+    )
 
-        return job.id, composition_job
+    return job.id, composition_job
 
 
 def run_song_clip_composition_job(song_id: UUID) -> dict[str, Any]:

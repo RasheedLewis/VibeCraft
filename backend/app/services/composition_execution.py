@@ -15,7 +15,6 @@ from app.core.config import get_settings
 from app.core.database import session_scope
 from app.models.composition import CompositionJob
 from app.models.section_video import SectionVideo
-from app.models.song import Song
 from app.repositories import SongRepository
 from app.services.composition_job import (
     complete_job,

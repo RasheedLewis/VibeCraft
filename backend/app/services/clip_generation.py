@@ -9,13 +9,22 @@ from uuid import UUID, uuid4
 import tempfile
 
 import httpx
-import redis
-from rq import Queue
 from rq.job import Job, get_current_job
 from sqlmodel import select
 
 from app.core.config import get_settings
+from app.core.constants import DEFAULT_MAX_CONCURRENCY, QUEUE_TIMEOUT_SEC
 from app.core.database import session_scope
+from app.core.queue import get_queue
+from app.exceptions import (
+    ClipGenerationError,
+    ClipNotFoundError,
+    CompositionError,
+    JobNotFoundError,
+    SongNotFoundError,
+    StorageError,
+)
+from app.repositories import ClipRepository, SongRepository
 from app.models.analysis import ClipGenerationJob
 from app.models.clip import SongClip
 from app.models.song import Song
@@ -41,16 +50,6 @@ from app.services.video_composition import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_CONCURRENCY = 2
-QUEUE_TIMEOUT_SEC = 20 * 60  # 20 minutes per clip generation
-
-
-def _get_clip_queue() -> Queue:
-    settings = get_settings()
-    connection = redis.from_url(settings.redis_url)
-    # Use the same queue name as the worker listens to
-    return Queue(settings.rq_worker_queue, connection=connection, default_timeout=QUEUE_TIMEOUT_SEC)
-
 
 def enqueue_clip_generation_batch(
     *,
@@ -63,19 +62,21 @@ def enqueue_clip_generation_batch(
     if max_parallel < 1:
         raise ValueError("max_parallel must be at least 1")
 
-    queue = _get_clip_queue()
+    queue = get_queue(timeout=QUEUE_TIMEOUT_SEC)
 
-    with session_scope() as session:
-        statement = select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
-        if clip_ids is not None:
-            clip_ids = list(clip_ids)
-            if not clip_ids:
-                raise ValueError("clip_ids cannot be empty when provided")
-            statement = statement.where(SongClip.id.in_(clip_ids))
-
-        clips: list[SongClip] = session.exec(statement).all()
-        if not clips:
-            raise ValueError("No clips found to enqueue")
+    # Get clips using repository
+    all_clips = ClipRepository.get_by_song_id(song_id)
+    
+    if clip_ids is not None:
+        clip_ids = list(clip_ids)
+        if not clip_ids:
+            raise ValueError("clip_ids cannot be empty when provided")
+        clips = [clip for clip in all_clips if clip.id in clip_ids]
+    else:
+        clips = all_clips
+    
+    if not clips:
+        raise ValueError("No clips found to enqueue")
 
         jobs: list[Job] = []
         for idx, clip in enumerate(clips):
@@ -120,31 +121,42 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     song_id: UUID | None = None
     clip_fps: int = 8
     clip_num_frames: int = 0
-    with session_scope() as session:
-        clip = session.get(SongClip, clip_id)
-        if not clip:
-            raise ValueError(f"Clip {clip_id} not found")
+    
+    try:
+        clip = ClipRepository.get_by_id(clip_id)
+    except ClipNotFoundError:
+        # Handle stale RQ jobs gracefully - clip may have been deleted
+        logger.warning(
+            "Clip %s not found (likely stale RQ job). Skipping clip generation.",
+            clip_id
+        )
+        if batch_job_id:
+            _refresh_clip_generation_job(batch_job_id)
+        return {
+            "status": "skipped",
+            "clipId": str(clip_id),
+            "reason": "Clip not found (stale job)",
+        }
 
-        song_id = clip.song_id
-        clip_fps = clip.fps or 8
-        computed_frames = clip.num_frames
-        if computed_frames <= 0 and clip.duration_sec:
-            computed_frames = max(int(round(clip.duration_sec * clip_fps)), 1)
-        clip.num_frames = computed_frames
-        clip.status = "processing"
-        clip.error = None
-        clip.rq_job_id = job_id or clip.rq_job_id
-        session.add(clip)
-        session.commit()
-        clip_num_frames = clip.num_frames
+    song_id = clip.song_id
+    clip_fps = clip.fps or 8
+    computed_frames = clip.num_frames
+    if computed_frames <= 0 and clip.duration_sec:
+        computed_frames = max(int(round(clip.duration_sec * clip_fps)), 1)
+    clip.num_frames = computed_frames
+    clip.status = "processing"
+    clip.error = None
+    clip.rq_job_id = job_id or clip.rq_job_id
+    ClipRepository.update(clip)
+    clip_num_frames = clip.num_frames
 
     if song_id is None:
-        raise RuntimeError("Song id missing for clip generation job.")
+        raise ClipGenerationError("Song id missing for clip generation job.")
 
     analysis = get_latest_analysis(song_id)
     if not analysis:
         _mark_clip_failed(clip_id, "Song analysis not found for clip generation.", batch_job_id=batch_job_id)
-        raise RuntimeError("Song analysis not found for clip generation.")
+        raise ClipGenerationError("Song analysis not found for clip generation.")
 
     scene_spec = _build_scene_spec_for_clip(clip_id, analysis)
     seed = _determine_seed_for_clip(clip_id)
@@ -154,50 +166,56 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     )
     metadata = metadata or {}
 
-    with session_scope() as session:
-        clip = session.get(SongClip, clip_id)
-        if not clip:
-            raise ValueError(f"Clip {clip_id} disappeared during job execution")
-
-        clip.prompt = scene_spec.prompt
-        clip.style_seed = str(metadata.get("seed") or seed) if seed is not None else clip.style_seed
-        clip.fps = metadata.get("fps", clip_fps) or clip_fps
-        clip.replicate_job_id = metadata.get("job_id", clip.replicate_job_id)
-        clip.num_frames = metadata.get("num_frames", clip_num_frames) or clip_num_frames
-
-        if success and video_url:
-            clip.status = "completed"
-            clip.video_url = video_url
-            clip.error = None
-            session.add(clip)
-            session.commit()
-            if batch_job_id:
-                _refresh_clip_generation_job(batch_job_id)
-            logger.info("Clip %s generation completed with video %s", clip_id, video_url)
-            return {
-                "status": "completed",
-                "clipId": str(clip_id),
-                "videoUrl": video_url,
-                "replicateJobId": clip.replicate_job_id,
-            }
-
-        error_message = metadata.get("error") or "Video generation failed."
-        clip.status = "failed"
-        clip.error = error_message
-        session.add(clip)
-        session.commit()
+    try:
+        clip = ClipRepository.get_by_id(clip_id)
+    except ClipNotFoundError:
+        # Handle stale RQ jobs gracefully - clip may have been deleted during execution
+        logger.warning(
+            "Clip %s disappeared during job execution (likely stale RQ job). Skipping.",
+            clip_id
+        )
         if batch_job_id:
             _refresh_clip_generation_job(batch_job_id)
-        logger.error("Clip %s generation failed: %s", clip_id, error_message)
-        raise RuntimeError(error_message)
+        return {
+            "status": "skipped",
+            "clipId": str(clip_id),
+            "reason": "Clip disappeared during execution",
+        }
+
+    clip.prompt = scene_spec.prompt
+    clip.style_seed = str(metadata.get("seed") or seed) if seed is not None else clip.style_seed
+    clip.fps = metadata.get("fps", clip_fps) or clip_fps
+    clip.replicate_job_id = metadata.get("job_id", clip.replicate_job_id)
+    clip.num_frames = metadata.get("num_frames", clip_num_frames) or clip_num_frames
+
+    if success and video_url:
+        clip.status = "completed"
+        clip.video_url = video_url
+        clip.error = None
+        ClipRepository.update(clip)
+        if batch_job_id:
+            _refresh_clip_generation_job(batch_job_id)
+        logger.info("Clip %s generation completed with video %s", clip_id, video_url)
+        return {
+            "status": "completed",
+            "clipId": str(clip_id),
+            "videoUrl": video_url,
+            "replicateJobId": clip.replicate_job_id,
+        }
+
+    error_message = metadata.get("error") or "Video generation failed."
+    clip.status = "failed"
+    clip.error = error_message
+    ClipRepository.update(clip)
+    if batch_job_id:
+        _refresh_clip_generation_job(batch_job_id)
+    logger.error("Clip %s generation failed: %s", clip_id, error_message)
+    raise ClipGenerationError(error_message)
 
 
 def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
-    with session_scope() as session:
-        song = session.get(Song, song_id)
-        clips = session.exec(
-            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
-        ).all()
+    song = SongRepository.get_by_id(song_id)
+    clips = ClipRepository.get_by_song_id(song_id)
 
     # Handle case where no clips have been planned yet (return empty summary)
     if not clips:
@@ -278,28 +296,25 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
 
 
 def _mark_clip_failed(clip_id: UUID, message: str, *, batch_job_id: Optional[str] = None) -> None:
-    with session_scope() as session:
-        clip = session.get(SongClip, clip_id)
-        if not clip:
-            return
+    try:
+        clip = ClipRepository.get_by_id(clip_id)
         clip.status = "failed"
         clip.error = message
-        session.add(clip)
-        session.commit()
+        ClipRepository.update(clip)
+    except ClipNotFoundError:
+        # Clip doesn't exist, skip
+        pass
     if batch_job_id:
         _refresh_clip_generation_job(batch_job_id)
 
 
 def _build_scene_spec_for_clip(clip_id: UUID, analysis: SongAnalysis) -> SceneSpec:
-    with session_scope() as session:
-        clip = session.get(SongClip, clip_id)
-        if not clip:
-            raise ValueError(f"Clip {clip_id} not found when building scene spec")
-        start_sec = clip.start_sec
-        duration_sec = clip.duration_sec
+    clip = ClipRepository.get_by_id(clip_id)
+    start_sec = clip.start_sec
+    duration_sec = clip.duration_sec
 
     if not analysis.sections:
-        raise RuntimeError("Song analysis has no sections to build scene spec.")
+        raise ClipGenerationError("Song analysis has no sections to build scene spec.")
 
     target_section = _find_section_for_clip(start_sec, analysis.sections)
     scene_spec = build_scene_spec(target_section.id, analysis)
@@ -314,22 +329,21 @@ def _find_section_for_clip(start_time: float, sections: List[SongSection]) -> So
 
 
 def _determine_seed_for_clip(clip_id: UUID) -> Optional[int]:
-    with session_scope() as session:
-        clip = session.get(SongClip, clip_id)
-        if not clip:
-            return None
+    try:
+        clip = ClipRepository.get_by_id(clip_id)
+    except ClipNotFoundError:
+        return None
 
-        if clip.style_seed is not None:
-            try:
-                return int(clip.style_seed)
-            except ValueError:
-                logger.debug("Clip %s style_seed is non-numeric; generating new seed.", clip_id)
+    if clip.style_seed is not None:
+        try:
+            return int(clip.style_seed)
+        except ValueError:
+            logger.debug("Clip %s style_seed is non-numeric; generating new seed.", clip_id)
 
-        seed = random.randint(0, 2**31 - 1)
-        clip.style_seed = str(seed)
-        session.add(clip)
-        session.commit()
-        return seed
+    seed = random.randint(0, 2**31 - 1)
+    clip.style_seed = str(seed)
+    ClipRepository.update(clip)
+    return seed
 
 
 def _download_clip_to_path(url: str, destination: Path, timeout: float = 120.0) -> None:
@@ -360,11 +374,11 @@ def _download_clip_to_path(url: str, destination: Path, timeout: float = 120.0) 
             error_detail += f": {error_body[:200]}"
         except Exception:
             pass
-        raise RuntimeError(
+        raise StorageError(
             f"Failed to download clip asset from presigned URL (status {exc.response.status_code}): {error_detail}"
         ) from exc
     except httpx.HTTPError as exc:
-        raise RuntimeError(f"Failed to download clip asset from {url}: {exc}") from exc
+        raise StorageError(f"Failed to download clip asset from {url}: {exc}") from exc
 
 
 def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str, Optional[str]]:
@@ -384,92 +398,85 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
     settings = get_settings()
     bucket = settings.s3_bucket_name
     if not bucket:
-        raise RuntimeError("S3 bucket name is not configured; cannot store composed video.")
+        raise StorageError("S3 bucket name is not configured; cannot store composed video.")
 
-    with session_scope() as session:
-        song = session.get(Song, song_id)
-        if not song:
-            raise ValueError(f"Song {song_id} not found")
-        audio_key = song.processed_s3_key or song.original_s3_key
+    song = SongRepository.get_by_id(song_id)
+    audio_key = song.processed_s3_key or song.original_s3_key
+    
+    # Validate audio key exists in S3, or try to find it
+    if not audio_key:
+        # No key in database, try to find audio in S3
+        possible_keys = [
+            f"songs/{song_id}/original.wav",
+            f"songs/{song_id}/original.mp3",
+            f"songs/{song_id}/processed.wav",
+            f"songs/{song_id}/processed.mp3",
+        ]
+        found_key = None
+        for key in possible_keys:
+            if check_s3_object_exists(bucket_name=bucket, key=key):
+                found_key = key
+                logger.info("Found audio at S3 key: %s (not in database)", found_key)
+                # Update database with correct key
+                song.original_s3_key = found_key
+                SongRepository.update(song)
+                break
         
-        # Validate audio key exists in S3, or try to find it
-        if not audio_key:
-            # No key in database, try to find audio in S3
-            possible_keys = [
-                f"songs/{song_id}/original.wav",
-                f"songs/{song_id}/original.mp3",
-                f"songs/{song_id}/processed.wav",
-                f"songs/{song_id}/processed.mp3",
-            ]
-            found_key = None
-            for key in possible_keys:
-                if check_s3_object_exists(bucket_name=bucket, key=key):
-                    found_key = key
-                    logger.info("Found audio at S3 key: %s (not in database)", found_key)
-                    # Update database with correct key
-                    song.original_s3_key = found_key
-                    session.add(song)
-                    session.commit()
-                    break
-            
-            if found_key:
-                audio_key = found_key
-            else:
-                raise RuntimeError(
-                    f"Song audio is unavailable for composition. "
-                    f"No S3 key in database and not found at any expected S3 location: "
-                    f"{', '.join(possible_keys)}"
-                )
-        elif not check_s3_object_exists(bucket_name=bucket, key=audio_key):
-            # Key exists in database but file doesn't exist in S3, try to find it
-            logger.warning(
-                "Audio key %s from database does not exist in S3, trying to find correct key",
-                audio_key,
+        if found_key:
+            audio_key = found_key
+        else:
+            raise StorageError(
+                f"Song audio is unavailable for composition. "
+                f"No S3 key in database and not found at any expected S3 location: "
+                f"{', '.join(possible_keys)}"
             )
-            possible_keys = [
-                f"songs/{song_id}/original.wav",
-                f"songs/{song_id}/original.mp3",
-                f"songs/{song_id}/processed.wav",
-                f"songs/{song_id}/processed.mp3",
-            ]
-            found_key = None
-            for key in possible_keys:
-                if check_s3_object_exists(bucket_name=bucket, key=key):
-                    found_key = key
-                    logger.info("Found audio at S3 key: %s, updating database", found_key)
-                    # Update database with correct key
-                    song.original_s3_key = found_key
-                    session.add(song)
-                    session.commit()
-                    break
-            
-            if found_key:
-                audio_key = found_key
-            else:
-                raise RuntimeError(
-                    f"Song audio is unavailable for composition. "
-                    f"Key in database ({audio_key}) doesn't exist in S3, "
-                    f"and not found at any expected S3 location: {', '.join(possible_keys)}"
-                )
+    elif not check_s3_object_exists(bucket_name=bucket, key=audio_key):
+        # Key exists in database but file doesn't exist in S3, try to find it
+        logger.warning(
+            "Audio key %s from database does not exist in S3, trying to find correct key",
+            audio_key,
+        )
+        possible_keys = [
+            f"songs/{song_id}/original.wav",
+            f"songs/{song_id}/original.mp3",
+            f"songs/{song_id}/processed.wav",
+            f"songs/{song_id}/processed.mp3",
+        ]
+        found_key = None
+        for key in possible_keys:
+            if check_s3_object_exists(bucket_name=bucket, key=key):
+                found_key = key
+                logger.info("Found audio at S3 key: %s, updating database", found_key)
+                # Update database with correct key
+                song.original_s3_key = found_key
+                SongRepository.update(song)
+                break
+        
+        if found_key:
+            audio_key = found_key
+        else:
+            raise StorageError(
+                f"Song audio is unavailable for composition. "
+                f"Key in database ({audio_key}) doesn't exist in S3, "
+                f"and not found at any expected S3 location: {', '.join(possible_keys)}"
+            )
 
-        clips = session.exec(
-            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
-        ).all()
+        clips = ClipRepository.get_by_song_id(song_id)
 
     if not clips:
-        raise RuntimeError("No clips found to compose.")
+        raise CompositionError("No clips found to compose.")
 
     completed_clips = [
         clip for clip in clips if clip.status == "completed" and clip.video_url
     ]
     if len(completed_clips) != len(clips):
-        raise RuntimeError("Cannot compose video until all clips are completed.")
+        raise CompositionError("Cannot compose video until all clips are completed.")
 
-    song_duration = None
-    with session_scope() as session:
-        song = session.get(Song, song_id)
-        if song:
-            song_duration = song.duration_sec
+    try:
+        song = SongRepository.get_by_id(song_id)
+        song_duration = song.duration_sec
+    except SongNotFoundError:
+        song_duration = None
     if song_duration is None:
         song_duration = sum(clip.duration_sec or 0 for clip in completed_clips)
 
@@ -498,12 +505,12 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
                     clip.video_url[:100] if clip.video_url else "None",
                 )
                 if not clip.video_url:
-                    raise RuntimeError(
+                    raise StorageError(
                         f"Clip {clip.clip_index} file not found at S3 key {clip_s3_key} and no video_url available"
                     )
                 # Skip obviously fake/test URLs (like example.com)
                 if "example.com" in clip.video_url or "localhost" in clip.video_url:
-                    raise RuntimeError(
+                    raise StorageError(
                         f"Clip {clip.clip_index} has invalid test URL: {clip.video_url}. "
                         f"Please re-run the preload script to upload clips to S3."
                     )
@@ -520,12 +527,12 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
                         s3_err,
                     )
                     if not clip.video_url:
-                        raise RuntimeError(
+                        raise StorageError(
                             f"Clip {clip.clip_index} has no video_url and S3 download failed: {s3_err}"
                         ) from s3_err
                     # Skip obviously fake/test URLs (like example.com)
                     if "example.com" in clip.video_url or "localhost" in clip.video_url:
-                        raise RuntimeError(
+                        raise StorageError(
                             f"Clip {clip.clip_index} has invalid test URL: {clip.video_url}. "
                             f"Please re-run the preload script to upload clips to S3."
                         )
@@ -602,16 +609,12 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
     if job_id:
         update_job_progress(job_id, 95, "processing")  # Upload complete
 
-    with session_scope() as session:
-        song = session.get(Song, song_id)
-        if not song:
-            raise ValueError(f"Song {song_id} disappeared during composition update.")
-        song.composed_video_s3_key = video_key
-        song.composed_video_poster_s3_key = poster_key
-        song.composed_video_duration_sec = composition_result.duration_sec
-        song.composed_video_fps = composition_result.fps
-        session.add(song)
-        session.commit()
+    song = SongRepository.get_by_id(song_id)
+    song.composed_video_s3_key = video_key
+    song.composed_video_poster_s3_key = poster_key
+    song.composed_video_duration_sec = composition_result.duration_sec
+    song.composed_video_fps = composition_result.fps
+    SongRepository.update(song)
 
     if job_id:
         update_job_progress(job_id, 100, "completed")  # Composition complete
@@ -725,13 +728,16 @@ def start_clip_generation_job(
         if existing:
             raise ValueError("A clip generation job is already in progress for this song.")
 
-        song = session.get(Song, song_id)
-        if song:
+        try:
+            song = SongRepository.get_by_id(song_id)
             song.composed_video_s3_key = None
             song.composed_video_poster_s3_key = None
             song.composed_video_duration_sec = None
             song.composed_video_fps = None
-            session.add(song)
+            SongRepository.update(song)
+        except SongNotFoundError:
+            # Song doesn't exist, skip
+            pass
 
         job_record = ClipGenerationJob(
             id=job_id,
@@ -756,7 +762,7 @@ def start_clip_generation_job(
     with session_scope() as session:
         job_record = session.get(ClipGenerationJob, job_id)
         if not job_record:
-            raise RuntimeError("Failed to create clip generation job.")
+            raise ClipGenerationError("Failed to create clip generation job.")
         status = job_record.status
 
     return ClipGenerationJobResponse(job_id=job_id, song_id=song_id, status=status)

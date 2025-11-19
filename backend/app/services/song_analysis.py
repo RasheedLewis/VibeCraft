@@ -3,18 +3,21 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import librosa
 import numpy as np
-import redis
-from rq import Queue
 from rq.job import Job, get_current_job
 
 from app.core.config import get_settings
+from app.core.constants import ANALYSIS_QUEUE_TIMEOUT_SEC
 from app.core.database import session_scope
+from app.core.queue import get_queue
+from app.exceptions import AnalysisError, JobNotFoundError, SongNotFoundError
+from app.repositories import SongRepository
 from app.models.analysis import AnalysisJob, SongAnalysisRecord
 from app.models.song import Song
 from app.schemas.analysis import SongAnalysis, SongSection
@@ -31,14 +34,8 @@ from sqlmodel import select
 logger = logging.getLogger(__name__)
 
 
-def _get_queue() -> Queue:
-    settings = get_settings()
-    connection = redis.from_url(settings.redis_url)
-    return Queue(settings.rq_worker_queue, connection=connection)
-
-
 def enqueue_song_analysis(song_id: UUID) -> SongAnalysisJobResponse:
-    queue = _get_queue()
+    queue = get_queue(timeout=ANALYSIS_QUEUE_TIMEOUT_SEC)
     job_id = f"analysis-{uuid4()}"
     job: Job = queue.enqueue(run_song_analysis_job, song_id, job_id=job_id, meta={"progress": 0})
 
@@ -59,7 +56,7 @@ def get_job_status(job_id: str) -> JobStatusResponse:
     with session_scope() as session:
         job_record = session.get(AnalysisJob, job_id)
         if not job_record:
-            raise ValueError(f"Job {job_id} not found")
+            raise JobNotFoundError(f"Job {job_id} not found")
 
         result = None
         if job_record.analysis_id:
@@ -148,47 +145,61 @@ def run_song_analysis_job(song_id: UUID) -> dict[str, Any]:
 def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, Any]:
     settings = get_settings()
 
-    with session_scope() as session:
-        song = session.get(Song, song_id)
-        if not song:
-            raise ValueError(f"Song {song_id} not found")
+    song = SongRepository.get_by_id(song_id)
+    audio_key = song.processed_s3_key or song.original_s3_key
+    if not audio_key:
+        raise AnalysisError("Song has no associated audio to analyze")
 
-        audio_key = song.processed_s3_key or song.original_s3_key
-        if not audio_key:
-            raise ValueError("Song has no associated audio to analyze")
-
+        # S3 download timing
+        s3_start = time.time()
         audio_bytes = download_bytes_from_s3(bucket_name=settings.s3_bucket_name, key=audio_key)
+        s3_time = time.time() - s3_start
+        logger.info("Song analysis pipeline - S3 download: %.2fs", s3_time)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             audio_path = Path(tmp.name)
             tmp.write(audio_bytes)
 
     try:
+        # Librosa audio load timing
+        librosa_start = time.time()
         y, sr = librosa.load(str(audio_path), sr=None, mono=True)
         duration = float(librosa.get_duration(y=y, sr=sr))
+        librosa_time = time.time() - librosa_start
+        logger.info("Song analysis pipeline - Librosa audio load: %.2fs", librosa_time)
 
+        # Beat tracking timing
+        beat_start = time.time()
         tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
         beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
-        beat_times = [round(time, 4) for time in beat_times]
+        beat_times = [round(t, 4) for t in beat_times]
+        beat_time = time.time() - beat_start
+        logger.info("Song analysis pipeline - Beat tracking: %.2fs", beat_time)
 
         _update_job_progress(job_id, 25)
 
-        # onset_env = librosa.onset.onset_strength(y=y, sr=sr)  # Not used yet
-        # novelty_curve = _normalize_list(onset_env.tolist())  # Not used yet
-
+        # Section detection timing
+        section_start = time.time()
         sections = _detect_sections(y, sr, duration)
+        section_time = time.time() - section_start
+        logger.info("Song analysis pipeline - Section detection: %.2fs", section_time)
 
         _update_job_progress(job_id, 50)
 
+        # Mood/genre computation timing
+        mood_start = time.time()
         mood_vector = compute_mood_features(audio_path, tempo if tempo else None)
         primary_mood, mood_tags = compute_mood_tags(mood_vector)
         primary_genre, sub_genres, _ = compute_genre(audio_path, tempo if tempo else None, mood_vector)
+        mood_time = time.time() - mood_start
+        logger.info("Song analysis pipeline - Mood/genre computation: %.2fs", mood_time)
 
         _update_job_progress(job_id, 70)
 
+        # Lyric extraction timing
         lyrics_available = False
         section_lyrics_models = []
-
+        lyric_start = time.time()
         try:
             lyrics_available, aligned = extract_and_align_lyrics(audio_path, sections)
             section_lyrics_models = aligned
@@ -196,6 +207,9 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
             logger.warning("Lyric extraction failed for song %s: %s", song_id, lyric_exc)
             lyrics_available = False
             section_lyrics_models = []
+        finally:
+            lyric_time = time.time() - lyric_start
+            logger.info("Song analysis pipeline - Lyric extraction: %.2fs", lyric_time)
 
         _update_job_progress(job_id, 85)
 
@@ -215,6 +229,8 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
 
         analysis_json = analysis.model_dump_json()
 
+        # Database save timing
+        db_start = time.time()
         with session_scope() as session:
             statement = select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
             record = session.exec(statement).first()
@@ -233,6 +249,8 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
             session.add(record)
             session.commit()
             session.refresh(record)
+        db_time = time.time() - db_start
+        logger.info("Song analysis pipeline - Database save: %.2fs", db_time)
 
         _complete_job(job_id, record)
 

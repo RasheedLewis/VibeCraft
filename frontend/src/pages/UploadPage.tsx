@@ -356,6 +356,13 @@ export const UploadPage: React.FC = () => {
     }
   }, [clipSummary?.analysis, analysisData, result?.songId, analysisPolling])
 
+  // Fetch song details when analysis completes (backup in case it wasn't fetched after upload)
+  useEffect(() => {
+    if (analysisState === 'completed' && result?.songId && !songDetails) {
+      void fetchSongDetails(result.songId)
+    }
+  }, [analysisState, result?.songId, songDetails, fetchSongDetails])
+
   useEffect(() => {
     if (!clipSummary?.composedVideoUrl) {
       return
@@ -473,6 +480,7 @@ export const UploadPage: React.FC = () => {
         setProgress(100)
         setStage('uploaded')
         await analysisPolling.startAnalysis(response.data.songId)
+        await fetchSongDetails(response.data.songId)
       } catch (err) {
         console.error('Upload failed', err)
         const message =
@@ -482,7 +490,7 @@ export const UploadPage: React.FC = () => {
         setStage('error')
       }
     },
-    [resetState, analysisPolling],
+    [resetState, analysisPolling, fetchSongDetails],
   )
 
   const handleFilesSelected = useCallback(
@@ -838,6 +846,18 @@ export const UploadPage: React.FC = () => {
       {analysisState === 'completed' && analysisData && songDetails && (
         <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
           {renderSongProfile()}
+        </div>
+      )}
+      {analysisState === 'completed' && (!analysisData || !songDetails) && (
+        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
+          <div className="rounded-3xl border border-vc-state-error/40 bg-[rgba(38,12,18,0.85)] p-7 shadow-vc2">
+            <div className="flex flex-col gap-4">
+              <h3 className="text-lg font-semibold text-white">Loading song details...</h3>
+              <p className="text-sm text-vc-text-secondary">
+                Analysis complete but missing data. State: analysisData={String(!!analysisData)}, songDetails={String(!!songDetails)}
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>

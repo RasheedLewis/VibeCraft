@@ -43,6 +43,8 @@ frontend/.vite/
 .idea/
 .specstory/
 .cursorindexingignore
+.cursor/
+.stash/
 
 # Media & tmp outputs
 storage/

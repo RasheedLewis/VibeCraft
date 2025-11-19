@@ -4,7 +4,7 @@ import json
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Optional
 from uuid import UUID, uuid4
 
 import librosa
@@ -27,6 +27,13 @@ from app.services.genre_mood_analysis import (
 from app.services.lyric_extraction import extract_and_align_lyrics
 from app.services.storage import download_bytes_from_s3
 from sqlmodel import select
+
+from app.services.audjust_client import (
+    AudjustConfigurationError,
+    AudjustRequestError,
+    fetch_structure_segments,
+)
+from app.services.section_inference import infer_section_types
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +183,71 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
         # onset_env = librosa.onset.onset_strength(y=y, sr=sr)  # Not used yet
         # novelty_curve = _normalize_list(onset_env.tolist())  # Not used yet
 
-        sections = _detect_sections(y, sr, duration)
+        sections: List[SongSection]
+        audjust_sections_raw: Optional[List[dict]] = None
+
+        logger.info(
+            "Checking Audjust configuration: base_url=%s, api_key=%s",
+            settings.audjust_base_url,
+            "***" if settings.audjust_api_key else None,
+        )
+
+        if settings.audjust_base_url and settings.audjust_api_key:
+            logger.info("Audjust is configured, attempting to fetch structure segments for song %s", song_id)
+            try:
+                audjust_sections_raw = fetch_structure_segments(audio_path)
+                logger.info(
+                    "Fetched %d sections from Audjust for song %s",
+                    len(audjust_sections_raw),
+                    song_id,
+                )
+            except AudjustConfigurationError as exc:
+                logger.warning("Audjust configuration invalid: %s", exc)
+            except AudjustRequestError as exc:
+                logger.warning(
+                    "Audjust section request failed for song %s: %s. Falling back to internal segmentation.",
+                    song_id,
+                    exc,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "Unexpected error while calling Audjust for song %s: %s",
+                    song_id,
+                    exc,
+                )
+        else:
+            logger.warning(
+                "Audjust API not configured (base_url=%s, api_key_present=%s). Skipping structure analysis.",
+                settings.audjust_base_url,
+                bool(settings.audjust_api_key),
+            )
+
+        if audjust_sections_raw:
+            try:
+                energy_per_section = _compute_section_energy(
+                    y, sr, audjust_sections_raw
+                )
+                inferred_sections = infer_section_types(
+                    audjust_sections=audjust_sections_raw,
+                    energy_per_section=energy_per_section,
+                )
+                if inferred_sections:
+                    sections = _build_song_sections_from_inference(inferred_sections)
+                else:
+                    logger.warning(
+                        "Audjust returned no usable sections for song %s. Falling back to internal segmentation.",
+                        song_id,
+                    )
+                    sections = _detect_sections(y, sr, duration)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "Failed to build sections from Audjust response for song %s: %s. Falling back to internal segmentation.",
+                    song_id,
+                    exc,
+                )
+                sections = _detect_sections(y, sr, duration)
+        else:
+            sections = _detect_sections(y, sr, duration)
 
         _update_job_progress(job_id, 50)
 
@@ -337,5 +408,72 @@ def _assign_repetition_groups(features: list[np.ndarray]) -> list[str | None]:
         group_label += 1
 
     return groups
+
+
+def _compute_section_energy(
+    y: np.ndarray,
+    sr: int,
+    audjust_sections: list[dict],
+    *,
+    frame_length: int = 2048,
+    hop_length: int = 512,
+) -> list[float]:
+    rms = librosa.feature.rms(
+        y=y, frame_length=frame_length, hop_length=hop_length, center=True
+    )[0]
+    times = librosa.frames_to_time(
+        np.arange(len(rms)), sr=sr, hop_length=hop_length, n_fft=frame_length
+    )
+    global_mean = float(np.mean(rms)) if len(rms) else 0.0
+
+    energies: list[float] = []
+    for section in audjust_sections:
+        start = float(section.get("startMs", 0)) / 1000.0
+        end = float(section.get("endMs", start)) / 1000.0
+        if end <= start:
+            energies.append(global_mean)
+            continue
+        mask = (times >= start) & (times < end)
+        segment_rms = rms[mask]
+        if segment_rms.size == 0:
+            energies.append(global_mean)
+        else:
+            energies.append(float(segment_rms.mean()))
+    return energies
+
+
+def _build_song_sections_from_inference(
+    inferred_sections,
+) -> list[SongSection]:
+    type_map = {
+        "intro_like": "intro",
+        "verse_like": "verse",
+        "chorus_like": "chorus",
+        "bridge_like": "bridge",
+        "outro_like": "outro",
+        "other": "other",
+    }
+
+    sections: list[SongSection] = []
+    for entry in inferred_sections:
+        type_value = type_map.get(entry.type_soft, "other")
+        repetition_group = (
+            f"label-{entry.label_raw}" if entry.label_raw is not None else None
+        )
+        sections.append(
+            SongSection(
+                id=entry.id,
+                type=type_value,  # type: ignore[arg-type]
+                type_soft=entry.type_soft,
+                display_name=entry.display_name,
+                raw_label=entry.label_raw,
+                start_sec=round(entry.start_sec, 3),
+                end_sec=round(entry.end_sec, 3),
+                confidence=round(entry.confidence, 3),
+                repetition_group=repetition_group,
+            )
+        )
+
+    return sections
 
 

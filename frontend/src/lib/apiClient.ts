@@ -15,7 +15,7 @@ const normalizeBaseUrl = (rawUrl: string | undefined): string => {
     // In production, require the env var to be set
     throw new Error(
       'VITE_API_BASE_URL environment variable is required in production. ' +
-      'Please set it in your Railway environment variables.'
+        'Please set it in your Railway environment variables.',
     )
   }
   const trimmed = rawUrl.replace(/\s+/g, '').replace(/\/+$/, '')

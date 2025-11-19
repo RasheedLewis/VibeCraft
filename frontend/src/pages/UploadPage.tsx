@@ -219,19 +219,42 @@ const extractErrorMessage = (error: unknown, fallback: string): string => {
 
 const buildSectionsWithDisplayNames = (
   sections: SongSection[],
-): Array<SongSection & { displayName: string }> => {
+): Array<
+  SongSection & {
+    displayName: string
+    typeSoft: string | null
+    rawLabel: number | null
+  }
+> => {
   const counts: Record<string, number> = {}
   return sections.map((section) => {
-    const label = SECTION_TYPE_LABELS[section.type] ?? 'Section'
-    const nextCount = (counts[section.type] ?? 0) + 1
-    counts[section.type] = nextCount
+    const baseType = section.typeSoft ?? section.type
+
+    const label =
+      (section.displayName && section.displayName.split(' ')[0]) ??
+      SECTION_TYPE_LABELS[section.type] ??
+      'Section'
+
+    const key = baseType ?? section.type
+    const nextCount = (counts[key] ?? 0) + 1
+    counts[key] = nextCount
 
     const displayName =
-      section.type === 'intro' || section.type === 'outro' || section.type === 'bridge'
-        ? label
-        : `${label} ${nextCount}`
+      section.displayName ??
+      (key === 'intro_like' || key === 'intro'
+        ? 'Intro'
+        : key === 'outro_like' || key === 'outro'
+          ? 'Outro'
+          : key === 'bridge_like' || key === 'bridge'
+            ? 'Bridge'
+            : `${label} ${nextCount}`)
 
-    return { ...section, displayName }
+    return {
+      ...section,
+      typeSoft: section.typeSoft ?? null,
+      rawLabel: section.rawLabel ?? null,
+      displayName,
+    }
   })
 }
 
@@ -627,9 +650,7 @@ export const UploadPage: React.FC = () => {
         )
         await fetchClipSummary(result.songId)
       } catch (err) {
-        setClipJobError(
-          extractErrorMessage(err, 'Unable to retry clip generation.'),
-        )
+        setClipJobError(extractErrorMessage(err, 'Unable to retry clip generation.'))
       }
     },
     [result?.songId, fetchClipSummary],
@@ -931,17 +952,10 @@ export const UploadPage: React.FC = () => {
       return
     }
 
-    // STOP ALL POLLING if composed video exists - we're completely done!
-    if (clipSummary?.composedVideoUrl) {
-      return
-    }
-
-    // Stop polling if no active job and all clips are completed
     if (
       !clipJobId &&
       clipSummary &&
-      clipSummary.completedClips === clipSummary.totalClips &&
-      !isComposing
+      clipSummary.completedClips === clipSummary.totalClips
     ) {
       return
     }
@@ -955,12 +969,6 @@ export const UploadPage: React.FC = () => {
           `/songs/${result.songId}/clips/status`,
         )
         if (cancelled) return
-
-        // STOP POLLING if composed video now exists
-        if (data.composedVideoUrl) {
-          setClipSummary(data)
-          return // Stop all polling - we're done!
-        }
 
         setClipSummary(data)
 
@@ -997,14 +1005,7 @@ export const UploadPage: React.FC = () => {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [
-    result?.songId,
-    clipJobId,
-    clipJobStatus,
-    clipJobProgress,
-    clipSummary,
-    isComposing,
-  ])
+  }, [result?.songId, clipJobId, clipJobStatus, clipJobProgress, clipSummary])
 
   useEffect(() => {
     if (clipJobError) {

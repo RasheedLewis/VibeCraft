@@ -22,6 +22,9 @@ class SongSection(BaseModel):
 
     id: str
     type: SongSectionType
+    type_soft: Optional[str] = Field(None, alias="typeSoft")
+    display_name: Optional[str] = Field(None, alias="displayName")
+    raw_label: Optional[int] = Field(None, alias="rawLabel")
     start_sec: float = Field(..., alias="startSec")
     end_sec: float = Field(..., alias="endSec")
     confidence: float

@@ -359,7 +359,9 @@ export const UploadPage: React.FC = () => {
   // Fetch song details when analysis completes (backup in case it wasn't fetched after upload)
   useEffect(() => {
     if (analysisState === 'completed' && result?.songId && !songDetails) {
-      void fetchSongDetails(result.songId)
+      setTimeout(() => {
+        void fetchSongDetails(result.songId)
+      }, 0)
     }
   }, [analysisState, result?.songId, songDetails, fetchSongDetails])
 
@@ -752,9 +754,6 @@ export const UploadPage: React.FC = () => {
                     lyricSnippet={lyric}
                     hasVideo={false}
                     className="h-full bg-[rgba(12,12,18,0.78)]"
-                    onGenerate={() => {}}
-                    onRegenerate={() => {}}
-                    onUseInFull={() => {}}
                   />
                 </div>
               )
@@ -852,9 +851,12 @@ export const UploadPage: React.FC = () => {
         <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
           <div className="rounded-3xl border border-vc-state-error/40 bg-[rgba(38,12,18,0.85)] p-7 shadow-vc2">
             <div className="flex flex-col gap-4">
-              <h3 className="text-lg font-semibold text-white">Loading song details...</h3>
+              <h3 className="text-lg font-semibold text-white">
+                Loading song details...
+              </h3>
               <p className="text-sm text-vc-text-secondary">
-                Analysis complete but missing data. State: analysisData={String(!!analysisData)}, songDetails={String(!!songDetails)}
+                Analysis complete but missing data. State: analysisData=
+                {String(!!analysisData)}, songDetails={String(!!songDetails)}
               </p>
             </div>
           </div>

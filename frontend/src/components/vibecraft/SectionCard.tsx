@@ -56,23 +56,29 @@ export const SectionCard: React.FC<SectionCardProps> = ({
       </p>
     )}
 
-    <div className="mt-4 flex flex-wrap items-center gap-2">
-      {!hasVideo && (
-        <VCButton size="sm" onClick={onGenerate}>
-          Generate section video
-        </VCButton>
-      )}
+    {(onGenerate || onRegenerate || onUseInFull) && (
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {!hasVideo && onGenerate && (
+          <VCButton size="sm" onClick={onGenerate}>
+            Generate section video
+          </VCButton>
+        )}
 
-      {hasVideo && (
-        <>
-          <VCButton variant="secondary" size="sm" onClick={onRegenerate}>
-            Regenerate
-          </VCButton>
-          <VCButton size="sm" onClick={onUseInFull}>
-            Use in full video
-          </VCButton>
-        </>
-      )}
-    </div>
+        {hasVideo && (
+          <>
+            {onRegenerate && (
+              <VCButton variant="secondary" size="sm" onClick={onRegenerate}>
+                Regenerate
+              </VCButton>
+            )}
+            {onUseInFull && (
+              <VCButton size="sm" onClick={onUseInFull}>
+                Use in full video
+              </VCButton>
+            )}
+          </>
+        )}
+      </div>
+    )}
   </VCCard>
 )

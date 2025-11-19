@@ -3,6 +3,7 @@ from app.services.clip_generation import (
     enqueue_clip_generation_batch,
     get_clip_generation_job_status,
     get_clip_generation_summary,
+    retry_clip_generation,
     run_clip_generation_job,
     start_clip_generation_job,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "enqueue_clip_generation_batch",
     "get_clip_generation_summary",
     "get_clip_generation_job_status",
+    "retry_clip_generation",
     "run_clip_generation_job",
     "start_clip_generation_job",
     "compute_genre",

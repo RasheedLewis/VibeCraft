@@ -482,14 +482,6 @@ export const UploadPage: React.FC = () => {
     [setClipJobError],
   )
 
-  const handleRetryClip = useCallback(
-    (clip: SongClipStatus) => {
-      console.info('Retry clip requested', clip.id)
-      setClipJobError('Retry is not available yet.')
-    },
-    [setClipJobError],
-  )
-
   const handlePlayerClipSelect = useCallback(
     (clipId: string) => {
       const targetClip = clipSummary?.clips?.find((clip) => clip.id === clipId)
@@ -620,6 +612,27 @@ export const UploadPage: React.FC = () => {
       }
     },
     [clipJobId],
+  )
+
+  const handleRetryClip = useCallback(
+    async (clip: SongClipStatus) => {
+      if (!result?.songId) return
+      try {
+        setClipJobError(null)
+        setClipJobStatus('queued')
+        setClipJobProgress(0)
+        setClipJobId(null)
+        await apiClient.post<SongClipStatus>(
+          `/songs/${result.songId}/clips/${clip.id}/retry`,
+        )
+        await fetchClipSummary(result.songId)
+      } catch (err) {
+        setClipJobError(
+          extractErrorMessage(err, 'Unable to retry clip generation.'),
+        )
+      }
+    },
+    [result?.songId, fetchClipSummary],
   )
 
   const startAnalysis = useCallback(async (songId: string) => {

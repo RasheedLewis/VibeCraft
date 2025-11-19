@@ -18,6 +18,7 @@ from app.services.clip_generation import (
     enqueue_clip_generation_batch,
     get_clip_generation_job_status,
     get_clip_generation_summary,
+    retry_clip_generation,
     run_clip_generation_job,
     start_clip_generation_job,
 )
@@ -47,7 +48,8 @@ class DummyQueue:
         job_timeout=None,
         meta=None,
     ):
-        job = DummyJob(clip_id, job_id, depends_on, meta)
+        job_identifier = job_id or f"job-{len(self.jobs) + 1}"
+        job = DummyJob(clip_id, job_identifier, depends_on, meta)
         self.jobs.append(job)
         return job
 
@@ -124,7 +126,7 @@ def _insert_song_and_clips(
         analysis=analysis,
         clip_count=clip_count,
         min_clip_sec=3.0,
-        max_clip_sec=10.0,
+        max_clip_sec=6.0,
         generator_fps=8,
     )
     persist_clip_plans(song_id=song_id, plans=plans, fps=8, source="beat")
@@ -257,6 +259,81 @@ def test_run_clip_generation_job_failure(monkeypatch):
         assert updated_clip.status == "failed"
         assert updated_clip.error == "replicate error"
         assert updated_clip.video_url is None
+
+    _cleanup_song(song_id)
+
+
+def test_retry_clip_generation_resets_state(monkeypatch):
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=2)
+
+    with session_scope() as session:
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+        assert clip is not None
+        clip.status = "failed"
+        clip.error = "previous failure"
+        clip.video_url = "https://old.example.com/clip.mp4"
+        session.add(clip)
+        session.commit()
+        clip_id = clip.id
+
+    dummy_queue = DummyQueue()
+    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+
+    status = retry_clip_generation(clip_id)
+
+    assert len(dummy_queue.jobs) == 1
+    job = dummy_queue.jobs[0]
+    assert job.clip_id == clip_id
+    assert job.meta and job.meta.get("retry") is True
+
+    with session_scope() as session:
+        updated_clip = session.get(SongClip, clip_id)
+        assert updated_clip is not None
+        assert updated_clip.status == "queued"
+        assert updated_clip.error is None
+        assert updated_clip.video_url is None
+        assert updated_clip.rq_job_id == job.id
+
+    assert status.status == "queued"
+
+    _cleanup_song(song_id)
+
+
+def test_retry_clip_generation_endpoint(monkeypatch):
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(16)], clip_count=3)
+
+    with session_scope() as session:
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+        assert clip is not None
+        clip.status = "failed"
+        clip.error = "bad run"
+        clip.video_url = "https://old.example.com/clip.mp4"
+        session.add(clip)
+        session.commit()
+        clip_id = clip.id
+
+    dummy_queue = DummyQueue()
+    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+
+    with TestClient(create_app()) as client:
+        response = client.post(f"/api/v1/songs/{song_id}/clips/{clip_id}/retry")
+        assert response.status_code == 202, response.text
+        payload = response.json()
+        assert payload["id"] == str(clip_id)
+        assert payload["status"] == "queued"
+
+    assert len(dummy_queue.jobs) == 1
+
+    with session_scope() as session:
+        updated_clip = session.get(SongClip, clip_id)
+        assert updated_clip is not None
+        assert updated_clip.status == "queued"
+        assert updated_clip.video_url is None
+        assert updated_clip.error is None
 
     _cleanup_song(song_id)
 

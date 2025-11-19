@@ -53,7 +53,8 @@ export const UploadPage: React.FC = () => {
   const [result, setResult] = useState<SongUploadResponse | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [songDetails, setSongDetails] = useState<SongRead | null>(null)
-  const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null)
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related state
+  // const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null)
   const [isComposing, setIsComposing] = useState<boolean>(false)
   const [composeJobId, setComposeJobId] = useState<string | null>(null)
   const [playerActiveClipId, setPlayerActiveClipId] = useState<string | null>(null)
@@ -232,17 +233,19 @@ export const UploadPage: React.FC = () => {
     [clipSummary?.clips, clipSummary?.composedVideoUrl, clipPolling],
   )
 
-  const highlightTimeoutRef = useRef<number | null>(null)
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related code
+  // const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
     () => mapMoodToMoodKind(analysisData?.moodPrimary ?? ''),
     [analysisData?.moodPrimary],
   )
-  const lyricsBySection = useMemo(() => {
-    if (!analysisData?.sectionLyrics || !analysisData.sectionLyrics.length) {
-      return new Map<string, string>()
-    }
-    return new Map(analysisData.sectionLyrics.map((item) => [item.sectionId, item.text]))
-  }, [analysisData])
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related code
+  // const lyricsBySection = useMemo(() => {
+  //   if (!analysisData?.sectionLyrics || !analysisData.sectionLyrics.length) {
+  //     return new Map<string, string>()
+  //   }
+  //   return new Map(analysisData.sectionLyrics.map((item) => [item.sectionId, item.text]))
+  // }, [analysisData])
 
   useEffect(
     () => () => {
@@ -397,24 +400,25 @@ export const UploadPage: React.FC = () => {
     }, 0)
   }, [clipSummary, playerClipSelectionLocked])
 
-  const handleSectionSelect = useCallback((sectionId: string) => {
-    if (!sectionId) return
-    if (highlightTimeoutRef.current) {
-      window.clearTimeout(highlightTimeoutRef.current)
-      highlightTimeoutRef.current = null
-    }
-    setHighlightedSectionId(sectionId)
-
-    const element = document.getElementById(`section-${sectionId}`)
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
-    }
-
-    highlightTimeoutRef.current = window.setTimeout(() => {
-      setHighlightedSectionId(null)
-      highlightTimeoutRef.current = null
-    }, 2000)
-  }, [])
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related handlers
+  // const handleSectionSelect = useCallback((sectionId: string) => {
+  //   if (!sectionId) return
+  //   if (highlightTimeoutRef.current) {
+  //     window.clearTimeout(highlightTimeoutRef.current)
+  //     highlightTimeoutRef.current = null
+  //   }
+  //   setHighlightedSectionId(sectionId)
+  //
+  //   const element = document.getElementById(`section-${sectionId}`)
+  //   if (element) {
+  //     element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+  //   }
+  //
+  //   highlightTimeoutRef.current = window.setTimeout(() => {
+  //     setHighlightedSectionId(null)
+  //     highlightTimeoutRef.current = null
+  //   }, 2000)
+  // }, [])
 
   const handleFileUpload = useCallback(
     async (file: File) => {
@@ -640,9 +644,11 @@ export const UploadPage: React.FC = () => {
             isComposing={isComposing}
             composeJobProgress={composeJobProgress}
             playerActiveClipId={playerActiveClipId}
-            highlightedSectionId={highlightedSectionId}
+            // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+            // highlightedSectionId={highlightedSectionId}
             metadata={metadata}
-            lyricsBySection={lyricsBySection}
+            // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+            // lyricsBySection={lyricsBySection}
             audioUrl={result?.audioUrl ?? null}
             onGenerateClips={handleGenerateClips}
             onCancelClipJob={handleCancelClipJob}
@@ -651,7 +657,8 @@ export const UploadPage: React.FC = () => {
             onRegenerateClip={handleRegenerateClip}
             onRetryClip={handleRetryClip}
             onPlayerClipSelect={handlePlayerClipSelect}
-            onSectionSelect={handleSectionSelect}
+            // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+            // onSectionSelect={handleSectionSelect}
           />
         </div>
       )}

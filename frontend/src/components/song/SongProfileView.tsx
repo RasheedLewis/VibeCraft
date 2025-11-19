@@ -1,5 +1,7 @@
 import React from 'react'
-import { SectionCard, VCCard, VCButton } from '../vibecraft'
+// NOTE: Sections are NOT implemented in the backend right now - commenting out section-related UI
+// import { SectionCard, VCCard, VCButton } from '../vibecraft'
+import { VCCard, VCButton } from '../vibecraft'
 import type {
   ClipGenerationSummary,
   SongAnalysis,
@@ -8,10 +10,12 @@ import type {
 } from '../../types/song'
 import { MainVideoPlayer } from '../MainVideoPlayer'
 import { formatSeconds, formatBpm, formatMoodTags } from '../../utils/formatting'
-import { buildSectionsWithDisplayNames, mapMoodToMoodKind } from '../../utils/sections'
+// NOTE: Sections are NOT implemented in the backend right now - commenting out section-related UI
+// import { buildSectionsWithDisplayNames, mapMoodToMoodKind } from '../../utils/sections'
 import { parseWaveformJson } from '../../utils/waveform'
 import { normalizeClipStatus } from '../../utils/status'
-import { SongTimeline } from './SongTimeline'
+// NOTE: Sections are NOT implemented in the backend right now - commenting out section-related UI
+// import { SongTimeline } from './SongTimeline'
 import { WaveformDisplay } from './WaveformDisplay'
 import { MoodVectorMeter } from './MoodVectorMeter'
 import { ClipGenerationPanel } from './ClipGenerationPanel'
@@ -28,9 +32,7 @@ interface SongProfileViewProps {
   isComposing: boolean
   composeJobProgress: number
   playerActiveClipId: string | null
-  highlightedSectionId: string | null
   metadata: { fileName: string } | null
-  lyricsBySection: Map<string, string>
   audioUrl: string | null
   onGenerateClips: () => void
   onCancelClipJob: () => void
@@ -39,7 +41,10 @@ interface SongProfileViewProps {
   onRegenerateClip: (clip: SongClipStatus) => void
   onRetryClip: (clip: SongClipStatus) => void
   onPlayerClipSelect: (clipId: string | null) => void
-  onSectionSelect: (sectionId: string) => void
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+  // highlightedSectionId: string | null
+  // lyricsBySection: Map<string, string>
+  // onSectionSelect: (sectionId: string) => void
 }
 
 export const SongProfileView: React.FC<SongProfileViewProps> = ({
@@ -53,9 +58,11 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   isComposing,
   composeJobProgress,
   playerActiveClipId,
-  highlightedSectionId,
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+  // highlightedSectionId,
   metadata,
-  lyricsBySection,
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+  // lyricsBySection,
   onGenerateClips,
   onCancelClipJob,
   onCompose,
@@ -63,10 +70,12 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   onRegenerateClip,
   onRetryClip,
   onPlayerClipSelect,
-  onSectionSelect,
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+  // onSectionSelect,
   audioUrl,
 }) => {
-  const sectionsWithDisplay = buildSectionsWithDisplayNames(analysisData.sections)
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related UI
+  // const sectionsWithDisplay = buildSectionsWithDisplayNames(analysisData.sections)
   const waveformValues = parseWaveformJson(songDetails.waveform_json)
   const durationValue = analysisData.durationSec ?? songDetails.duration_sec ?? 0
   const bpmLabel = formatBpm(analysisData.bpm)
@@ -76,7 +85,8 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   const fileName = songDetails.title?.trim()
     ? songDetails.title
     : (metadata?.fileName ?? songDetails.original_filename)
-  const sectionMood = mapMoodToMoodKind(analysisData.moodPrimary ?? '')
+  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related UI
+  // const sectionMood = mapMoodToMoodKind(analysisData.moodPrimary ?? '')
 
   const completedClipEntries =
     clipSummary?.clips?.filter(
@@ -221,7 +231,8 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
         />
       </section>
 
-      <section className="space-y-2">
+      {/* NOTE: Sections are NOT implemented in the backend right now - commenting out section-related UI */}
+      {/* <section className="space-y-2">
         <div className="vc-label">Song structure</div>
         <SongTimeline
           sections={sectionsWithDisplay}
@@ -266,7 +277,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
             )
           })}
         </div>
-      </section>
+      </section> */}
     </section>
   )
 }

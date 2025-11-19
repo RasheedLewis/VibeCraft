@@ -1,6 +1,10 @@
 # Developer Guide
 
-This guide walks new contributors through setting up the AI Music Video project locally. It complements the architecture overview in `ARCH.md`, the roadmap in `ROADMAP.md`, and the detailed requirements in `PRD.md`.
+**Note:** This guide reflects the current implementation. The product vision has evolved since initial planning, and some early documentation may reference features or approaches that have changed.
+
+---
+
+This guide walks new contributors through setting up the AI Music Video project locally. It complements the architecture overview in `ARCH.md`.
 
 ---
 
@@ -176,14 +180,11 @@ If video generation fails, you can check the Replicate job status directly:
 
 1. **Query the database for the job ID and prompt:**
    ```bash
-   # Postgres - Get job ID, error, and the prompt that was sent
-   docker exec ai-music-video-postgres psql -U postgres -d ai_music_video -c "SELECT replicate_job_id, error_message, status, prompt FROM section_videos WHERE status = 'failed' ORDER BY created_at DESC LIMIT 1;"
+   # PostgreSQL - Get job ID, error, and the prompt that was sent
+   docker exec ai-music-video-postgres psql -U postgres -d ai_music_video -c "SELECT replicate_job_id, error_message, status FROM song_clips WHERE status = 'failed' ORDER BY created_at DESC LIMIT 1;"
    
-   # SQLite
-   sqlite3 backend/app.db "SELECT replicate_job_id, error_message, status, prompt FROM section_videos WHERE status = 'failed' ORDER BY created_at DESC LIMIT 1;"
-   
-   # Quick prompt view (Postgres)
-   docker exec ai-music-video-postgres psql -U postgres -d ai_music_video -c "SELECT prompt FROM section_videos WHERE section_id = 'section-4' ORDER BY created_at DESC LIMIT 1;"
+   # Quick prompt view (PostgreSQL) - prompts are stored in clip generation jobs
+   docker exec ai-music-video-postgres psql -U postgres -d ai_music_video -c "SELECT id, status, error_message FROM song_clips WHERE song_id = 'your-song-uuid' ORDER BY created_at DESC LIMIT 5;"
    ```
 
 2. **View the job on Replicate:**
@@ -263,89 +264,7 @@ rq worker ai_music_video
 
 ---
 
-## 4.1 Trigger.dev Background Tasks
-
-Trigger.dev is configured for running background tasks and workflows. Triggers are defined in `backend/triggers/` and can be used alongside or instead of RQ workers.
-
-### 4.1.1 Setup
-
-Trigger.dev dependencies are installed in the root `package.json`. Make sure you've installed root dependencies:
-
-```bash
-npm install
-```
-
-### 4.1.2 Configuration
-
-The Trigger.dev configuration is in `trigger.config.ts` at the project root:
-- Triggers are loaded from `backend/triggers/` directory
-- Project ID is configured in the config file
-- See `trigger.config.ts` for retry policies and other settings
-
-### 4.1.3 Running Triggers in Development
-
-**Option 1: Include in dev script (optional)**
-
-You can start Trigger.dev automatically with the dev script:
-
-```bash
-ENABLE_TRIGGER_DEV=1 make dev
-# or
-ENABLE_TRIGGER_DEV=1 bash scripts/dev.sh
-```
-
-**Option 2: Run manually (recommended for most cases)**
-
-Start the Trigger.dev dev server in a separate terminal:
-
-```bash
-npx trigger.dev@latest dev
-```
-
-This will:
-- Watch for changes in `backend/triggers/`
-- Connect to your Trigger.dev project
-- Allow you to test triggers locally
-
-**Test the hello-world example trigger:**
-
-The example trigger is located at `backend/triggers/example.ts`. Once the dev server is running, you can trigger it via the Trigger.dev dashboard or by calling it programmatically.
-
-**When to use Trigger.dev:**
-
-- Only needed when working on trigger-based workflows
-- For most development, RQ workers are sufficient
-- Use Trigger.dev when you need complex workflows, better observability, or cloud deployment features
-
-### 4.1.4 Creating New Triggers
-
-1. Create a new TypeScript file in `backend/triggers/`
-2. Import the Trigger.dev SDK:
-   ```typescript
-   import { logger, task, wait } from "@trigger.dev/sdk/v3";
-   ```
-3. Define your task:
-   ```typescript
-   export const myTask = task({
-     id: "my-task-id",
-     run: async (payload: any, { ctx }) => {
-       // Your task logic here
-       return { result: "success" };
-     },
-   });
-   ```
-4. The dev server will automatically pick up the new trigger
-
-### 4.1.5 Trigger.dev vs RQ Workers
-
-- **Trigger.dev**: Better for complex workflows, retries, observability, and cloud deployment
-- **RQ Workers**: Simpler, good for basic background jobs, runs locally with Redis
-
-You can use both systems in parallel - Trigger.dev for complex workflows, RQ for simple background tasks.
-
----
-
-### 4.2 Backend Project Structure
+### 4.1 Backend Project Structure
 
 The FastAPI app lives under `backend/app/`:
 
@@ -379,7 +298,7 @@ If composed videos are too large, you can adjust these settings:
 3. **Reduce resolution** (smaller file, lower resolution): Change `DEFAULT_TARGET_RESOLUTION = (1920, 1080)` to `(1280, 720)` (~40% smaller)
 4. **Reduce FPS** (smaller file, less smooth): Change `DEFAULT_TARGET_FPS = 24` to `20` (~15% smaller)
 
-For detailed file size analysis and testing workflows, see `docs/adam/VideoCompTesting.md`.
+For file size optimization, adjust the settings in `backend/app/services/video_composition.py` as described above.
 
 ---
 
@@ -606,30 +525,157 @@ docker compose up --build
 
 ## 7. Deployment
 
-### 7.1 Redeploying Services
+### 7.1 System Dependencies
 
-To redeploy the backend or frontend after making changes:
+VibeCraft requires several system-level dependencies that must be installed in production:
 
-**Backend:**
-```bash
-cd backend
-railway up
+#### FFmpeg
+FFmpeg is required for audio/video processing. It's a system binary, not a Python package.
+
+**Dockerfile example:**
+```dockerfile
+FROM python:3.12-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy requirements and install Python deps
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY backend/ .
+
+# Expose port
+EXPOSE 8000
+
+# Default command
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-**Frontend:**
+#### Librosa Dependencies
+Librosa requires system libraries (`libsndfile1`) which are included in the Dockerfile above.
+
+### 7.2 Environment Variables
+
+**Required for Backend:**
+- `DATABASE_URL` - PostgreSQL connection string
+- `REDIS_URL` - Redis connection string (for RQ workers)
+- `S3_BUCKET_NAME` - S3 bucket name
+- `S3_ACCESS_KEY_ID` - AWS access key
+- `S3_SECRET_ACCESS_KEY` - AWS secret key
+- `S3_REGION` - AWS region (e.g., `us-east-2`)
+- `REPLICATE_API_TOKEN` - Replicate API token
+- `RQ_WORKER_QUEUE` - RQ queue name (default: `ai_music_video`)
+
+**Required for Frontend:**
+- `VITE_API_BASE_URL` - Backend API URL
+
+**Optional:**
+- `WHISPER_API_TOKEN` - For Whisper API (if using)
+- `LYRICS_API_KEY` - For lyrics API (if using)
+- `API_LOG_LEVEL` - Logging level (default: `info`)
+- `FFMPEG_BIN` - Path to ffmpeg binary (default: `ffmpeg`)
+
+### 7.3 Worker Process Management
+
+VibeCraft requires both an API server and background worker processes.
+
+**API Server:**
 ```bash
-cd frontend
-railway up
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
-This will build and deploy the service to Railway. Make sure you're logged in (`railway login`) and have the service linked (`railway link`).
+**RQ Worker:**
+```bash
+rq worker ai_music_video --url $REDIS_URL
+```
+
+**Procfile example (for platforms that support it):**
+```
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+worker: rq worker ai_music_video --url $REDIS_URL
+```
+
+### 7.4 Deployment Considerations
+
+#### Long-Running Tasks
+Video generation can take 30+ minutes. Use background workers (RQ/Celery) that don't have HTTP timeouts. Ensure your deployment platform allows long-running worker processes.
+
+#### Memory Requirements
+Audio/video processing is memory-intensive. Recommended:
+- **Minimum:** 2GB RAM
+- **Recommended:** 4GB+ RAM for production
+
+#### File Upload Size Limits
+Audio files can be large (10-50MB+). Consider:
+- Stream uploads directly to S3 (don't buffer in memory)
+- Use presigned URLs for direct client → S3 uploads
+- Configure nginx/reverse proxy body size limits
+
+#### Database Migrations
+Migrations run automatically on startup via `init_db()`. For production, consider using Alembic for more controlled migrations.
+
+#### CORS Configuration
+Configure CORS in `backend/app/main.py` to allow your frontend domain:
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://your-frontend-domain.com",
+        "http://localhost:5173",  # Keep for local dev
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+#### Health Checks
+The backend provides a health check endpoint at `/healthz`. Configure your deployment platform to use this for health monitoring.
+
+### 7.5 Troubleshooting
+
+**Backend won't start:**
+- Check logs for errors
+- Verify all environment variables are set
+- Check `DATABASE_URL` and `REDIS_URL` are correct
+- Ensure ffmpeg is installed (check with `which ffmpeg`)
+
+**Worker not processing jobs:**
+- Check `REDIS_URL` is set correctly
+- Verify worker service is running
+- Check logs for connection errors
+- Ensure worker is listening to the correct queue name
+
+**Frontend can't connect to backend:**
+- Verify `VITE_API_BASE_URL` is correct
+- Check CORS configuration
+- Verify backend is running and accessible
+- Check browser console for errors
+
+**S3 uploads failing:**
+- Verify IAM credentials are correct
+- Check bucket policy allows your service
+- Verify bucket name and region
+- Check S3 CORS configuration if uploading from browser
+
+**Video generation failing:**
+- Check Replicate API token is valid
+- Verify model is accessible
+- Check worker logs for detailed error messages
+- Ensure sufficient memory is available
 
 ---
 
 ## 8. Next Steps
 
 1. Add `.env` and `.env.example` files with keys for Postgres, Redis, S3, Replicate, and any AI providers.
-2. Scaffold FastAPI routers, schemas, and services as outlined in `PRD.md`.
-3. Implement frontend pages and components per the roadmap (Upload, Song Profile, Section cards, Gallery).
-
-Refer back to `PRD.md` and `ROADMAP.md` for task-level details once your environment boots cleanly.
+2. Scaffold FastAPI routers, schemas, and services following the current architecture.
+3. Implement frontend pages and components per the roadmap (Upload, Song Profile, Clip management, Gallery).

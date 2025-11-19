@@ -1,37 +1,6 @@
 # 🎧 **VibeCraft — AI-Powered Music Video Generator**
 
-### *Transform any song into a cinematic, beat-synced visual experience.*
-
-## 🚨 URGENT TODO
-
-- [ ] **URGENT:** Adam can't upload a file, only Rasheed can
-
-## 📋 TODO
-
-- [ ] Resolve browser issues: thousands of Chrome warnings in console + permission prompt for local network access on first load
-
-**Notes:**
-- `VITE_API_BASE_URL` is correctly set in Railway environment variables
-- **Theories:**
-  - The fallback `DEFAULT_API_BASE_URL = 'http://localhost:8000/api/v1'` in code might trigger browser warnings/permission prompts even if not used
-  - Browser security feature detecting potential localhost access (even if not used)
-  - Cached build from before env var was set (may need rebuild)
-  - Browser extension triggering the prompt
-  - React strict mode double-rendering warnings
-  - Console logging or error handling issues
-
-## 🚀 Production Deployment
-
-**Backend API:** `https://backend-api-production-c6ee.up.railway.app`  
-**Frontend:** `https://frontend-production-b530.up.railway.app`
-
-[Railway Dashboard](https://railway.app/project/9d147533-96b0-4aeb-ab3a-502138d87ae7) | [Health Check](https://backend-api-production-c6ee.up.railway.app/healthz)
-
-**Redeploy:**
-- Backend: `cd backend && railway up`
-- Frontend: `cd frontend && railway up`
-
----
+*Transform any song into a cinematic, beat-synced visual experience.*
 
 VibeCraft is an end-to-end AI video generation pipeline built for musicians and creators.
 Upload a song → get a full music video.
@@ -65,11 +34,16 @@ VibeCraft turns audio into cinema — no editing timeline, expensive software, o
 
 ---
 
-# 🚀 **Live Demo**
+## 🚀 Production Deployment
 
-**(Insert deployed link here)**
+**Backend API:** `https://backend-api-production-c6ee.up.railway.app`  
+**Frontend:** `https://frontend-production-b530.up.railway.app`
 
-Upload a track → watch it turn into motion.
+[Railway Dashboard](https://railway.app/project/9d147533-96b0-4aeb-ab3a-502138d87ae7) | [Health Check](https://backend-api-production-c6ee.up.railway.app/healthz)
+
+**Redeploy:**
+- Backend: `cd backend && railway up`
+- Frontend: `cd frontend && railway up`
 
 ---
 
@@ -243,35 +217,6 @@ npm run dev
 
 ---
 
-# 🧪 **MVP Features Implemented**
-
-* [x] Audio-only upload
-* [x] BPM + beat grid detection
-* [x] Section segmentation
-* [x] Lyric alignment
-* [x] Mood + genre inference
-* [x] Section-level generation
-* [x] Full-song video assembly
-* [x] Beat-synced transitions
-* [x] Fully deployed version
-* [x] Sample output videos
-
----
-
-# 📈 **Roadmap**
-
-See `ROADMAP.md` for full PR/sprint plan. Highlights:
-
-* Character-consistency template
-* Dynamic storyboard generation
-* Multi-model fallback
-* Artist-focused presets
-* Video style marketplace
-* Mobile upload support
-* Export to TikTok/Reels directly
-
----
-
 # 🏆 **Why VibeCraft Stands Out**
 
 ### **For musicians**
@@ -305,4 +250,3 @@ See `ROADMAP.md` for full PR/sprint plan. Highlights:
 Whether you're an indie artist making visuals for your first EP, a producer crafting lofi loops, or a label needing scalable video content — **VibeCraft brings your sound to life.**
 
 If you like this project, ⭐️ star the repo or follow along for more updates.
-

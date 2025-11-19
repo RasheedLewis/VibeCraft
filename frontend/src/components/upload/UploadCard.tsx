@@ -38,7 +38,8 @@ interface UploadCardProps {
   analysisData: SongAnalysis | null
   isFetchingAnalysis: boolean
   summaryMoodKind: MoodKind
-  lyricsBySection: Map<string, string>
+  // NOTE: Sections are NOT implemented in the backend right now - making optional
+  lyricsBySection?: Map<string, string>
   onFileSelect: () => void
   onReset: () => void
   onGenerateClips: () => void
@@ -226,7 +227,7 @@ export const UploadCard: React.FC<UploadCardProps> = ({
                       section={section}
                       title={getSectionTitle(section, index)}
                       mood={summaryMoodKind}
-                      lyric={lyricsBySection.get(section.id) ?? undefined}
+                      lyric={lyricsBySection?.get(section.id) ?? undefined}
                     />
                   ))}
                 </div>

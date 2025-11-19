@@ -18,6 +18,7 @@ import { ACCEPTED_MIME_TYPES, MAX_DURATION_SECONDS } from '../constants/upload'
 import { extractErrorMessage } from '../utils/validation'
 import { mapMoodToMoodKind } from '../utils/sections'
 import { computeDuration } from '../utils/audio'
+import { normalizeClipStatus } from '../utils/status'
 
 // Hooks
 import { useAnalysisPolling } from '../hooks/useAnalysisPolling'
@@ -218,7 +219,11 @@ export const UploadPage: React.FC = () => {
   )
 
   const handlePlayerClipSelect = useCallback(
-    (clipId: string) => {
+    (clipId: string | null) => {
+      if (!clipId) {
+        setPlayerActiveClipId(null)
+        return
+      }
       const targetClip = clipSummary?.clips?.find((clip) => clip.id === clipId)
       if (!targetClip) {
         return
@@ -247,15 +252,16 @@ export const UploadPage: React.FC = () => {
   //   return new Map(analysisData.sectionLyrics.map((item) => [item.sectionId, item.text]))
   // }, [analysisData])
 
-  useEffect(
-    () => () => {
-      if (highlightTimeoutRef.current) {
-        window.clearTimeout(highlightTimeoutRef.current)
-        highlightTimeoutRef.current = null
-      }
-    },
-    [],
-  )
+  // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
+  // useEffect(
+  //   () => () => {
+  //     if (highlightTimeoutRef.current) {
+  //       window.clearTimeout(highlightTimeoutRef.current)
+  //       highlightTimeoutRef.current = null
+  //     }
+  //   },
+  //   [],
+  // )
 
   const requirementsCopy = useMemo(
     () => ({
@@ -277,11 +283,12 @@ export const UploadPage: React.FC = () => {
     setComposeJobId(null)
     setPlayerActiveClipId(null)
     setPlayerClipSelectionLocked(false)
-    if (highlightTimeoutRef.current) {
-      window.clearTimeout(highlightTimeoutRef.current)
-      highlightTimeoutRef.current = null
-    }
-    setHighlightedSectionId(null)
+    // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
+    // if (highlightTimeoutRef.current) {
+    //   window.clearTimeout(highlightTimeoutRef.current)
+    //   highlightTimeoutRef.current = null
+    // }
+    // setHighlightedSectionId(null)
     if (inputRef.current) {
       inputRef.current.value = ''
     }
@@ -610,7 +617,8 @@ export const UploadPage: React.FC = () => {
                     analysisData={analysisData}
                     isFetchingAnalysis={isFetchingAnalysis}
                     summaryMoodKind={summaryMoodKind}
-                    lyricsBySection={lyricsBySection}
+                    // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+                    // lyricsBySection={lyricsBySection}
                     onFileSelect={() => inputRef.current?.click()}
                     onReset={resetState}
                     onGenerateClips={handleGenerateClips}

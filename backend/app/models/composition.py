@@ -15,7 +15,7 @@ class CompositionJob(SQLModel, table=True):
     song_id: UUID = Field(foreign_key="songs.id", index=True)
     status: str = Field(default="queued", max_length=32)  # queued, processing, completed, failed, cancelled
     progress: int = Field(default=0, ge=0, le=100)
-    clip_ids: str = Field(sa_column=Column(Text, nullable=False))  # JSON array of SectionVideo UUIDs
+    clip_ids: str = Field(sa_column=Column(Text, nullable=False))  # JSON array of SongClip UUIDs
     clip_metadata: str = Field(sa_column=Column(Text, nullable=False))  # JSON array of clip metadata
     composed_video_id: Optional[UUID] = Field(default=None, foreign_key="composed_videos.id")
     error: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
@@ -37,7 +37,7 @@ class ComposedVideo(SQLModel, table=True):
     resolution_width: int = Field(ge=1)
     resolution_height: int = Field(ge=1)
     fps: int = Field(ge=1)
-    clip_ids: str = Field(sa_column=Column(Text, nullable=False))  # JSON array of SectionVideo UUIDs
+    clip_ids: str = Field(sa_column=Column(Text, nullable=False))  # JSON array of SongClip UUIDs
     status: str = Field(default="processing", max_length=32)  # processing, completed, failed
     error_message: Optional[str] = Field(default=None, max_length=1024)
     created_at: datetime = Field(default_factory=datetime.utcnow)

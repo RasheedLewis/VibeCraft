@@ -43,23 +43,19 @@ frontend/.vite/
 .idea/
 .specstory/
 .cursorindexingignore
+.cursor/
+.stash/
 
 # Media & tmp outputs
 storage/
 tmp/
 
 # Sample audio files (large files - add your own samples)
+# but keep metadata, README, and short files
 samples/audio/**/*.mp3
 samples/audio/**/*.wav
 samples/audio/**/*.m4a
 samples/audio/**/*.flac
-# Keep metadata, README, and short files
-!samples/README.md
+!samples/**.md
 !samples/metadata/
 !samples/audio/short/*.mp3
-
-# Test composition outputs (large files)
-samples/compTest/testComp*.mp4
-
-
-.trigger

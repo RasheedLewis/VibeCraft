@@ -39,7 +39,6 @@ from app.services.clip_planning import (
 )
 from app.services.composition_job import (
     cancel_job,
-    enqueue_composition,
     enqueue_song_clip_composition,
     get_composed_video,
     get_job_status,
@@ -47,7 +46,6 @@ from app.services.composition_job import (
 from app.services.song_analysis import enqueue_song_analysis, get_latest_analysis
 from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
 from app.schemas.composition import (
-    ComposeVideoRequest,
     ComposeVideoResponse,
     ComposedVideoResponse,
     CompositionJobStatusResponse,
@@ -593,65 +591,6 @@ def compose_song_clips_async(
 
     try:
         job_id, _ = enqueue_song_clip_composition(song_id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
-    return ComposeVideoResponse(
-        job_id=job_id,
-        status="queued",
-        song_id=str(song_id),
-    )
-
-
-@router.post(
-    "/{song_id}/compose",
-    response_model=ComposeVideoResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Enqueue video composition job",
-)
-def compose_video(
-    song_id: UUID,
-    request: ComposeVideoRequest,
-    db: Session = Depends(get_db),
-) -> ComposeVideoResponse:
-    """
-    Enqueue a video composition job to stitch clips together.
-
-    Args:
-        song_id: Song ID
-        request: Composition request with clip IDs and metadata
-
-    Returns:
-        ComposeVideoResponse with job ID
-    """
-    song = db.get(Song, song_id)
-    if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
-
-    # Validate clip IDs match metadata
-    if len(request.clip_ids) != len(request.clip_metadata):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Number of clip IDs must match number of clip metadata entries",
-        )
-
-    # Convert clip metadata to dict format
-    clip_metadata_dicts = [
-        {
-            "clipId": str(meta.clip_id),
-            "startFrame": meta.start_frame,
-            "endFrame": meta.end_frame,
-        }
-        for meta in request.clip_metadata
-    ]
-
-    # Create job and enqueue to RQ
-    try:
-        job_id, _ = enqueue_composition(
-            song_id=song_id,
-            clip_ids=request.clip_ids,
-            clip_metadata=clip_metadata_dicts,
-        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 

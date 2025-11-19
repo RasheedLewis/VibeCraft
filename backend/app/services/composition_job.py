@@ -14,7 +14,6 @@ from rq.job import Job, get_current_job
 from app.core.config import get_settings
 from app.core.database import session_scope
 from app.models.composition import ComposedVideo, CompositionJob
-from app.models.section_video import SectionVideo
 from app.models.song import Song
 from app.schemas.composition import CompositionJobStatusResponse
 from sqlmodel import select
@@ -26,113 +25,6 @@ def _get_queue() -> Queue:
     settings = get_settings()
     connection = redis.from_url(settings.redis_url)
     return Queue(settings.rq_worker_queue, connection=connection)
-
-
-def enqueue_composition(
-    song_id: UUID,
-    clip_ids: list[UUID],
-    clip_metadata: list[dict[str, Any]],
-) -> tuple[str, CompositionJob]:
-    """
-    Create a composition job, enqueue to RQ, and return job ID.
-
-    Args:
-        song_id: Song ID
-        clip_ids: List of SectionVideo IDs to compose
-        clip_metadata: List of metadata dicts with clipId, startFrame, endFrame
-
-    Returns:
-        Tuple of (job_id, CompositionJob record)
-
-    Raises:
-        ValueError: If song or clips not found
-    """
-    with session_scope() as session:
-        # Verify song exists
-        song = session.get(Song, song_id)
-        if not song:
-            raise ValueError(f"Song {song_id} not found")
-
-        # Verify all clips exist and belong to the song
-        for clip_id in clip_ids:
-            clip = session.get(SectionVideo, clip_id)
-            if not clip:
-                raise ValueError(f"SectionVideo {clip_id} not found")
-            if clip.song_id != song_id:
-                raise ValueError(f"SectionVideo {clip_id} does not belong to song {song_id}")
-            if clip.status != "completed" or not clip.video_url:
-                raise ValueError(f"SectionVideo {clip_id} is not ready (status: {clip.status})")
-
-        # Store clip IDs and metadata as JSON
-        clip_ids_json = json.dumps([str(clip_id) for clip_id in clip_ids])
-        clip_metadata_json = json.dumps(clip_metadata)
-
-        # Enqueue to RQ
-        queue = _get_queue()
-        job_id = f"composition-{uuid4()}"
-        job: Job = queue.enqueue(
-            run_composition_job,
-            song_id,
-            clip_ids,
-            clip_metadata,
-            job_id=job_id,
-            meta={"progress": 0},
-        )
-
-        # Create job record
-        composition_job = CompositionJob(
-            id=job.id,
-            song_id=song_id,
-            status="queued",
-            progress=0,
-            clip_ids=clip_ids_json,
-            clip_metadata=clip_metadata_json,
-        )
-        session.add(composition_job)
-        session.commit()
-        session.refresh(composition_job)
-
-        logger.info(f"Enqueued composition job {job.id} for song {song_id} with {len(clip_ids)} clips")
-
-        return job.id, composition_job
-
-
-def run_composition_job(
-    song_id: UUID,
-    clip_ids: list[UUID],
-    clip_metadata: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """
-    RQ worker function to run composition job.
-
-    Args:
-        song_id: Song ID
-        clip_ids: List of SectionVideo IDs
-        clip_metadata: List of metadata dicts
-
-    Returns:
-        Dict with job result
-    """
-    current_job = get_current_job()
-    job_id = current_job.id if current_job else None
-
-    if job_id is None:
-        raise RuntimeError("Cannot run composition job: no RQ job context")
-
-    try:
-        from app.services.composition_execution import execute_composition_pipeline
-
-        execute_composition_pipeline(
-            job_id=job_id,
-            song_id=song_id,
-            clip_ids=clip_ids,
-            clip_metadata=clip_metadata,
-        )
-        return {"status": "completed", "song_id": str(song_id)}
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Composition failed for song_id=%s", song_id)
-        fail_job(job_id, str(exc))
-        raise
 
 
 def enqueue_song_clip_composition(song_id: UUID) -> tuple[str, CompositionJob]:
@@ -378,7 +270,7 @@ def create_composed_video(
         resolution_width: Video width
         resolution_height: Video height
         fps: Frames per second
-        clip_ids: List of SectionVideo IDs used
+        clip_ids: List of SongClip IDs used
 
     Returns:
         ComposedVideo record

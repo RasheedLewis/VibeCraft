@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     api_log_level: str = Field(default="info", alias="API_LOG_LEVEL")
 
     database_url: str = Field(
-        default="sqlite:///./app.db",
+        default="postgresql+psycopg://postgres:postgres@localhost:5432/ai_music_video",
         alias="DATABASE_URL",
     )
 

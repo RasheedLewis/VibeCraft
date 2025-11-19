@@ -61,8 +61,7 @@ def migrate() -> None:
                 # PostgreSQL syntax
                 alter_sql = f'ALTER TABLE songs ADD COLUMN IF NOT EXISTS {column_name} {sql_type}'
             else:
-                # SQLite syntax (SQLite 3.25.0+ supports ADD COLUMN)
-                # For older SQLite, we'd need to recreate the table
+                # Fallback for other databases
                 alter_sql = f'ALTER TABLE songs ADD COLUMN {column_name} {sql_type}'
             
             try:

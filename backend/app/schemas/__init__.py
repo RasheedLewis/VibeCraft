@@ -11,7 +11,6 @@ from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongC
 from app.schemas.job import ClipGenerationJobResponse, JobStatusResponse, SongAnalysisJobResponse
 from app.schemas.composition import (
     ClipMetadata,
-    ComposeVideoRequest,
     ComposeVideoResponse,
     ComposedVideoResponse,
     CompositionJobStatusResponse,
@@ -47,12 +46,7 @@ __all__ = [
     "SceneSpec",
     "ShotPattern",
     "TemplateType",
-    "SectionVideoRead",
-    "SectionVideoCreate",
-    "SectionVideoGenerateRequest",
-    "SectionVideoGenerateResponse",
     "ClipMetadata",
-    "ComposeVideoRequest",
     "ComposeVideoResponse",
     "ComposedVideoResponse",
     "CompositionJobStatusResponse",

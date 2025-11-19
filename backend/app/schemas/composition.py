@@ -7,22 +7,11 @@ from pydantic import BaseModel, Field
 
 
 class ClipMetadata(BaseModel):
-    """Metadata for a single clip in composition."""
+    """Metadata for a single clip in composition (legacy, not used in MVP)."""
 
-    clip_id: UUID = Field(..., alias="clipId", description="SectionVideo UUID")
+    clip_id: UUID = Field(..., alias="clipId", description="SongClip UUID")
     start_frame: int = Field(..., alias="startFrame", description="Start frame number (0-indexed)")
     end_frame: int = Field(..., alias="endFrame", description="End frame number (0-indexed)")
-
-    model_config = {"populate_by_name": True}
-
-
-class ComposeVideoRequest(BaseModel):
-    """Request to compose a video from clips."""
-
-    clip_ids: List[UUID] = Field(..., alias="clipIds", description="List of SectionVideo UUIDs to compose")
-    clip_metadata: List[ClipMetadata] = Field(
-        ..., alias="clipMetadata", description="Metadata for each clip including frame boundaries"
-    )
 
     model_config = {"populate_by_name": True}
 
@@ -63,7 +52,7 @@ class ComposedVideoResponse(BaseModel):
     resolution_width: int = Field(..., alias="resolutionWidth", description="Video width in pixels")
     resolution_height: int = Field(..., alias="resolutionHeight", description="Video height in pixels")
     fps: int = Field(..., description="Frames per second")
-    clip_ids: List[str] = Field(..., alias="clipIds", description="List of SectionVideo IDs used")
+    clip_ids: List[str] = Field(..., alias="clipIds", description="List of SongClip IDs used")
     status: str = Field(..., description="Video status: processing, completed, failed")
     created_at: str = Field(..., alias="createdAt", description="Creation timestamp")
 

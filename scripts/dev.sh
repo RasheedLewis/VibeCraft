@@ -107,10 +107,28 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-# Start backend API
+# Create logs directory (use absolute path from project root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+LOG_DIR="${PROJECT_ROOT}/logs"
+mkdir -p "${LOG_DIR}"
+BACKEND_LOG="${LOG_DIR}/backend.log"
+WORKER_LOG="${LOG_DIR}/worker.log"
+FRONTEND_LOG="${LOG_DIR}/frontend.log"
+COMBINED_LOG="${LOG_DIR}/combined.log"
+
+# Clear old logs
+> "${BACKEND_LOG}"
+> "${WORKER_LOG}"
+> "${FRONTEND_LOG}"
+> "${COMBINED_LOG}"
+
 echo -e "${GREEN}Starting backend API on http://localhost:8000${NC}"
+echo -e "${BLUE}Backend logs: ${BACKEND_LOG}${NC}"
 cd backend
-uvicorn app.main:app --reload &
+# Use nohup to ensure logs are written even when backgrounded
+# Use custom log config to add timestamps to access logs
+nohup uvicorn app.main:app --reload --log-config logging_config.json > "${BACKEND_LOG}" 2>&1 &
 BACKEND_PID=$!
 cd ..
 
@@ -148,24 +166,31 @@ cd ..
 
 # Start RQ worker
 echo -e "${GREEN}Starting RQ worker${NC}"
+echo -e "${BLUE}Worker logs: ${WORKER_LOG}${NC}"
 cd backend
 # Disable Objective-C fork safety checks to prevent crashes in forked processes (macOS issue)
 # This is needed when RQ workers fork and try to connect to PostgreSQL
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
-rq worker ai_music_video &
+nohup rq worker ai_music_video > "${WORKER_LOG}" 2>&1 &
 WORKER_PID=$!
 cd ..
 
 # Start frontend
 echo -e "${GREEN}Starting frontend on http://localhost:5173${NC}"
+echo -e "${BLUE}Frontend logs: ${FRONTEND_LOG}${NC}"
 cd frontend
-npm run dev -- --host &
+nohup npm run dev -- --host > "${FRONTEND_LOG}" 2>&1 &
 FRONTEND_PID=$!
 cd ..
 
 echo -e "\n${GREEN}All services started!${NC}"
 echo -e "Backend: http://localhost:8000"
 echo -e "Frontend: http://localhost:5173"
+echo -e "\n${BLUE}Log files:${NC}"
+echo -e "  Backend: ${BACKEND_LOG}"
+echo -e "  Worker: ${WORKER_LOG}"
+echo -e "  Frontend: ${FRONTEND_LOG}"
+echo -e "  Combined: ${COMBINED_LOG}"
 echo -e "\nPress Ctrl+C to stop all services"
 
 # Wait for all background jobs

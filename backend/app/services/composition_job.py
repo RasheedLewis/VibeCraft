@@ -264,7 +264,8 @@ def update_job_progress(job_id: str, progress: int, status: str | None = None) -
             logger.warning(f"Job {job_id} not found for progress update")
             return
 
-        job_record.progress = max(0, min(100, progress))
+        # Ensure progress only increases (never decreases) to prevent UI from showing backward progress
+        job_record.progress = max(job_record.progress, min(100, progress))
         if status:
             job_record.status = status
         elif job_record.status == "queued":

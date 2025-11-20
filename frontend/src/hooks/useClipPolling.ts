@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { apiClient } from '../lib/apiClient'
 import type { ClipGenerationSummary, JobStatusResponse } from '../types/song'
 import { useJobPolling } from './useJobPolling'
 import { normalizeClipStatus } from '../utils/status'
 import { isClipGenerationSummary } from '../utils/validation'
 import { extractErrorMessage } from '../utils/validation'
+import { pollingManager } from '../utils/pollingManager'
 
 export function useClipPolling(songId: string | null) {
   const [jobId, setJobId] = useState<string | null>(null)
@@ -14,6 +15,22 @@ export function useClipPolling(songId: string | null) {
   const [progress, setProgress] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<ClipGenerationSummary | null>(null)
+
+  // Use refs to track current values without causing re-renders
+  const songIdRef = useRef(songId)
+  const jobIdRef = useRef(jobId)
+  const statusRef = useRef(status)
+  const summaryRef = useRef(summary)
+  const subscriptionIdRef = useRef<string | null>(null)
+  const subscribeTimeoutRef = useRef<number | undefined>(undefined)
+
+  // Update refs when values change
+  useEffect(() => {
+    songIdRef.current = songId
+    jobIdRef.current = jobId
+    statusRef.current = status
+    summaryRef.current = summary
+  }, [songId, jobId, status, summary])
 
   const fetchClipSummary = useCallback(
     async (songId: string) => {
@@ -26,22 +43,24 @@ export function useClipPolling(songId: string | null) {
 
         // If all clips are completed, stop any ongoing polling
         if (data.totalClips > 0 && data.completedClips === data.totalClips) {
-          pollingRef.current = false
-          if (timeoutIdRef.current) {
-            window.clearTimeout(timeoutIdRef.current)
-            timeoutIdRef.current = undefined
+          // Unsubscribe from polling
+          if (subscriptionIdRef.current) {
+            pollingManager.unsubscribe(subscriptionIdRef.current)
+            subscriptionIdRef.current = null
           }
         }
 
         // Update clip job status if there's an active job
         if (data.clips && data.clips.length > 0) {
           const hasActiveJob = data.clips.some(
-            (clip) =>
+            (clip: { status: string }) =>
               normalizeClipStatus(clip.status) === 'processing' ||
               normalizeClipStatus(clip.status) === 'queued',
           )
-          if (hasActiveJob && !jobId) {
-            const firstClipWithJob = data.clips.find((clip) => clip.rqJobId)
+          if (hasActiveJob && !jobIdRef.current) {
+            const firstClipWithJob = data.clips.find(
+              (clip: { rqJobId?: string }) => clip.rqJobId,
+            )
             if (firstClipWithJob?.rqJobId) {
               setJobId(firstClipWithJob.rqJobId)
               setStatus('processing')
@@ -50,14 +69,15 @@ export function useClipPolling(songId: string | null) {
         }
       } catch (err) {
         const message = extractErrorMessage(err, 'Unable to load clip status.')
-        if (jobId) {
+        if (jobIdRef.current) {
           setError((prev) => prev ?? message)
         } else {
           console.warn('[clip-summary]', message)
         }
       }
     },
-    [jobId],
+    // Empty deps: uses refs (jobIdRef, subscriptionIdRef) and state setters (stable)
+    [],
   )
 
   const onStatusUpdate = useCallback(
@@ -92,12 +112,12 @@ export function useClipPolling(songId: string | null) {
       setError(errorMessage)
       // Retry polling on error
       setTimeout(() => {
-        if (jobId && songId) {
-          void fetchClipSummary(songId)
+        if (jobIdRef.current && songIdRef.current) {
+          void fetchClipSummary(songIdRef.current)
         }
       }, 5000)
     },
-    [jobId, songId, fetchClipSummary],
+    [fetchClipSummary],
   )
 
   const fetchJobStatus = useCallback(async (jobId: string) => {
@@ -107,6 +127,7 @@ export function useClipPolling(songId: string | null) {
     return data
   }, [])
 
+  // useJobPolling handles polling when we have an active job
   useJobPolling<ClipGenerationSummary>({
     jobId,
     enabled: !!jobId && !!songId,
@@ -117,194 +138,182 @@ export function useClipPolling(songId: string | null) {
     fetchStatus: fetchJobStatus,
   })
 
-  // Use refs to track state and avoid re-render loops
-  const hasClipsRef = useRef(false)
-  const pollingRef = useRef(false)
-  const lastJobIdRef = useRef<string | null>(null)
-  const timeoutIdRef = useRef<number | undefined>(undefined)
-  const statusRef = useRef(status)
-  const jobIdRef = useRef(jobId)
-  const songIdRef = useRef(songId)
-  const summaryRef = useRef(summary)
-
-  // Update refs when values change (but don't trigger effect re-run)
-  // Using useLayoutEffect for synchronous ref updates
-  // Note: Ref mutations are intentional here - refs are meant to be mutable
-  useLayoutEffect(() => {
-    statusRef.current = status
-    jobIdRef.current = jobId
-    songIdRef.current = songId
-    // eslint-disable-next-line react-hooks/immutability
-    summaryRef.current = summary
-  }, [status, jobId, songId, summary])
-
-  // Poll clip summary to detect when clips are created
-  // We need to poll even when there's an active job, so we can detect when clips exist
+  // Register/unregister with global polling manager
   useEffect(() => {
     const currentSongId = songIdRef.current
+    const currentJobId = jobIdRef.current
+    const currentStatus = statusRef.current
+    const currentSummary = summaryRef.current
+
+    // Clean up any existing subscription
+    if (subscriptionIdRef.current) {
+      pollingManager.unsubscribe(subscriptionIdRef.current)
+      subscriptionIdRef.current = null
+    }
+
+    // Don't poll if no songId
     if (!currentSongId) {
-      // Use a function to update refs to avoid linter warnings
-      const cleanup = () => {
-        hasClipsRef.current = false
-        pollingRef.current = false
-        lastJobIdRef.current = null
-        const timeout = timeoutIdRef.current
-        if (timeout) {
-          window.clearTimeout(timeout)
-          timeoutIdRef.current = undefined
-        }
-      }
-      cleanup()
-      setTimeout(() => {
-        setSummary(null)
-      }, 0)
       return
     }
 
-    // Only start polling when:
-    // 1. We have a jobId
-    // 2. The job is active (queued or processing)
-    // 3. We're not already polling
-    const currentJobId = jobIdRef.current
-    const currentStatus = statusRef.current
-    const jobIdChanged = currentJobId !== lastJobIdRef.current
-
-    // If jobId changed, reset state
-    if (jobIdChanged && currentJobId) {
-      lastJobIdRef.current = currentJobId
-      hasClipsRef.current = false
-      // Reset polling flag when job changes
-      // eslint-disable-next-line react-hooks/immutability
-      pollingRef.current = false
-    }
-
-    // If we already have a summary showing all clips completed, don't start polling
-    const currentSummary = summaryRef.current
+    // If all clips are completed, no need to poll
     if (
       currentSummary &&
       currentSummary.totalClips > 0 &&
       currentSummary.completedClips === currentSummary.totalClips
     ) {
-      // All clips are done - no need to poll
+      if (jobId !== null) {
+        setJobId(null)
+        setStatus('completed')
+      }
       return
     }
 
-    // Start polling if:
-    // - We have a jobId and it's active, AND
-    // - We're not already polling
-    // We poll both to detect clips initially AND to get status updates after clips exist
-    const shouldStartPolling =
-      currentJobId &&
-      (currentStatus === 'queued' || currentStatus === 'processing') &&
-      !pollingRef.current
+    // CRITICAL: Only poll clip summary when we DON'T have an active job
+    // useJobPolling already handles polling when jobId exists and status is active
+    const hasActiveJob =
+      currentJobId && (currentStatus === 'queued' || currentStatus === 'processing')
 
-    if (!shouldStartPolling) {
+    if (hasActiveJob) {
+      // useJobPolling is handling this - don't duplicate polling
       return
     }
 
-    // Ensure lastJobIdRef is set
-    if (!lastJobIdRef.current) {
-      lastJobIdRef.current = currentJobId
+    // Use consistent subscription ID based on songId to prevent duplicates
+    // If the same songId subscribes multiple times (React Strict Mode), it replaces the old subscription
+    const subscriptionId = `clip-polling-${currentSongId}`
+
+    // CRITICAL: Always unsubscribe any existing subscription first
+    // This handles both React Strict Mode double-mounting and multiple hook instances
+    if (subscriptionIdRef.current) {
+      pollingManager.unsubscribe(subscriptionIdRef.current)
+      subscriptionIdRef.current = null
     }
 
-    // Double-check we're not already polling (race condition guard)
-    if (pollingRef.current) {
-      return
+    // Also unsubscribe if subscription already exists (defensive check)
+    if (pollingManager.hasSubscription(subscriptionId)) {
+      pollingManager.unsubscribe(subscriptionId)
     }
 
-    // Mark that we're starting to poll BEFORE starting the async operation
-    pollingRef.current = true
-    hasClipsRef.current = false
+    // Clear any pending subscribe timeout (debounce)
+    if (subscribeTimeoutRef.current !== undefined) {
+      window.clearTimeout(subscribeTimeoutRef.current)
+      subscribeTimeoutRef.current = undefined
+    }
 
-    const pollInterval = 3000 // Poll every 3 seconds
-    let cancelled = false
+    // DEBOUNCE: Wait 150ms before subscribing to give cleanup time to run
+    // This prevents React Strict Mode double-mounting from creating duplicate subscriptions
+    subscribeTimeoutRef.current = window.setTimeout(() => {
+      subscribeTimeoutRef.current = undefined
 
-    const pollClipSummary = async () => {
-      if (cancelled) {
-        pollingRef.current = false
+      // Double-check conditions haven't changed during the debounce delay
+      const stillCurrentSongId = songIdRef.current
+      const stillCurrentJobId = jobIdRef.current
+      const stillCurrentStatus = statusRef.current
+
+      if (!stillCurrentSongId || stillCurrentSongId !== currentSongId) {
+        return // SongId changed, don't subscribe
+      }
+
+      // If job started during debounce, don't subscribe (useJobPolling will handle it)
+      if (
+        stillCurrentJobId &&
+        (stillCurrentStatus === 'queued' || stillCurrentStatus === 'processing')
+      ) {
         return
       }
 
-      const currentSongId = songIdRef.current
-      const currentJobId = jobIdRef.current
-      const currentStatus = statusRef.current
+      subscriptionIdRef.current = subscriptionId
 
-      if (!currentSongId) {
-        pollingRef.current = false
-        return
-      }
+      // Register with global polling manager
+      // The manager makes the HTTP request directly, we just provide a handler
+      const url = `/songs/${currentSongId}/clips/status`
 
-      try {
-        const { data } = await apiClient.get<ClipGenerationSummary>(
-          `/songs/${currentSongId}/clips/status`,
-        )
-        if (cancelled) {
-          pollingRef.current = false
-          return
-        }
+      pollingManager.subscribe(
+        subscriptionId,
+        url,
+        async (data: unknown) => {
+          // Type assertion - we know this is ClipGenerationSummary from the URL
+          const clipData = data as ClipGenerationSummary
+          // DRASTIC: Double-check we're still the active subscription
+          // If subscription was replaced, don't process the response
+          if (subscriptionIdRef.current !== subscriptionId) {
+            console.log('[clip-polling] Subscription replaced, ignoring response')
+            return
+          }
 
-        setSummary(data)
+          const songId = songIdRef.current
+          const currentJobId = jobIdRef.current
+          const currentStatus = statusRef.current
 
-        // If all clips are completed, STOP polling immediately
-        if (data.totalClips > 0 && data.completedClips === data.totalClips) {
-          hasClipsRef.current = true
-          pollingRef.current = false
-          // Don't schedule another poll - all clips are done
-          return
-        }
+          // Check if we should still process this response
+          if (!songId) {
+            pollingManager.unsubscribe(subscriptionId)
+            subscriptionIdRef.current = null
+            return
+          }
 
-        // If clips now exist, mark them as detected
-        if (data.totalClips > 0) {
-          hasClipsRef.current = true
-          // Continue polling to get updates on individual clip statuses
-          // Poll less frequently now (every 5 seconds instead of 3)
-          const updateInterval = 5000
-          // Only continue polling if job is still active (check refs, not state)
+          // If job started, unsubscribe (useJobPolling will handle it)
           if (
             currentJobId &&
             (currentStatus === 'queued' || currentStatus === 'processing')
           ) {
-            timeoutIdRef.current = window.setTimeout(pollClipSummary, updateInterval)
-          } else {
-            pollingRef.current = false
+            pollingManager.unsubscribe(subscriptionId)
+            subscriptionIdRef.current = null
+            return
           }
-          return
-        }
 
-        // Keep polling until clips are created
-        // Only continue if job is still active (check refs, not state)
-        if (
-          currentJobId &&
-          (currentStatus === 'queued' || currentStatus === 'processing')
-        ) {
-          timeoutIdRef.current = window.setTimeout(pollClipSummary, pollInterval)
-        } else {
-          pollingRef.current = false
-        }
-      } catch {
-        if (cancelled) {
-          pollingRef.current = false
-          return
-        }
-        // On error, retry after a delay
-        timeoutIdRef.current = window.setTimeout(pollClipSummary, pollInterval * 2)
-      }
-    }
+          setSummary(clipData)
+          summaryRef.current = clipData
 
-    // Start polling immediately
-    pollClipSummary()
+          // If all clips are completed, stop polling
+          if (
+            clipData.totalClips > 0 &&
+            clipData.completedClips === clipData.totalClips
+          ) {
+            pollingManager.unsubscribe(subscriptionId)
+            subscriptionIdRef.current = null
+            setJobId(null)
+            setStatus('completed')
+            return
+          }
 
+          // Check if a job started (clips exist but we don't have jobId)
+          if (clipData.clips && clipData.clips.length > 0 && !currentJobId) {
+            const firstClipWithJob = clipData.clips.find(
+              (clip: { rqJobId?: string }) => clip.rqJobId,
+            )
+            if (firstClipWithJob?.rqJobId) {
+              setJobId(firstClipWithJob.rqJobId)
+              setStatus('processing')
+              // Now useJobPolling will take over - unsubscribe
+              pollingManager.unsubscribe(subscriptionId)
+              subscriptionIdRef.current = null
+              return
+            }
+          }
+        },
+        5000, // Poll every 5 seconds (less frequent since useJobPolling handles active jobs)
+      )
+    }, 150) // 150ms debounce delay
+
+    // Cleanup: unsubscribe when effect re-runs or component unmounts
     return () => {
-      cancelled = true
+      // Clear pending subscribe timeout
+      if (subscribeTimeoutRef.current !== undefined) {
+        window.clearTimeout(subscribeTimeoutRef.current)
+        subscribeTimeoutRef.current = undefined
+      }
 
-      pollingRef.current = false
-      if (timeoutIdRef.current) {
-        window.clearTimeout(timeoutIdRef.current)
-        timeoutIdRef.current = undefined
+      // Unsubscribe if already subscribed
+      if (subscriptionIdRef.current) {
+        pollingManager.unsubscribe(subscriptionIdRef.current)
+        subscriptionIdRef.current = null
       }
     }
-    // Only re-run when songId changes (not status or jobId)
-  }, [songId])
+    // Only re-run when songId changes or when jobId becomes null (job completed)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songId, jobId === null ? 'no-job' : 'has-job'])
 
   return {
     jobId,

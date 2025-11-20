@@ -197,9 +197,12 @@ export const UploadPage: React.FC = () => {
       console.log('[generate-clips] Planning check:', {
         needsReplan,
         hasSummary: !!clipSummary,
-        totalClips: clipSummary?.totalClips,
-        completedClips: clipSummary?.completedClips,
+        totalClips: clipSummary?.totalClips ?? null,
+        completedClips: clipSummary?.completedClips ?? null,
         computedClipCount,
+        note: clipSummary
+          ? 'Using existing clip summary'
+          : 'No clip summary yet (new song or not fetched)',
       })
 
       if (needsReplan) {
@@ -576,6 +579,8 @@ export const UploadPage: React.FC = () => {
         setStage('uploaded')
         await analysisPolling.startAnalysis(response.data.songId)
         await fetchSongDetails(response.data.songId)
+        // Initialize clip summary (will be empty for new songs)
+        await clipPolling.fetchClipSummary(response.data.songId)
       } catch (err) {
         console.error('Upload failed', err)
         const message =
@@ -585,7 +590,7 @@ export const UploadPage: React.FC = () => {
         setStage('error')
       }
     },
-    [resetState, analysisPolling, fetchSongDetails],
+    [resetState, analysisPolling, fetchSongDetails, clipPolling],
   )
 
   const handleFilesSelected = useCallback(

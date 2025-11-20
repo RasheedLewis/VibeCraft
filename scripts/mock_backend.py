@@ -589,17 +589,25 @@ async def get_composition_job_status(song_id: UUID, job_id: str):
 
 
 def configure_frontend_env():
-    """Set VITE_API_BASE_URL in frontend/.env.local (doesn't modify .env)."""
+    """
+    Set VITE_API_BASE_URL in frontend/.env.local (doesn't modify .env).
+    
+    Returns:
+        tuple: (Path to .env.local file, bool indicating if file was created by this script)
+    """
     frontend_env_local_path = Path(__file__).parent.parent / "frontend" / ".env.local"
     api_url = f"http://localhost:{PORT}"
     new_content = f"VITE_API_BASE_URL={api_url}\n"
     
+    # Track if file existed before we touched it
+    file_existed_before = frontend_env_local_path.exists()
+    
     # Only write if content changed to avoid triggering Vite restarts
-    if frontend_env_local_path.exists():
+    if file_existed_before:
         with open(frontend_env_local_path, "r") as f:
             existing_content = f.read()
         if existing_content == new_content:
-            return  # No change needed
+            return frontend_env_local_path, False  # File existed, no change needed
     
     # Write to .env.local (takes precedence over .env, typically gitignored)
     frontend_env_local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -607,6 +615,9 @@ def configure_frontend_env():
         f.write(new_content)
     
     logger.info(f"✅ Configured frontend/.env.local with VITE_API_BASE_URL={api_url}")
+    
+    # Return True if we created it (didn't exist before), False if we just modified it
+    return frontend_env_local_path, not file_existed_before
 
 
 def kill_port(port: int):
@@ -672,13 +683,24 @@ def open_browser(url: str, delay: float = 2.0):
     thread.start()
 
 
-def setup_cleanup(frontend_process):
+def cleanup_env_file(env_file_path: Path, should_delete: bool):
+    """Delete .env.local file if it was created by this script."""
+    if should_delete and env_file_path.exists():
+        try:
+            env_file_path.unlink()
+            logger.info(f"✅ Cleaned up frontend/.env.local (deleted)")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not delete frontend/.env.local: {e}")
+
+
+def setup_cleanup(frontend_process, env_file_path: Path, should_delete_env: bool):
     """Set up signal handlers for cleanup."""
     def signal_handler(sig, frame):
         logger.info("\nShutting down...")
         if frontend_process:
             frontend_process.terminate()
             frontend_process.wait(timeout=5)
+        cleanup_env_file(env_file_path, should_delete_env)
         sys.exit(0)
     
     signal.signal(signal.SIGINT, signal_handler)
@@ -692,8 +714,8 @@ if __name__ == "__main__":
     # Kill any process on port 3000
     kill_port(PORT)
     
-    # Configure frontend .env file
-    configure_frontend_env()
+    # Configure frontend .env file and track if we created it
+    env_file_path, env_file_created = configure_frontend_env()
     
     # Start frontend
     frontend_process = start_frontend()
@@ -708,8 +730,12 @@ if __name__ == "__main__":
     logger.info("Press Ctrl+C to stop")
     
     # Set up cleanup handlers
-    setup_cleanup(frontend_process)
+    setup_cleanup(frontend_process, env_file_path, env_file_created)
     
-    # Run the backend server
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    try:
+        # Run the backend server
+        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+    finally:
+        # Cleanup on normal exit (e.g., KeyboardInterrupt caught elsewhere)
+        cleanup_env_file(env_file_path, env_file_created)
 

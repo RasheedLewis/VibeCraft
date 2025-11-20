@@ -26,40 +26,62 @@ export function useJobPolling<T>({
   fetchStatus,
 }: UseJobPollingOptions<T>) {
   const cancelledRef = useRef(false)
+  const timeoutIdRef = useRef<number | undefined>(undefined)
+
+  // Use refs to store callbacks to avoid re-running effect when they change
+  const onStatusUpdateRef = useRef(onStatusUpdate)
+  const onCompleteRef = useRef(onComplete)
+  const onErrorRef = useRef(onError)
+  const fetchStatusRef = useRef(fetchStatus)
+
+  // Update refs when callbacks change
+  useEffect(() => {
+    onStatusUpdateRef.current = onStatusUpdate
+    onCompleteRef.current = onComplete
+    onErrorRef.current = onError
+    fetchStatusRef.current = fetchStatus
+  }, [onStatusUpdate, onComplete, onError, fetchStatus])
 
   useEffect(() => {
-    if (!jobId || !enabled) return
+    if (!jobId || !enabled) {
+      return
+    }
 
     cancelledRef.current = false
-    let timeoutId: number | undefined
+    // Clear any existing timeout before starting new polling
+    if (timeoutIdRef.current !== undefined) {
+      window.clearTimeout(timeoutIdRef.current)
+      timeoutIdRef.current = undefined
+    }
 
     const pollStatus = async () => {
       try {
-        const response = await fetchStatus(jobId)
+        const response = await fetchStatusRef.current(jobId)
         if (cancelledRef.current) return
 
         const normalizedStatus = normalizeJobStatus(response.status)
         const progress =
           normalizedStatus === 'completed' ? 100 : clamp(response.progress ?? 0, 0, 99)
 
-        onStatusUpdate?.(normalizedStatus, progress)
+        onStatusUpdateRef.current?.(normalizedStatus, progress)
 
         if (normalizedStatus === 'completed') {
-          onComplete?.(response.result ?? null)
+          onCompleteRef.current?.(response.result ?? null)
           return
         }
 
         if (normalizedStatus === 'failed') {
-          onError?.(response.error ?? 'Job failed')
+          onErrorRef.current?.(response.error ?? 'Job failed')
           return
         }
 
-        timeoutId = window.setTimeout(pollStatus, pollInterval)
+        // Store timeout ID in ref so cleanup can access it
+        timeoutIdRef.current = window.setTimeout(pollStatus, pollInterval)
       } catch (err) {
         if (!cancelledRef.current) {
           const errorMessage =
             err instanceof Error ? err.message : 'Unable to fetch job status.'
-          onError?.(errorMessage)
+          onErrorRef.current?.(errorMessage)
         }
       }
     }
@@ -68,9 +90,10 @@ export function useJobPolling<T>({
 
     return () => {
       cancelledRef.current = true
-      if (timeoutId) {
-        window.clearTimeout(timeoutId)
+      if (timeoutIdRef.current !== undefined) {
+        window.clearTimeout(timeoutIdRef.current)
+        timeoutIdRef.current = undefined
       }
     }
-  }, [jobId, enabled, pollInterval, onStatusUpdate, onComplete, onError, fetchStatus])
+  }, [jobId, enabled, pollInterval])
 }

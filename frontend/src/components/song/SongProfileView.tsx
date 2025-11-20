@@ -205,7 +205,10 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
         </section>
       ) : null}
 
-      {clipSummary && clipSummary.totalClips > 0 && (
+      {/* Show ClipGenerationPanel if we have clips OR if there's an active job */}
+      {(clipSummary ||
+        (clipJobId &&
+          (clipJobStatus === 'queued' || clipJobStatus === 'processing'))) && (
         <ClipGenerationPanel
           clipSummary={clipSummary}
           clipJobId={clipJobId}

@@ -20,6 +20,7 @@ from app.exceptions import (
     ClipGenerationError,
     ClipNotFoundError,
     CompositionError,
+    JobNotFoundError,
     SongNotFoundError,
     StorageError,
 )
@@ -344,7 +345,28 @@ def _determine_seed_for_clip(clip_id: UUID) -> Optional[int]:
     return seed
 
 
+def _verify_url_exists(url: str, timeout: float = 10.0) -> bool:
+    """Check if a URL exists and is accessible via HEAD request."""
+    try:
+        response = httpx.head(url, timeout=timeout, follow_redirects=True)
+        return response.status_code == 200
+    except Exception:
+        # If HEAD fails, try GET with range to avoid downloading the whole file
+        try:
+            headers = {"Range": "bytes=0-0"}  # Just request first byte
+            response = httpx.get(url, headers=headers, timeout=timeout, follow_redirects=True)
+            return response.status_code in (200, 206)  # 206 = Partial Content
+        except Exception:
+            return False
+
+
 def _download_clip_to_path(url: str, destination: Path, timeout: float = 120.0) -> None:
+    # Verify URL exists before attempting download
+    if not _verify_url_exists(url, timeout=10.0):
+        raise StorageError(
+            f"Clip URL is not accessible (404 or connection failed): {url[:200]}"
+        )
+    
     try:
         with httpx.stream("GET", url, timeout=timeout, follow_redirects=True) as response:
             if response.status_code != 200:
@@ -459,7 +481,8 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
                 f"and not found at any expected S3 location: {', '.join(possible_keys)}"
             )
 
-        clips = ClipRepository.get_by_song_id(song_id)
+    # Get clips after audio key is validated
+    clips = ClipRepository.get_by_song_id(song_id)
 
     if not clips:
         raise CompositionError("No clips found to compose.")
@@ -504,7 +527,8 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
                 )
                 if not clip.video_url:
                     raise StorageError(
-                        f"Clip {clip.clip_index} file not found at S3 key {clip_s3_key} and no video_url available"
+                        f"Clip {clip.clip_index} file not found at S3 key {clip_s3_key} and no video_url available. "
+                        f"Clips may need to be re-generated or uploaded to S3."
                     )
                 # Skip obviously fake/test URLs (like example.com)
                 if "example.com" in clip.video_url or "localhost" in clip.video_url:
@@ -512,7 +536,17 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
                         f"Clip {clip.clip_index} has invalid test URL: {clip.video_url}. "
                         f"Please re-run the preload script to upload clips to S3."
                     )
-                _download_clip_to_path(clip.video_url, source_path)
+                try:
+                    _download_clip_to_path(clip.video_url, source_path)
+                except StorageError as download_err:
+                    # Provide more helpful error message for expired/invalid presigned URLs
+                    if "404" in str(download_err) or "not found" in str(download_err).lower():
+                        raise StorageError(
+                            f"Clip {clip.clip_index} presigned URL has expired or file was deleted. "
+                            f"Clips need to be re-generated or uploaded to S3 at {clip_s3_key}. "
+                            f"Original error: {download_err}"
+                        ) from download_err
+                    raise
             else:
                 try:
                     clip_bytes = download_bytes_from_s3(bucket_name=bucket, key=clip_s3_key)
@@ -770,14 +804,14 @@ def get_clip_generation_job_status(job_id: str) -> JobStatusResponse:
     with session_scope() as session:
         job_record = session.get(ClipGenerationJob, job_id)
         if not job_record:
-            raise ValueError(f"Job {job_id} not found")
+            raise JobNotFoundError(f"Job {job_id} not found")
         song_id = job_record.song_id
 
     summary = _refresh_clip_generation_job(job_id) or get_clip_generation_summary(song_id)
     with session_scope() as session:
         job_record = session.get(ClipGenerationJob, job_id)
         if not job_record:
-            raise ValueError(f"Job {job_id} not found")
+            raise JobNotFoundError(f"Job {job_id} not found")
 
     progress = job_record.progress
     return JobStatusResponse(

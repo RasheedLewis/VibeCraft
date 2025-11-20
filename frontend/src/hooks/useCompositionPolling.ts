@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { apiClient } from '../lib/apiClient'
 import type { CompositionJobStatusResponse, JobStatusResponse } from '../types/song'
 import { useJobPolling } from './useJobPolling'
@@ -17,6 +17,12 @@ export const useCompositionPolling = ({
   const [progress, setProgress] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [isComplete, setIsComplete] = useState<boolean>(false)
+
+  // Use refs to store songId to avoid recreating fetchStatus on every render
+  const songIdRef = useRef(songId)
+  useEffect(() => {
+    songIdRef.current = songId
+  }, [songId])
 
   const onStatusUpdate = useCallback(
     (status: 'queued' | 'processing' | 'completed' | 'failed', progressValue: number) => {
@@ -38,28 +44,35 @@ export const useCompositionPolling = ({
     setIsComplete(true)
   }, [])
 
+  // Use ref for songId to prevent fetchStatus from being recreated
   const fetchStatus = useCallback(
     async (jobId: string): Promise<JobStatusResponse<null>> => {
+      const currentSongId = songIdRef.current
+      if (!currentSongId) {
+        throw new Error('Song ID is required for composition polling')
+      }
       const { data } = await apiClient.get<CompositionJobStatusResponse>(
-        `/songs/${songId}/compose/${jobId}/status`,
+        `/songs/${currentSongId}/compose/${jobId}/status`,
       )
       // Convert CompositionJobStatusResponse to JobStatusResponse format
       return {
         jobId: data.jobId ?? jobId,
-        songId: data.songId ?? songId ?? '',
+        songId: data.songId ?? currentSongId,
         status: data.status,
         progress: data.progress ?? 0,
         error: data.error ?? null,
         result: null,
       }
     },
-    [songId],
+    [], // Empty deps - songId is accessed via ref
   )
 
+  // Only enable polling if all conditions are met
+  // Don't recalculate enabled here - use the prop directly to avoid unnecessary effect re-runs
   useJobPolling<null>({
     jobId,
-    enabled: !!jobId && !!songId && enabled,
-    pollInterval: 2000,
+    enabled: enabled && !!jobId && !!songId,
+    pollInterval: 3000,
     onStatusUpdate,
     onComplete,
     onError,

@@ -12,7 +12,7 @@ import {
 } from '../../utils/formatting'
 
 interface ClipGenerationPanelProps {
-  clipSummary: ClipGenerationSummary
+  clipSummary: ClipGenerationSummary | null
   clipJobId: string | null
   clipJobStatus: 'idle' | 'queued' | 'processing' | 'completed' | 'failed'
   clipJobProgress: number
@@ -40,7 +40,69 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
   onRegenerateClip,
   onRetryClip,
 }) => {
-  if (!clipSummary || clipSummary.totalClips === 0) {
+  // Show panel if we have clips OR if there's an active job (even if clips haven't been planned yet)
+  const hasActiveJob =
+    clipJobId != null && (clipJobStatus === 'queued' || clipJobStatus === 'processing')
+
+  // If we have clips, always show the real UI (even if job is still active)
+  const hasClips = clipSummary && clipSummary.totalClips > 0
+
+  if (!hasClips && !hasActiveJob) {
+    return null
+  }
+
+  // If no clips yet but there's an active job, show a simplified "preparing" version
+  // This should only show briefly while clips are being planned
+  if (!hasClips && hasActiveJob) {
+    return (
+      <section className="space-y-3">
+        <div className="vc-label">Clip generation</div>
+        <VCCard className="space-y-4 bg-[rgba(12,12,18,0.8)] p-5">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-white">
+                {clipJobStatus === 'queued'
+                  ? 'Queuing clip generation…'
+                  : 'Starting clip generation…'}
+              </h3>
+              <p className="text-xs text-vc-text-muted">
+                {clipJobStatus === 'queued'
+                  ? 'Preparing to generate video clips'
+                  : 'Enqueuing video generation jobs for each clip'}
+              </p>
+            </div>
+          </div>
+
+          {/* Indeterminate progress indicator - animated gradient */}
+          <div className="relative h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-vc-accent-primary/60 to-transparent animate-pulse" />
+            <div
+              className="absolute left-0 top-0 h-full w-1/3 rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary"
+              style={{
+                animation: 'slide-indeterminate 1.5s ease-in-out infinite',
+              }}
+            />
+          </div>
+          <style>{`
+            @keyframes slide-indeterminate {
+              0% {
+                transform: translateX(-100%);
+              }
+              100% {
+                transform: translateX(400%);
+              }
+            }
+          `}</style>
+
+          {clipJobError && <p className="text-xs text-vc-state-error">{clipJobError}</p>}
+        </VCCard>
+      </section>
+    )
+  }
+
+  // From here on, we have clips - show the full UI with all sections
+  if (!clipSummary) {
+    // This shouldn't happen if hasClips is true, but guard against it
     return null
   }
 
@@ -213,101 +275,101 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
         </div>
       </VCCard>
 
-      {sortedClips.length > 0 && (
-        <div className="space-y-2">
-          <div className="vc-label">Clip queue</div>
-          <div className="overflow-hidden rounded-2xl border border-vc-border/40 bg-[rgba(12,12,18,0.65)]">
-            {sortedClips.map((clip, index) => {
-              const normalizedStatus = normalizeClipStatus(clip.status)
-              const rangeLabel = formatTimeRange(clip.startSec, clip.endSec)
-              const beats =
-                clip.startBeat != null && clip.endBeat != null
-                  ? Math.max(clip.endBeat - clip.startBeat, 0)
-                  : null
-              const infoParts: string[] = [
-                formatDurationShort(clip.durationSec),
-                `${clip.numFrames} frames`,
-                `${clip.fps} fps`,
-              ]
-              if (beats && beats > 0) {
-                infoParts.push(`${beats} beats`)
-              }
-              const infoLine = infoParts.join(' • ')
-              const isLast = index === sortedClips.length - 1
+      {/* Clip Queue section - always show when we have clips */}
+      <div className="space-y-2">
+        <div className="vc-label">Clip queue</div>
+        <div className="overflow-hidden rounded-2xl border border-vc-border/40 bg-[rgba(12,12,18,0.65)]">
+          {sortedClips.map((clip, index) => {
+            const normalizedStatus = normalizeClipStatus(clip.status)
+            const rangeLabel = formatTimeRange(clip.startSec, clip.endSec)
+            const beats =
+              clip.startBeat != null && clip.endBeat != null
+                ? Math.max(clip.endBeat - clip.startBeat, 0)
+                : null
+            const infoParts: string[] = [
+              formatDurationShort(clip.durationSec),
+              `${clip.numFrames} frames`,
+              `${clip.fps} fps`,
+            ]
+            if (beats && beats > 0) {
+              infoParts.push(`${beats} beats`)
+            }
+            const infoLine = infoParts.join(' • ')
+            const isLast = index === sortedClips.length - 1
 
-              return (
-                <div
-                  key={clip.id}
-                  className={clsx(
-                    'flex flex-col gap-2 border-b border-vc-border/20 px-4 py-4',
-                    isLast && 'border-b-0',
-                  )}
-                >
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div className="flex items-center gap-3 text-sm font-medium text-white">
-                      <div className="w-8 text-right text-xs text-vc-text-muted">
-                        #{clip.clipIndex + 1}
-                      </div>
-                      <div>{rangeLabel}</div>
+            return (
+              <div
+                key={clip.id}
+                className={clsx(
+                  'flex flex-col gap-2 border-b border-vc-border/20 px-4 py-4',
+                  isLast && 'border-b-0',
+                )}
+              >
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-3 text-sm font-medium text-white">
+                    <div className="w-8 text-right text-xs text-vc-text-muted">
+                      #{clip.clipIndex + 1}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <ClipStatusBadge status={normalizedStatus} />
-                      {normalizedStatus === 'processing' && (
-                        <span className="flex items-center gap-1 text-[11px] text-vc-text-muted">
-                          <span className="inline-block h-2 w-2 rounded-full bg-vc-accent-primary animate-pulse" />
-                          Generating…
-                        </span>
-                      )}
-                      {normalizedStatus === 'queued' && (
-                        <span className="text-[11px] text-vc-text-muted">
-                          Awaiting generation
-                        </span>
-                      )}
-                    </div>
+                    <div>{rangeLabel}</div>
                   </div>
-                  <div className="flex flex-col gap-2 text-xs text-vc-text-secondary md:flex-row md:items-center md:justify-between">
-                    <div>{infoLine}</div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {normalizedStatus === 'completed' && (
-                        <>
-                          <VCButton
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onPreviewClip(clip)}
-                            disabled={!clip.videoUrl}
-                          >
-                            Preview
-                          </VCButton>
-                          <VCButton
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onRegenerateClip(clip)}
-                          >
-                            Regenerate
-                          </VCButton>
-                        </>
-                      )}
-                      {normalizedStatus === 'failed' && (
+                  <div className="flex items-center gap-2">
+                    <ClipStatusBadge status={normalizedStatus} />
+                    {normalizedStatus === 'processing' && (
+                      <span className="flex items-center gap-1 text-[11px] text-vc-text-muted">
+                        <span className="inline-block h-2 w-2 rounded-full bg-vc-accent-primary animate-pulse" />
+                        Generating…
+                      </span>
+                    )}
+                    {normalizedStatus === 'queued' && (
+                      <span className="text-[11px] text-vc-text-muted">
+                        Awaiting generation
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 text-xs text-vc-text-secondary md:flex-row md:items-center md:justify-between">
+                  <div>{infoLine}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {normalizedStatus === 'completed' && (
+                      <>
                         <VCButton
                           variant="secondary"
                           size="sm"
-                          onClick={() => onRetryClip(clip)}
+                          onClick={() => onPreviewClip(clip)}
+                          disabled={!clip.videoUrl}
                         >
-                          Retry
+                          Preview
                         </VCButton>
-                      )}
-                      {normalizedStatus === 'canceled' && (
-                        <span className="text-vc-text-muted">Clip canceled</span>
-                      )}
-                    </div>
+                        <VCButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onRegenerateClip(clip)}
+                        >
+                          Regenerate
+                        </VCButton>
+                      </>
+                    )}
+                    {normalizedStatus === 'failed' && (
+                      <VCButton
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onRetryClip(clip)}
+                      >
+                        Retry
+                      </VCButton>
+                    )}
+                    {normalizedStatus === 'canceled' && (
+                      <span className="text-vc-text-muted">Clip canceled</span>
+                    )}
                   </div>
                 </div>
-              )
-            })}
-          </div>
+              </div>
+            )
+          })}
         </div>
-      )}
+      </div>
 
+      {/* Completed Clips section - always show */}
       <div className="space-y-2">
         <div className="vc-label">Completed clips</div>
         {clipSummary.completedClips === 0 ? (

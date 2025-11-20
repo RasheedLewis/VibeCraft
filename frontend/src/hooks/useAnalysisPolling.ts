@@ -20,8 +20,12 @@ export function useAnalysisPolling(songId: string | null) {
       const { data } = await apiClient.get<SongAnalysis>(`/songs/${songId}/analysis`)
       setData(data)
       setError(null)
+      // If we successfully fetched analysis, it means it's completed
+      setState('completed')
+      setProgress(100)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load analysis results.')
+      setState('failed')
     } finally {
       setIsFetching(false)
     }

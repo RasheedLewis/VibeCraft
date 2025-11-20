@@ -451,6 +451,39 @@ def get_clip_generation_status(song_id: UUID, db: Session = Depends(get_db)) -> 
     return get_clip_generation_summary(song_id)
 
 
+@router.get(
+    "/{song_id}/clips/job",
+    response_model=Optional[ClipGenerationJobResponse],
+    summary="Get active clip generation job for a song",
+)
+def get_active_clip_generation_job(
+    song_id: UUID, db: Session = Depends(get_db)
+) -> Optional[ClipGenerationJobResponse]:
+    """Get the active (queued or processing) clip generation job for a song, if any."""
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    from sqlmodel import select
+    from app.models.analysis import ClipGenerationJob
+
+    job = db.exec(
+        select(ClipGenerationJob)
+        .where(ClipGenerationJob.song_id == song_id)
+        .where(ClipGenerationJob.status.in_(["queued", "processing"]))
+        .order_by(ClipGenerationJob.created_at.desc())
+    ).first()
+
+    if not job:
+        return None
+
+    return ClipGenerationJobResponse(
+        job_id=job.id,
+        song_id=job.song_id,
+        status=job.status,
+    )
+
+
 @router.post(
     "/{song_id}/clips/generate",
     response_model=ClipGenerationJobResponse,

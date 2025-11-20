@@ -114,6 +114,38 @@ uvicorn app.main:app --reload &
 BACKEND_PID=$!
 cd ..
 
+# Clear RQ queue before starting worker
+echo -e "${YELLOW}Clearing RQ queue...${NC}"
+cd backend
+python3 -c "
+import os
+import sys
+sys.path.insert(0, '.')
+from app.core.config import get_settings
+from app.core.queue import get_queue
+
+try:
+    settings = get_settings()
+    queue = get_queue()
+    queue_name = queue.name
+    
+    # Count jobs before clearing
+    job_count = len(queue)
+    
+    # Clear the queue
+    if job_count > 0:
+        queue.empty()
+        print(f'✓ Cleared {job_count} pending job(s) from queue: {queue_name}')
+    else:
+        print(f'✓ Queue {queue_name} is already empty (0 jobs)')
+except Exception as e:
+    print(f'⚠ Failed to clear queue: {e}')
+    sys.exit(1)
+" || {
+    echo -e "${RED}⚠ Failed to clear queue (continuing anyway)${NC}"
+}
+cd ..
+
 # Start RQ worker
 echo -e "${GREEN}Starting RQ worker${NC}"
 cd backend

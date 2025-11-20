@@ -65,10 +65,17 @@ export const UploadPage: React.FC = () => {
   // Use polling hooks with bugfixes
   const analysisPolling = useAnalysisPolling(result?.songId ?? null)
   const clipPolling = useClipPolling(result?.songId ?? null)
+
+  // Memoize enabled to prevent unnecessary re-renders
+  const compositionEnabled = useMemo(
+    () => !!composeJobId && !!result?.songId,
+    [composeJobId, result?.songId],
+  )
+
   const compositionPolling = useCompositionPolling({
     jobId: composeJobId,
     songId: result?.songId ?? null,
-    enabled: !!composeJobId && !!result?.songId,
+    enabled: compositionEnabled,
   })
 
   // Sync analysis state
@@ -118,18 +125,39 @@ export const UploadPage: React.FC = () => {
   }, [clipJobId, clipPolling])
 
   const handleComposeClips = useCallback(async () => {
-    if (!result?.songId || !clipSummary) return
-    if (clipSummary.completedClips !== clipSummary.totalClips) return
-    if (clipSummary.failedClips > 0 || isComposing) return
+    if (!result?.songId || !clipSummary) {
+      console.warn('[compose] Cannot compose: missing songId or clipSummary', {
+        hasSongId: !!result?.songId,
+        hasClipSummary: !!clipSummary,
+      })
+      return
+    }
+    if (clipSummary.completedClips !== clipSummary.totalClips) {
+      console.warn('[compose] Cannot compose: not all clips completed', {
+        completed: clipSummary.completedClips,
+        total: clipSummary.totalClips,
+      })
+      return
+    }
+    if (clipSummary.failedClips > 0 || isComposing) {
+      console.warn('[compose] Cannot compose: failed clips or already composing', {
+        failedClips: clipSummary.failedClips,
+        isComposing,
+      })
+      return
+    }
 
     try {
+      console.log('[compose] Starting composition for song:', result.songId)
       setIsComposing(true)
       clipPolling.setError(null)
       const { data } = await apiClient.post<ComposeVideoResponse>(
         `/songs/${result.songId}/clips/compose/async`,
       )
+      console.log('[compose] Composition job started:', data.jobId)
       setComposeJobId(data.jobId)
     } catch (err) {
+      console.error('[compose] Failed to start composition:', err)
       clipPolling.setError(
         extractErrorMessage(err, 'Unable to compose clips at this time.'),
       )
@@ -140,6 +168,7 @@ export const UploadPage: React.FC = () => {
   const handleGenerateClips = useCallback(async () => {
     if (!result?.songId) return
     try {
+      console.log('[generate-clips] Starting clip generation for song:', result.songId)
       clipPolling.setError(null)
       const durationEstimate =
         analysisData?.durationSec ??
@@ -165,24 +194,39 @@ export const UploadPage: React.FC = () => {
         clipSummary.completedClips === clipSummary.totalClips ||
         clipSummary.clips.some((clip) => clip.durationSec > maxClipSeconds + 0.1)
 
+      console.log('[generate-clips] Planning check:', {
+        needsReplan,
+        hasSummary: !!clipSummary,
+        totalClips: clipSummary?.totalClips,
+        completedClips: clipSummary?.completedClips,
+        computedClipCount,
+      })
+
       if (needsReplan) {
+        console.log('[generate-clips] Planning clips...')
         await apiClient.post(`/songs/${result.songId}/clips/plan`, null, {
           params: {
             clip_count: computedClipCount,
             max_clip_sec: maxClipSeconds,
           },
         })
+        console.log('[generate-clips] Clips planned, fetching updated summary...')
+        await clipPolling.fetchClipSummary(result.songId)
       }
 
+      console.log('[generate-clips] Starting clip generation job...')
       const { data } = await apiClient.post<{
         jobId: string
         songId: string
         status: string
       }>(`/songs/${result.songId}/clips/generate`)
 
+      console.log('[generate-clips] Job started:', data.jobId, 'status:', data.status)
       clipPolling.setJobId(data.jobId)
       clipPolling.setStatus(data.status === 'processing' ? 'processing' : 'queued')
+      console.log('[generate-clips] State updated, UI should show progress now')
     } catch (err) {
+      console.error('[generate-clips] Error:', err)
       clipPolling.setError(
         extractErrorMessage(err, 'Unable to start clip generation for this track.'),
       )
@@ -321,23 +365,69 @@ export const UploadPage: React.FC = () => {
           const { data: clipData } = await apiClient.get<ClipGenerationSummary>(
             `/songs/${songIdParam}/clips/status`,
           )
+          console.log('[restore-state] Clip data loaded:', {
+            totalClips: clipData.totalClips,
+            completedClips: clipData.completedClips,
+            hasClips: clipData.clips?.length > 0,
+          })
           await clipPolling.fetchClipSummary(songIdParam)
 
-          if (clipData.clips && clipData.clips.length > 0) {
-            const hasActiveJob = clipData.clips.some(
-              (clip) => clip.status === 'processing' || clip.status === 'queued',
-            )
-            if (hasActiveJob) {
-              const firstClipWithJob = clipData.clips.find((clip) => clip.rqJobId)
-              if (firstClipWithJob?.rqJobId) {
-                clipPolling.setJobId(firstClipWithJob.rqJobId)
-                clipPolling.setStatus('processing')
+          // Try to restore the active clip generation batch job
+          try {
+            const { data: activeJob } = await apiClient.get<{
+              jobId: string
+              songId: string
+              status: string
+            } | null>(`/songs/${songIdParam}/clips/job`)
+            if (activeJob?.jobId) {
+              console.log(
+                '[restore-state] Found active clip generation job:',
+                activeJob.jobId,
+              )
+              clipPolling.setJobId(activeJob.jobId)
+              clipPolling.setStatus(
+                activeJob.status === 'processing' ? 'processing' : 'queued',
+              )
+            } else {
+              // No active job - check if all clips are completed
+              if (
+                clipData.completedClips === clipData.totalClips &&
+                clipData.totalClips > 0
+              ) {
+                console.log(
+                  '[restore-state] All clips completed, setting status to completed',
+                )
+                clipPolling.setStatus('completed')
+                clipPolling.setJobId(null) // Clear any stale job ID
+              } else if (clipData.totalClips > 0) {
+                console.log('[restore-state] Clips exist but not all completed')
+                clipPolling.setStatus('idle')
               }
-            } else if (
-              clipData.completedClips === clipData.totalClips &&
-              clipData.totalClips > 0
-            ) {
-              clipPolling.setStatus('completed')
+            }
+          } catch (jobErr) {
+            // Fallback to old method if new endpoint fails
+            console.warn(
+              '[restore-state] Could not fetch active job, using fallback:',
+              jobErr,
+            )
+            if (clipData.clips && clipData.clips.length > 0) {
+              const hasActiveJob = clipData.clips.some(
+                (clip) => clip.status === 'processing' || clip.status === 'queued',
+              )
+              if (hasActiveJob) {
+                const firstClipWithJob = clipData.clips.find((clip) => clip.rqJobId)
+                if (firstClipWithJob?.rqJobId) {
+                  clipPolling.setJobId(firstClipWithJob.rqJobId)
+                  clipPolling.setStatus('processing')
+                }
+              } else if (
+                clipData.completedClips === clipData.totalClips &&
+                clipData.totalClips > 0
+              ) {
+                console.log('[restore-state] All clips completed (fallback)')
+                clipPolling.setStatus('completed')
+                clipPolling.setJobId(null)
+              }
             }
           }
         } catch (err) {

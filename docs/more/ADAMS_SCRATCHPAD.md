@@ -12,6 +12,8 @@
 
 Do-first:
 
+- Crazy: the clips are currently generated with concurrency limit 2, that's low!
+- Uhh if you refresh page all state is lost... terrible UX
 - *MOST* important! — Transition beat-sync logic to use actual beat times from analysis (not calculated from fixed BPM), which includes handling tempo changes mid-song
 - Update Song Profile UI for clip-based workflow, e.g. allow user to approve/reject generated clips, and regenerate individual clips
 - Prompt experimentation and style consistency: test different templates/models, catalog prompt→video mappings, implement shared style seeds/tokens across clips, create prompt library and guidelines

@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { apiClient } from '../lib/apiClient'
-import type { CompositionJobStatusResponse, JobStatusResponse } from '../types/song'
-import { useJobPolling } from './useJobPolling'
+import type { CompositionJobStatusResponse } from '../types/song'
+import { extractErrorMessage } from '../utils/validation'
 
 interface UseCompositionPollingOptions {
   jobId: string | null
@@ -18,66 +18,50 @@ export const useCompositionPolling = ({
   const [error, setError] = useState<string | null>(null)
   const [isComplete, setIsComplete] = useState<boolean>(false)
 
-  // Use refs to store songId to avoid recreating fetchStatus on every render
-  const songIdRef = useRef(songId)
   useEffect(() => {
-    songIdRef.current = songId
-  }, [songId])
+    if (!jobId || !songId || !enabled) return
 
-  const onStatusUpdate = useCallback(
-    (status: 'queued' | 'processing' | 'completed' | 'failed', progressValue: number) => {
-      setProgress(progressValue)
-      if (status === 'completed' || status === 'failed') {
-        setIsComplete(true)
+    let cancelled = false
+    let timeoutId: number | undefined
+
+    const poll = async () => {
+      try {
+        const { data } = await apiClient.get<CompositionJobStatusResponse>(
+          `/songs/${songId}/compose/${jobId}/status`,
+        )
+        if (cancelled) return
+
+        setProgress(data.progress ?? 0)
+
+        if (data.status === 'completed') {
+          setIsComplete(true)
+          return
+        }
+
+        if (data.status === 'failed') {
+          setError(data.error ?? 'Composition failed')
+          setIsComplete(true)
+          return
+        }
+
+        timeoutId = window.setTimeout(poll, 2000)
+      } catch (err) {
+        if (!cancelled) {
+          setError(extractErrorMessage(err, 'Unable to fetch composition progress.'))
+          timeoutId = window.setTimeout(poll, 5000)
+        }
       }
-    },
-    [],
-  )
+    }
 
-  const onComplete = useCallback(() => {
-    setIsComplete(true)
-    setError(null)
-  }, [])
+    poll()
 
-  const onError = useCallback((errorMessage: string) => {
-    setError(errorMessage)
-    setIsComplete(true)
-  }, [])
-
-  // Use ref for songId to prevent fetchStatus from being recreated
-  const fetchStatus = useCallback(
-    async (jobId: string): Promise<JobStatusResponse<null>> => {
-      const currentSongId = songIdRef.current
-      if (!currentSongId) {
-        throw new Error('Song ID is required for composition polling')
+    return () => {
+      cancelled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
       }
-      const { data } = await apiClient.get<CompositionJobStatusResponse>(
-        `/songs/${currentSongId}/compose/${jobId}/status`,
-      )
-      // Convert CompositionJobStatusResponse to JobStatusResponse format
-      return {
-        jobId: data.jobId ?? jobId,
-        songId: data.songId ?? currentSongId,
-        status: data.status,
-        progress: data.progress ?? 0,
-        error: data.error ?? null,
-        result: null,
-      }
-    },
-    [], // Empty deps - songId is accessed via ref
-  )
-
-  // Only enable polling if all conditions are met
-  // Don't recalculate enabled here - use the prop directly to avoid unnecessary effect re-runs
-  useJobPolling<null>({
-    jobId,
-    enabled: enabled && !!jobId && !!songId,
-    pollInterval: 3000,
-    onStatusUpdate,
-    onComplete,
-    onError,
-    fetchStatus,
-  })
+    }
+  }, [jobId, songId, enabled])
 
   return {
     progress,

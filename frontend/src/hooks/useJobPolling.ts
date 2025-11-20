@@ -28,24 +28,8 @@ export function useJobPolling<T>({
   const cancelledRef = useRef(false)
   const timeoutIdRef = useRef<number | undefined>(undefined)
 
-  // Use refs to store callbacks to avoid re-running effect when they change
-  const onStatusUpdateRef = useRef(onStatusUpdate)
-  const onCompleteRef = useRef(onComplete)
-  const onErrorRef = useRef(onError)
-  const fetchStatusRef = useRef(fetchStatus)
-
-  // Update refs when callbacks change
   useEffect(() => {
-    onStatusUpdateRef.current = onStatusUpdate
-    onCompleteRef.current = onComplete
-    onErrorRef.current = onError
-    fetchStatusRef.current = fetchStatus
-  }, [onStatusUpdate, onComplete, onError, fetchStatus])
-
-  useEffect(() => {
-    if (!jobId || !enabled) {
-      return
-    }
+    if (!jobId || !enabled) return
 
     cancelledRef.current = false
     // Clear any existing timeout before starting new polling
@@ -56,22 +40,22 @@ export function useJobPolling<T>({
 
     const pollStatus = async () => {
       try {
-        const response = await fetchStatusRef.current(jobId)
+        const response = await fetchStatus(jobId)
         if (cancelledRef.current) return
 
         const normalizedStatus = normalizeJobStatus(response.status)
         const progress =
           normalizedStatus === 'completed' ? 100 : clamp(response.progress ?? 0, 0, 99)
 
-        onStatusUpdateRef.current?.(normalizedStatus, progress)
+        onStatusUpdate?.(normalizedStatus, progress)
 
         if (normalizedStatus === 'completed') {
-          onCompleteRef.current?.(response.result ?? null)
+          onComplete?.(response.result ?? null)
           return
         }
 
         if (normalizedStatus === 'failed') {
-          onErrorRef.current?.(response.error ?? 'Job failed')
+          onError?.(response.error ?? 'Job failed')
           return
         }
 
@@ -81,7 +65,7 @@ export function useJobPolling<T>({
         if (!cancelledRef.current) {
           const errorMessage =
             err instanceof Error ? err.message : 'Unable to fetch job status.'
-          onErrorRef.current?.(errorMessage)
+          onError?.(errorMessage)
         }
       }
     }
@@ -95,5 +79,5 @@ export function useJobPolling<T>({
         timeoutIdRef.current = undefined
       }
     }
-  }, [jobId, enabled, pollInterval])
+  }, [jobId, enabled, pollInterval, onStatusUpdate, onComplete, onError, fetchStatus])
 }

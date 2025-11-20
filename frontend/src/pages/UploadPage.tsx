@@ -61,6 +61,7 @@ export const UploadPage: React.FC = () => {
   const [playerActiveClipId, setPlayerActiveClipId] = useState<string | null>(null)
   const [playerClipSelectionLocked, setPlayerClipSelectionLocked] =
     useState<boolean>(false)
+  const compositionCompleteHandledRef = useRef<string | null>(null)
 
   // Use polling hooks with bugfixes
   const analysisPolling = useAnalysisPolling(result?.songId ?? null)
@@ -97,13 +98,42 @@ export const UploadPage: React.FC = () => {
 
   useEffect(() => {
     if (compositionPolling.isComplete) {
-      setTimeout(() => {
-        setIsComposing(false)
-        setComposeJobId(null)
-        if (result?.songId) {
-          void clipPolling.fetchClipSummary(result.songId)
-        }
-      }, 0)
+      // Prevent handling completion multiple times for the same job
+      if (compositionCompleteHandledRef.current === composeJobId) {
+        return
+      }
+      compositionCompleteHandledRef.current = composeJobId
+
+      // Don't reset state immediately - wait for clip summary to update with composed video
+      // This prevents the button from showing "Compose when done" again
+      if (result?.songId) {
+        // Fetch updated clip summary which should now include composedVideoUrl
+        void clipPolling.fetchClipSummary(result.songId).then(() => {
+          // Check if composed video URL is now available in the updated summary
+          // We need to wait a moment for the state to update after fetchClipSummary
+          setTimeout(() => {
+            const updatedSummary = clipPolling.summary
+            if (updatedSummary?.composedVideoUrl) {
+              // Composed video is available, safe to reset state
+              setIsComposing(false)
+              setComposeJobId(null)
+            } else {
+              // Composed video not yet available, wait a bit and retry once more
+              setTimeout(() => {
+                void clipPolling.fetchClipSummary(result.songId).then(() => {
+                  setIsComposing(false)
+                  setComposeJobId(null)
+                })
+              }, 2000)
+            }
+          }, 500)
+        })
+      } else {
+        setTimeout(() => {
+          setIsComposing(false)
+          setComposeJobId(null)
+        }, 0)
+      }
     }
     if (compositionPolling.error) {
       setTimeout(() => {
@@ -117,6 +147,7 @@ export const UploadPage: React.FC = () => {
     compositionPolling.error,
     result?.songId,
     clipPolling,
+    composeJobId,
   ])
 
   const handleCancelClipJob = useCallback(() => {
@@ -151,6 +182,8 @@ export const UploadPage: React.FC = () => {
       console.log('[compose] Starting composition for song:', result.songId)
       setIsComposing(true)
       clipPolling.setError(null)
+      // Reset the completion handler ref for the new job
+      compositionCompleteHandledRef.current = null
       const { data } = await apiClient.post<ComposeVideoResponse>(
         `/songs/${result.songId}/clips/compose/async`,
       )
@@ -368,14 +401,9 @@ export const UploadPage: React.FC = () => {
           const { data: clipData } = await apiClient.get<ClipGenerationSummary>(
             `/songs/${songIdParam}/clips/status`,
           )
-          console.log('[restore-state] Clip data loaded:', {
-            totalClips: clipData.totalClips,
-            completedClips: clipData.completedClips,
-            hasClips: clipData.clips?.length > 0,
-          })
           await clipPolling.fetchClipSummary(songIdParam)
 
-          // Try to restore the active clip generation batch job
+          // Try to restore the active clip generation batch job using new endpoint
           try {
             const { data: activeJob } = await apiClient.get<{
               jobId: string
@@ -383,36 +411,18 @@ export const UploadPage: React.FC = () => {
               status: string
             } | null>(`/songs/${songIdParam}/clips/job`)
             if (activeJob?.jobId) {
-              console.log(
-                '[restore-state] Found active clip generation job:',
-                activeJob.jobId,
-              )
               clipPolling.setJobId(activeJob.jobId)
               clipPolling.setStatus(
                 activeJob.status === 'processing' ? 'processing' : 'queued',
               )
-            } else {
-              // No active job - check if all clips are completed
-              if (
-                clipData.completedClips === clipData.totalClips &&
-                clipData.totalClips > 0
-              ) {
-                console.log(
-                  '[restore-state] All clips completed, setting status to completed',
-                )
-                clipPolling.setStatus('completed')
-                clipPolling.setJobId(null) // Clear any stale job ID
-              } else if (clipData.totalClips > 0) {
-                console.log('[restore-state] Clips exist but not all completed')
-                clipPolling.setStatus('idle')
-              }
+            } else if (
+              clipData.completedClips === clipData.totalClips &&
+              clipData.totalClips > 0
+            ) {
+              clipPolling.setStatus('completed')
             }
-          } catch (jobErr) {
+          } catch {
             // Fallback to old method if new endpoint fails
-            console.warn(
-              '[restore-state] Could not fetch active job, using fallback:',
-              jobErr,
-            )
             if (clipData.clips && clipData.clips.length > 0) {
               const hasActiveJob = clipData.clips.some(
                 (clip) => clip.status === 'processing' || clip.status === 'queued',
@@ -427,9 +437,7 @@ export const UploadPage: React.FC = () => {
                 clipData.completedClips === clipData.totalClips &&
                 clipData.totalClips > 0
               ) {
-                console.log('[restore-state] All clips completed (fallback)')
                 clipPolling.setStatus('completed')
-                clipPolling.setJobId(null)
               }
             }
           }

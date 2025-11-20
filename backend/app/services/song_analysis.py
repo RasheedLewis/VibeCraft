@@ -186,14 +186,7 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
         sections: List[SongSection]
         audjust_sections_raw: Optional[List[dict]] = None
 
-        logger.info(
-            "Checking Audjust configuration: base_url=%s, api_key=%s",
-            settings.audjust_base_url,
-            "***" if settings.audjust_api_key else None,
-        )
-
         if settings.audjust_base_url and settings.audjust_api_key:
-            logger.info("Audjust is configured, attempting to fetch structure segments for song %s", song_id)
             try:
                 audjust_sections_raw = fetch_structure_segments(audio_path)
                 logger.info(
@@ -215,12 +208,6 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
                     song_id,
                     exc,
                 )
-        else:
-            logger.warning(
-                "Audjust API not configured (base_url=%s, api_key_present=%s). Skipping structure analysis.",
-                settings.audjust_base_url,
-                bool(settings.audjust_api_key),
-            )
 
         if audjust_sections_raw:
             try:

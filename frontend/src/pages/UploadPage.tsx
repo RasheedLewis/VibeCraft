@@ -1913,6 +1913,7 @@ export const UploadPage: React.FC = () => {
                     mood={sectionMood}
                     lyricSnippet={lyric}
                     hasVideo={false}
+                    audioUrl={result?.audioUrl}
                     className="h-full bg-[rgba(12,12,18,0.78)]"
                     onGenerate={() => {}}
                     onRegenerate={() => {}}

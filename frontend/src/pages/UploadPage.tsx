@@ -39,6 +39,7 @@ import {
 } from '../components/upload/Icons'
 import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimeline'
 import { VideoTypeSelector } from '../components/upload/VideoTypeSelector'
+import { CharacterImageUpload } from '../components/upload/CharacterImageUpload'
 import { SongProfileView } from '../components/song/SongProfileView'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
@@ -836,6 +837,32 @@ export const UploadPage: React.FC = () => {
 
       {analysisState === 'completed' && analysisData && songDetails && (
         <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
+          {/* Character Image Upload Step - only for short-form videos */}
+          {videoType === 'short_form' && result?.songId && (
+            <section className="mb-8 space-y-4">
+              <div className="vc-label">Character Consistency (Optional)</div>
+              <p className="text-sm text-vc-text-secondary">
+                Upload a character reference image to maintain consistent character appearance across all clips.
+              </p>
+              <CharacterImageUpload
+                songId={result.songId}
+                onUploadSuccess={(imageUrl) => {
+                  console.log('Character image uploaded:', imageUrl)
+                  // Optionally refresh song details to show character consistency is enabled
+                  if (result?.songId) {
+                    apiClient.get(`/songs/${result.songId}`).then((response) => {
+                      setSongDetails(response.data)
+                    }).catch(console.error)
+                  }
+                }}
+                onUploadError={(error) => {
+                  console.error('Character image upload failed:', error)
+                  setError(error)
+                }}
+              />
+            </section>
+          )}
+
           {/* Audio Selection Step - only for short-form videos */}
           {videoType === 'short_form' && !audioSelectionValue && (
             <section className="mb-8 space-y-4">

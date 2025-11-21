@@ -41,6 +41,7 @@ class TestShouldUseSectionsForSong:
 
     def test_missing_video_type_attribute_returns_false(self):
         """Test that song without video_type attribute returns False."""
+        # Create a mock object without video_type attribute
         mock_song = Mock(spec=[])  # No video_type attribute
         
         result = should_use_sections_for_song(mock_song)

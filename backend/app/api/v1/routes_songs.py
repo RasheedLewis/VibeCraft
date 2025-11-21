@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlmodel import Session, select
 
 from app.api.deps import get_db
+from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_field
 from app.core.config import get_settings
 from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
@@ -281,31 +282,13 @@ def set_video_type(
     This must be set before analysis runs, as it affects the analysis
     and generation workflow.
     """
-    song = db.get(Song, song_id)
-    if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
-    
-    # Validate video type
-    if video_type.video_type not in ["full_length", "short_form"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="video_type must be 'full_length' or 'short_form'",
-        )
+    song = get_song_or_404(song_id, db)
     
     # Prevent changing after analysis has started
-    existing_analysis = get_latest_analysis(song_id)
-    if existing_analysis:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot change video type after analysis has been completed. Please upload a new song.",
-        )
+    # Note: video_type validation is handled by VideoTypeUpdate schema
+    ensure_no_analysis(song_id)
     
-    song.video_type = video_type.video_type
-    db.add(song)
-    db.commit()
-    db.refresh(song)
-    
-    return song
+    return update_song_field(song, "video_type", video_type.video_type, db)
 
 
 @router.patch(
@@ -319,9 +302,7 @@ def update_audio_selection(
     db: Session = Depends(get_db),
 ) -> Song:
     """Update the selected audio segment for a song."""
-    song = db.get(Song, song_id)
-    if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+    song = get_song_or_404(song_id, db)
     
     if song.duration_sec is None:
         raise HTTPException(
@@ -329,43 +310,21 @@ def update_audio_selection(
             detail="Song duration not available. Please wait for analysis to complete.",
         )
     
-    # Validate selection
-    start_sec = selection.start_sec
-    end_sec = selection.end_sec
+    # Validate selection using centralized validation service
+    from app.services.audio_selection import validate_audio_selection
     
-    if start_sec < 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Start time must be >= 0")
-    
-    if end_sec > song.duration_sec:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"End time ({end_sec}s) exceeds song duration ({song.duration_sec}s)",
+    try:
+        validate_audio_selection(
+            start_sec=selection.start_sec,
+            end_sec=selection.end_sec,
+            song_duration_sec=song.duration_sec,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     
-    if end_sec <= start_sec:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="End time must be greater than start time",
-        )
-    
-    duration = end_sec - start_sec
-    MAX_SELECTION_DURATION = 30.0
-    if duration > MAX_SELECTION_DURATION:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Selection duration ({duration:.1f}s) exceeds maximum ({MAX_SELECTION_DURATION}s)",
-        )
-    
-    MIN_SELECTION_DURATION = 1.0
-    if duration < MIN_SELECTION_DURATION:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Selection duration ({duration:.1f}s) is below minimum ({MIN_SELECTION_DURATION}s)",
-        )
-    
-    # Update song
-    song.selected_start_sec = start_sec
-    song.selected_end_sec = end_sec
+    # Update song fields
+    song.selected_start_sec = selection.start_sec
+    song.selected_end_sec = selection.end_sec
     db.add(song)
     db.commit()
     db.refresh(song)

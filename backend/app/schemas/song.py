@@ -6,6 +6,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.core.constants import (
+    MAX_AUDIO_SELECTION_DURATION_SEC,
+    MIN_AUDIO_SELECTION_DURATION_SEC,
+    VALID_VIDEO_TYPES,
+)
+
 
 class SongRead(BaseModel):
     id: UUID
@@ -49,13 +55,19 @@ class AudioSelectionUpdate(BaseModel):
     
     @model_validator(mode='after')
     def validate_range(self) -> 'AudioSelectionUpdate':
+        # Note: Full validation with song duration happens in the endpoint
+        # This validates basic constraints only
         if self.end_sec <= self.start_sec:
             raise ValueError("end_sec must be greater than start_sec")
         duration = self.end_sec - self.start_sec
-        if duration > 30.0:
-            raise ValueError(f"Selection duration ({duration}s) exceeds maximum (30s)")
-        if duration < 1.0:
-            raise ValueError(f"Selection duration ({duration}s) is below minimum (1s)")
+        if duration > MAX_AUDIO_SELECTION_DURATION_SEC:
+            raise ValueError(
+                f"Selection duration ({duration}s) exceeds maximum ({MAX_AUDIO_SELECTION_DURATION_SEC}s)"
+            )
+        if duration < MIN_AUDIO_SELECTION_DURATION_SEC:
+            raise ValueError(
+                f"Selection duration ({duration}s) is below minimum ({MIN_AUDIO_SELECTION_DURATION_SEC}s)"
+            )
         return self
 
 
@@ -64,7 +76,7 @@ class VideoTypeUpdate(BaseModel):
     
     @model_validator(mode='after')
     def validate_video_type(self) -> 'VideoTypeUpdate':
-        if self.video_type not in ["full_length", "short_form"]:
-            raise ValueError("video_type must be 'full_length' or 'short_form'")
+        if self.video_type not in VALID_VIDEO_TYPES:
+            raise ValueError(f"video_type must be one of {VALID_VIDEO_TYPES}")
         return self
 

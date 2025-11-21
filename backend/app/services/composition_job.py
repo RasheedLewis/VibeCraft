@@ -11,20 +11,18 @@ from rq.job import Job, get_current_job
 from sqlmodel import select
 
 from app.core.constants import COMPOSITION_QUEUE_TIMEOUT_SEC
-from app.core.config import should_use_sections_for_song
 from app.core.database import session_scope
 from app.core.queue import get_queue
 from app.exceptions import (
-    ClipNotFoundError,
     CompositionError,
     JobNotFoundError,
     JobStateError,
 )
 from app.repositories import ClipRepository, SongRepository
 from app.models.composition import ComposedVideo, CompositionJob
-from app.models.section_video import SectionVideo
-from app.models.clip import SongClip
 from app.schemas.composition import CompositionJobStatusResponse
+from app.core.config import should_use_sections_for_song
+from app.services.clip_model_selector import get_and_validate_clip
 
 logger = logging.getLogger(__name__)
 
@@ -54,26 +52,8 @@ def enqueue_composition(
 
     # Verify all clips exist and belong to the song
     with session_scope() as session:
-        if use_sections:
-            # Use SectionVideo (existing behavior)
-            for clip_id in clip_ids:
-                clip = session.get(SectionVideo, clip_id)
-                if not clip:
-                    raise ClipNotFoundError(f"SectionVideo {clip_id} not found")
-                if clip.song_id != song_id:
-                    raise CompositionError(f"SectionVideo {clip_id} does not belong to song {song_id}")
-                if clip.status != "completed" or not clip.video_url:
-                    raise CompositionError(f"SectionVideo {clip_id} is not ready (status: {clip.status})")
-        else:
-            # Use SongClip directly
-            for clip_id in clip_ids:
-                clip = session.get(SongClip, clip_id)
-                if not clip:
-                    raise ClipNotFoundError(f"SongClip {clip_id} not found")
-                if clip.song_id != song_id:
-                    raise CompositionError(f"SongClip {clip_id} does not belong to song {song_id}")
-                if clip.status != "completed" or not clip.video_url:
-                    raise CompositionError(f"SongClip {clip_id} is not ready (status: {clip.status})")
+        for clip_id in clip_ids:
+            get_and_validate_clip(session, clip_id, song_id, use_sections)
 
         # Store clip IDs and metadata as JSON
         clip_ids_json = json.dumps([str(clip_id) for clip_id in clip_ids])

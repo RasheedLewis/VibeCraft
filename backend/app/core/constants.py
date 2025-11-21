@@ -1,5 +1,7 @@
 """Application-wide constants."""
 
+from enum import Enum
+
 # Job configuration
 DEFAULT_MAX_CONCURRENCY = 2
 QUEUE_TIMEOUT_SEC = 20 * 60  # 20 minutes per clip generation
@@ -39,4 +41,25 @@ VIDEO_MODEL = "minimax/hailuo-2.3"
 # Polling configuration
 DEFAULT_MAX_POLL_ATTEMPTS = 180
 DEFAULT_POLL_INTERVAL_SEC = 5.0
+
+# Video type constants
+class VideoType(str, Enum):
+    """Video type enumeration."""
+    FULL_LENGTH = "full_length"
+    SHORT_FORM = "short_form"
+    
+    @classmethod
+    def values(cls) -> list[str]:
+        """Get all valid values."""
+        return [item.value for item in cls]
+
+
+# Video type string constants (for backward compatibility and direct string usage)
+VIDEO_TYPE_FULL_LENGTH = "full_length"
+VIDEO_TYPE_SHORT_FORM = "short_form"
+VALID_VIDEO_TYPES = [VIDEO_TYPE_FULL_LENGTH, VIDEO_TYPE_SHORT_FORM]
+
+# Audio selection constants
+MAX_AUDIO_SELECTION_DURATION_SEC = 30.0
+MIN_AUDIO_SELECTION_DURATION_SEC = 1.0
 

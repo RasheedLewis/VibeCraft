@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 from pydantic import AnyUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -89,19 +89,27 @@ def is_sections_enabled() -> bool:
     return get_settings().enable_sections
 
 
-def should_use_sections_for_song(song: Any) -> bool:
+class HasVideoType(Protocol):
+    """Protocol for objects with video_type attribute."""
+
+    video_type: str | None
+
+
+def should_use_sections_for_song(song: HasVideoType | Any) -> bool:
     """Determine if sections should be used for a specific song.
-    
+
     Args:
-        song: Song model instance
-        
+        song: Song model instance (or any object with video_type attribute)
+
     Returns:
         True if sections should be used, False otherwise
     """
-    # Check video_type to determine if sections should be used
-    if hasattr(song, 'video_type') and song.video_type:
-        return song.video_type == "full_length"
+    from app.core.constants import VIDEO_TYPE_FULL_LENGTH
     
+    video_type = getattr(song, 'video_type', None)
+    if video_type:
+        return video_type == VIDEO_TYPE_FULL_LENGTH
+
     # Default to False if video_type is not set
     return False
 

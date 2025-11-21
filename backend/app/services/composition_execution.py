@@ -11,12 +11,11 @@ from uuid import UUID
 
 import httpx
 
-from app.core.config import get_settings, should_use_sections_for_song
+from app.core.config import get_settings
 from app.core.database import session_scope
 from app.models.composition import CompositionJob
-from app.models.section_video import SectionVideo
-from app.models.clip import SongClip
 from app.repositories import SongRepository
+from app.services.clip_model_selector import get_clips_for_composition
 from app.services.composition_job import (
     complete_job,
     create_composed_video,
@@ -92,30 +91,8 @@ def execute_composition_pipeline(
             )
 
         # Get clips (support both SectionVideo and SongClip based on song's video_type)
-        clips = []
-        clip_urls = []
-        use_sections = should_use_sections_for_song(song)
         with session_scope() as session:
-            if use_sections:
-                # Use SectionVideo (existing behavior)
-                for clip_id in clip_ids:
-                    clip = session.get(SectionVideo, clip_id)
-                    if not clip:
-                        raise ValueError(f"SectionVideo {clip_id} not found")
-                    if not clip.video_url:
-                        raise ValueError(f"SectionVideo {clip_id} has no video_url")
-                    clips.append(clip)
-                    clip_urls.append(clip.video_url)
-            else:
-                # Use SongClip directly
-                for clip_id in clip_ids:
-                    clip = session.get(SongClip, clip_id)
-                    if not clip:
-                        raise ValueError(f"SongClip {clip_id} not found")
-                    if not clip.video_url:
-                        raise ValueError(f"SongClip {clip_id} has no video_url")
-                    clips.append(clip)
-                    clip_urls.append(clip.video_url)
+            clips, clip_urls = get_clips_for_composition(session, clip_ids, song)
 
         # Validate clip URLs
         clip_metadata_list = validate_composition_inputs(clip_urls)

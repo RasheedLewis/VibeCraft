@@ -57,16 +57,15 @@ class TestDurationMismatchHandling:
 
 
 class TestCompositionExecutionModelSelection:
-    """Tests for model selection based on feature flag."""
+    """Tests for model selection based on video_type."""
 
-    @patch("app.services.composition_execution.is_sections_enabled", return_value=True)
     @patch("app.services.composition_execution.session_scope")
     @patch("app.services.composition_execution.SongRepository")
     @patch("app.services.composition_execution.update_job_progress")
     def test_execute_composition_sections_enabled_uses_sectionvideo(
-        self, mock_update, mock_repo, mock_session, mock_flag
+        self, mock_update, mock_repo, mock_session
     ):
-        """Test that composition uses SectionVideo when flag is True."""
+        """Test that composition uses SectionVideo when video_type is full_length."""
         from app.services.composition_execution import execute_composition_pipeline
 
         # Setup mocks
@@ -77,6 +76,7 @@ class TestCompositionExecutionModelSelection:
         mock_song = Mock()
         mock_song.duration_sec = 30.0
         mock_song.processed_s3_key = "audio/test.mp3"
+        mock_song.video_type = "full_length"
         mock_repo.get_by_id.return_value = mock_song
 
         mock_section_video = Mock(spec=SectionVideo)
@@ -99,20 +99,17 @@ class TestCompositionExecutionModelSelection:
             # Expected to fail - we just want to verify the code path
             pass
 
-        # Verify the flag was checked
-        assert mock_flag.called, "is_sections_enabled() should have been called"
         # Verify it tried to get SectionVideo (get() is called in the SectionVideo branch)
         # Note: get() might be called multiple times, but should be called at least once
-        assert mock_session_obj.get.called, "get() should have been called when flag is True"
+        assert mock_session_obj.get.called, "get() should have been called when video_type is full_length"
 
-    @patch("app.services.composition_execution.is_sections_enabled", return_value=False)
     @patch("app.services.composition_execution.session_scope")
     @patch("app.services.composition_execution.SongRepository")
     @patch("app.services.composition_execution.update_job_progress")
     def test_execute_composition_sections_disabled_uses_songclip(
-        self, mock_update, mock_repo, mock_session, mock_flag
+        self, mock_update, mock_repo, mock_session
     ):
-        """Test that composition uses SongClip when flag is False."""
+        """Test that composition uses SongClip when video_type is short_form."""
         from app.services.composition_execution import execute_composition_pipeline
 
         # Setup mocks
@@ -123,6 +120,7 @@ class TestCompositionExecutionModelSelection:
         mock_song = Mock()
         mock_song.duration_sec = 30.0
         mock_song.processed_s3_key = "audio/test.mp3"
+        mock_song.video_type = "short_form"
         mock_repo.get_by_id.return_value = mock_song
 
         mock_song_clip = Mock(spec=SongClip)
@@ -145,19 +143,16 @@ class TestCompositionExecutionModelSelection:
             # Expected to fail - we just want to verify the code path
             pass
 
-        # Verify the flag was checked
-        assert mock_flag.called, "is_sections_enabled() should have been called"
         # Verify it tried to get SongClip (get() is called in the SongClip branch)
-        assert mock_session_obj.get.called, "get() should have been called when flag is False"
+        assert mock_session_obj.get.called, "get() should have been called when video_type is short_form"
 
-    @patch("app.services.composition_execution.is_sections_enabled", return_value=False)
     @patch("app.services.composition_execution.session_scope")
     @patch("app.services.composition_execution.SongRepository")
     @patch("app.services.composition_execution.update_job_progress")
     def test_execute_composition_sections_disabled_validation(
-        self, mock_update, mock_repo, mock_session, mock_flag
+        self, mock_update, mock_repo, mock_session
     ):
-        """Test that SongClip validation works correctly when flag is False."""
+        """Test that SongClip validation works correctly when video_type is short_form."""
         from app.services.composition_execution import execute_composition_pipeline
 
         song_id = uuid4()
@@ -167,6 +162,7 @@ class TestCompositionExecutionModelSelection:
         mock_song = Mock()
         mock_song.duration_sec = 30.0
         mock_song.processed_s3_key = "audio/test.mp3"
+        mock_song.video_type = "short_form"
         mock_repo.get_by_id.return_value = mock_song
 
         mock_song_clip = Mock(spec=SongClip)
@@ -189,14 +185,13 @@ class TestCompositionExecutionModelSelection:
         # Verify it validated the clip exists
         mock_session_obj.get.assert_called()
 
-    @patch("app.services.composition_execution.is_sections_enabled", return_value=False)
     @patch("app.services.composition_execution.session_scope")
     @patch("app.services.composition_execution.SongRepository")
     @patch("app.services.composition_execution.update_job_progress")
     def test_execute_composition_sections_disabled_error_handling(
-        self, mock_update, mock_repo, mock_session, mock_flag
+        self, mock_update, mock_repo, mock_session
     ):
-        """Test that proper errors are raised for missing SongClip when flag is False."""
+        """Test that proper errors are raised for missing SongClip when video_type is short_form."""
         from app.models.composition import CompositionJob
         from app.services.composition_execution import execute_composition_pipeline
 
@@ -207,6 +202,7 @@ class TestCompositionExecutionModelSelection:
         mock_song = Mock()
         mock_song.duration_sec = 30.0
         mock_song.processed_s3_key = "audio/test.mp3"
+        mock_song.video_type = "short_form"
         mock_repo.get_by_id.return_value = mock_song
 
         mock_session_obj = MagicMock()

@@ -11,7 +11,7 @@ from uuid import UUID
 
 import httpx
 
-from app.core.config import get_settings, is_sections_enabled
+from app.core.config import get_settings, should_use_sections_for_song
 from app.core.database import session_scope
 from app.models.composition import CompositionJob
 from app.models.section_video import SectionVideo
@@ -91,11 +91,12 @@ def execute_composition_pipeline(
                 f"Song duration ({song.duration_sec}s) exceeds maximum ({MAX_DURATION_SECONDS}s)"
             )
 
-        # Get clips (support both SectionVideo and SongClip based on feature flag)
+        # Get clips (support both SectionVideo and SongClip based on song's video_type)
         clips = []
         clip_urls = []
+        use_sections = should_use_sections_for_song(song)
         with session_scope() as session:
-            if is_sections_enabled():
+            if use_sections:
                 # Use SectionVideo (existing behavior)
                 for clip_id in clip_ids:
                     clip = session.get(SectionVideo, clip_id)

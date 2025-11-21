@@ -24,7 +24,7 @@ from app.schemas.clip import (
     SongClipStatus,
 )
 from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
-from app.schemas.song import AudioSelectionUpdate, SongRead, SongUploadResponse
+from app.schemas.song import AudioSelectionUpdate, SongRead, SongUploadResponse, VideoTypeUpdate
 from app.services import preprocess_audio
 from app.core.constants import (
     ACCEPTABLE_ALIGNMENT,
@@ -263,6 +263,48 @@ def get_song(song_id: UUID, db: Session = Depends(get_db)) -> Song:
     song = db.get(Song, song_id)
     if not song:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+    return song
+
+
+@router.patch(
+    "/{song_id}/video-type",
+    response_model=SongRead,
+    summary="Set video type for song",
+)
+def set_video_type(
+    song_id: UUID,
+    video_type: VideoTypeUpdate,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Set the video type (full-length or short-form) for a song.
+    
+    This must be set before analysis runs, as it affects the analysis
+    and generation workflow.
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+    
+    # Validate video type
+    if video_type.video_type not in ["full_length", "short_form"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="video_type must be 'full_length' or 'short_form'",
+        )
+    
+    # Prevent changing after analysis has started
+    existing_analysis = get_latest_analysis(song_id)
+    if existing_analysis:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot change video type after analysis has been completed. Please upload a new song.",
+        )
+    
+    song.video_type = video_type.video_type
+    db.add(song)
+    db.commit()
+    db.refresh(song)
+    
     return song
 
 

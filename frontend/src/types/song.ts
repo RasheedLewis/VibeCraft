@@ -143,6 +143,7 @@ export interface SongRead {
   composed_video_fps?: number | null
   selected_start_sec?: number | null
   selected_end_sec?: number | null
+  video_type?: 'full_length' | 'short_form' | null
   created_at: string
   updated_at: string
 }

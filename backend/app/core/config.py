@@ -88,3 +88,20 @@ def is_sections_enabled() -> bool:
     """Check if section-based generation is enabled."""
     return get_settings().enable_sections
 
+
+def should_use_sections_for_song(song: Any) -> bool:
+    """Determine if sections should be used for a specific song.
+    
+    Args:
+        song: Song model instance
+        
+    Returns:
+        True if sections should be used, False otherwise
+    """
+    # Check video_type to determine if sections should be used
+    if hasattr(song, 'video_type') and song.video_type:
+        return song.video_type == "full_length"
+    
+    # Default to False if video_type is not set
+    return False
+

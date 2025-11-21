@@ -27,6 +27,7 @@ class SongRead(BaseModel):
     composed_video_fps: Optional[int] = None
     selected_start_sec: Optional[float] = None
     selected_end_sec: Optional[float] = None
+    video_type: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -55,5 +56,15 @@ class AudioSelectionUpdate(BaseModel):
             raise ValueError(f"Selection duration ({duration}s) exceeds maximum (30s)")
         if duration < 1.0:
             raise ValueError(f"Selection duration ({duration}s) is below minimum (1s)")
+        return self
+
+
+class VideoTypeUpdate(BaseModel):
+    video_type: str = Field(description="Video type: 'full_length' or 'short_form'")
+    
+    @model_validator(mode='after')
+    def validate_video_type(self) -> 'VideoTypeUpdate':
+        if self.video_type not in ["full_length", "short_form"]:
+            raise ValueError("video_type must be 'full_length' or 'short_form'")
         return self
 

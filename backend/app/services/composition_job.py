@@ -11,7 +11,7 @@ from rq.job import Job, get_current_job
 from sqlmodel import select
 
 from app.core.constants import COMPOSITION_QUEUE_TIMEOUT_SEC
-from app.core.config import is_sections_enabled
+from app.core.config import should_use_sections_for_song
 from app.core.database import session_scope
 from app.core.queue import get_queue
 from app.exceptions import (
@@ -49,11 +49,12 @@ def enqueue_composition(
         ValueError: If song or clips not found
     """
     # Verify song exists
-    SongRepository.get_by_id(song_id)
+    song = SongRepository.get_by_id(song_id)
+    use_sections = should_use_sections_for_song(song)
 
     # Verify all clips exist and belong to the song
     with session_scope() as session:
-        if is_sections_enabled():
+        if use_sections:
             # Use SectionVideo (existing behavior)
             for clip_id in clip_ids:
                 clip = session.get(SectionVideo, clip_id)

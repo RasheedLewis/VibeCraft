@@ -36,6 +36,7 @@ import {
   ErrorIcon,
 } from '../components/upload/Icons'
 import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimeline'
+import { VideoTypeSelector } from '../components/upload/VideoTypeSelector'
 import { SongProfileView } from '../components/song/SongProfileView'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
@@ -67,6 +68,8 @@ export const UploadPage: React.FC = () => {
     endSec: number
   } | null>(null)
   const [isSavingSelection, setIsSavingSelection] = useState(false)
+  const [videoType, setVideoType] = useState<'full_length' | 'short_form' | null>(null)
+  const [isSettingVideoType, setIsSettingVideoType] = useState(false)
 
   // Use polling hooks with bugfixes
   const analysisPolling = useAnalysisPolling(result?.songId ?? null)
@@ -375,6 +378,8 @@ export const UploadPage: React.FC = () => {
     setComposeJobId(null)
     setPlayerActiveClipId(null)
     setPlayerClipSelectionLocked(false)
+    setVideoType(null)
+    setAudioSelection(null)
     // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
     // if (highlightTimeoutRef.current) {
     //   window.clearTimeout(highlightTimeoutRef.current)
@@ -480,6 +485,13 @@ export const UploadPage: React.FC = () => {
     }
   }, [analysisState, result?.songId, songDetails, fetchSongDetails])
 
+  // Load existing video type when song loads
+  useEffect(() => {
+    if (songDetails?.video_type) {
+      setVideoType(songDetails.video_type as 'full_length' | 'short_form')
+    }
+  }, [songDetails])
+
   // Load existing selection when song loads
   useEffect(() => {
     if (
@@ -494,6 +506,30 @@ export const UploadPage: React.FC = () => {
       })
     }
   }, [songDetails])
+
+  // Handler for video type selection
+  const handleVideoTypeSelect = useCallback(
+    async (type: 'full_length' | 'short_form') => {
+      if (!result?.songId) return
+
+      setVideoType(type)
+      setIsSettingVideoType(true)
+
+      try {
+        await apiClient.patch(`/songs/${result.songId}/video-type`, {
+          video_type: type,
+        })
+      } catch (err) {
+        console.error('Failed to set video type:', err)
+        setVideoType(null)
+        const errorMsg = extractErrorMessage(err, 'Failed to set video type')
+        setError(errorMsg)
+      } finally {
+        setIsSettingVideoType(false)
+      }
+    },
+    [result?.songId],
+  )
 
   // Handler for selection changes
   const handleSelectionChange = useCallback(
@@ -802,10 +838,49 @@ export const UploadPage: React.FC = () => {
         </div>
       )}
 
+      {/* Video Type Selection Step - shown after upload, before analysis */}
+      {stage === 'uploaded' && !videoType && (
+        <div className="vc-app-main mx-auto w-full max-w-4xl px-4 py-12">
+          <VideoTypeSelector onSelect={handleVideoTypeSelect} selectedType={videoType} />
+          {isSettingVideoType && (
+            <div className="mt-4 text-sm text-vc-text-secondary text-center">
+              Setting video type...
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Trigger analysis automatically after video type is selected */}
+      {stage === 'uploaded' &&
+        videoType &&
+        analysisState === 'idle' &&
+        !isFetchingAnalysis && (
+          <div className="vc-app-main mx-auto w-full max-w-4xl px-4 py-12">
+            <div className="text-center space-y-4">
+              <p className="text-sm text-vc-text-secondary">Starting analysis...</p>
+              <VCButton
+                onClick={async () => {
+                  if (result?.songId) {
+                    try {
+                      await apiClient.post(`/songs/${result.songId}/analyze`)
+                      await analysisPolling.fetchAnalysis(result.songId)
+                    } catch (err) {
+                      console.error('Failed to start analysis:', err)
+                      setError(extractErrorMessage(err, 'Failed to start analysis'))
+                    }
+                  }
+                }}
+              >
+                Start Analysis
+              </VCButton>
+            </div>
+          </div>
+        )}
+
       {analysisState === 'completed' && analysisData && songDetails && (
         <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
-          {/* Audio Selection Step */}
-          {!audioSelection && (
+          {/* Audio Selection Step - only for short-form videos */}
+          {videoType === 'short_form' && !audioSelection && (
             <section className="mb-8 space-y-4">
               <div className="vc-label">Select Audio Segment (Up to 30s)</div>
               <p className="text-sm text-vc-text-secondary">
@@ -836,8 +911,9 @@ export const UploadPage: React.FC = () => {
             </section>
           )}
 
-          {/* Song Profile View - shown after selection is made */}
-          {audioSelection && (
+          {/* Song Profile View - shown after selection is made (for short-form) or directly (for full-length) */}
+          {(videoType === 'full_length' ||
+            (videoType === 'short_form' && audioSelection)) && (
             <SongProfileView
               analysisData={analysisData}
               songDetails={songDetails}

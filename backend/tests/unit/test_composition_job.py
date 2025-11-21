@@ -22,22 +22,22 @@ from app.models.section_video import SectionVideo  # noqa: E402
 
 
 class TestCompositionJobModelValidation:
-    """Tests for model validation based on feature flag."""
+    """Tests for model validation based on video_type."""
 
-    @patch("app.services.composition_job.is_sections_enabled", return_value=True)
     @patch("app.services.composition_job.session_scope")
     @patch("app.services.composition_job.SongRepository")
     @patch("app.services.composition_job.get_queue")
     def test_enqueue_composition_sections_enabled_validates_sectionvideo(
-        self, mock_queue, mock_repo, mock_session, mock_flag
+        self, mock_queue, mock_repo, mock_session
     ):
-        """Test that SectionVideo is validated when flag is True."""
+        """Test that SectionVideo is validated when video_type is full_length."""
         from app.services.composition_job import enqueue_composition
 
         song_id = uuid4()
         clip_id = uuid4()
 
         mock_song = Mock()
+        mock_song.video_type = "full_length"
         mock_repo.get_by_id.return_value = mock_song
 
         mock_section_video = Mock(spec=SectionVideo)
@@ -72,20 +72,20 @@ class TestCompositionJobModelValidation:
                 hasattr(model_class, "__name__") and model_class.__name__ == "SectionVideo"
             )
 
-    @patch("app.services.composition_job.is_sections_enabled", return_value=False)
     @patch("app.services.composition_job.session_scope")
     @patch("app.services.composition_job.SongRepository")
     @patch("app.services.composition_job.get_queue")
     def test_enqueue_composition_sections_disabled_validates_songclip(
-        self, mock_queue, mock_repo, mock_session, mock_flag
+        self, mock_queue, mock_repo, mock_session
     ):
-        """Test that SongClip is validated when flag is False."""
+        """Test that SongClip is validated when video_type is short_form."""
         from app.services.composition_job import enqueue_composition
 
         song_id = uuid4()
         clip_id = uuid4()
 
         mock_song = Mock()
+        mock_song.video_type = "short_form"
         mock_repo.get_by_id.return_value = mock_song
 
         mock_song_clip = Mock(spec=SongClip)
@@ -120,19 +120,19 @@ class TestCompositionJobModelValidation:
                 hasattr(model_class, "__name__") and model_class.__name__ == "SongClip"
             )
 
-    @patch("app.services.composition_job.is_sections_enabled", return_value=False)
     @patch("app.services.composition_job.session_scope")
     @patch("app.services.composition_job.SongRepository")
     def test_enqueue_composition_sections_disabled_rejects_sectionvideo(
-        self, mock_repo, mock_session, mock_flag
+        self, mock_repo, mock_session
     ):
-        """Test that SectionVideo is rejected when flag is False."""
+        """Test that SectionVideo is rejected when video_type is short_form."""
         from app.services.composition_job import enqueue_composition
 
         song_id = uuid4()
         clip_id = uuid4()
 
         mock_song = Mock()
+        mock_song.video_type = "short_form"
         mock_repo.get_by_id.return_value = mock_song
 
         # Return None (SectionVideo not found when looking for SongClip)
@@ -157,19 +157,19 @@ class TestCompositionJobModelValidation:
                 hasattr(model_class, "__name__") and model_class.__name__ == "SongClip"
             )
 
-    @patch("app.services.composition_job.is_sections_enabled", return_value=True)
     @patch("app.services.composition_job.session_scope")
     @patch("app.services.composition_job.SongRepository")
     def test_enqueue_composition_sections_enabled_rejects_songclip(
-        self, mock_repo, mock_session, mock_flag
+        self, mock_repo, mock_session
     ):
-        """Test that SongClip is rejected when flag is True (optional test)."""
+        """Test that SongClip is rejected when video_type is full_length."""
         from app.services.composition_job import enqueue_composition
 
         song_id = uuid4()
         clip_id = uuid4()
 
         mock_song = Mock()
+        mock_song.video_type = "full_length"
         mock_repo.get_by_id.return_value = mock_song
 
         # Return None (SongClip not found when looking for SectionVideo)

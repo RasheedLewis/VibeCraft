@@ -19,6 +19,7 @@ if str(backend_dir) not in sys.path:
 import pytest  # noqa: E402
 from app.schemas.analysis import MoodVector, SongAnalysis, SongSection  # noqa: E402
 from app.services.scene_planner import (  # noqa: E402
+    build_clip_scene_spec,
     build_prompt,
     build_scene_spec,
     map_genre_to_camera_motion,
@@ -1124,6 +1125,225 @@ class TestEdgeCases:
         # Should use default camera motion (medium_pan, intensity 0.5)
         assert spec.camera_motion.type == "medium_pan"
         assert spec.camera_motion.intensity == 0.5
+
+
+class TestBuildClipSceneSpec:
+    """Tests for build_clip_scene_spec (non-section mode)."""
+
+    def test_build_clip_scene_spec_basic(self):
+        """Test basic clip scene spec generation."""
+        analysis = SongAnalysis(
+            duration_sec=180.0,
+            bpm=128.0,
+            sections=[],
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            mood_vector=MoodVector(energy=0.8, valence=0.7, danceability=0.8, tension=0.6),
+            primary_genre="Electronic",
+            lyrics_available=False,
+        )
+
+        spec = build_clip_scene_spec(
+            start_sec=10.0,
+            end_sec=25.0,
+            analysis=analysis,
+        )
+
+        assert spec is not None
+        assert spec.section_id is None
+        assert spec.template == "abstract"
+        assert spec.duration_sec == 15.0  # 25.0 - 10.0
+
+    def test_build_clip_scene_spec_duration_calculation(self):
+        """Test that duration is calculated correctly as end_sec - start_sec."""
+        analysis = SongAnalysis(
+            duration_sec=120.0,
+            bpm=100.0,
+            sections=[],
+            mood_primary="calm",
+            mood_tags=["calm"],
+            mood_vector=MoodVector(energy=0.3, valence=0.5, danceability=0.3, tension=0.2),
+            primary_genre="Ambient",
+            lyrics_available=False,
+        )
+
+        spec = build_clip_scene_spec(
+            start_sec=30.5,
+            end_sec=45.75,
+            analysis=analysis,
+        )
+
+        assert spec.duration_sec == 15.25  # 45.75 - 30.5
+
+    def test_build_clip_scene_spec_no_section_id(self):
+        """Test that section_id is None in clip mode."""
+        analysis = SongAnalysis(
+            duration_sec=200.0,
+            bpm=120.0,
+            sections=[],
+            mood_primary="intense",
+            mood_tags=["intense"],
+            mood_vector=MoodVector(energy=0.9, valence=0.4, danceability=0.6, tension=0.9),
+            primary_genre="Rock",
+            lyrics_available=False,
+        )
+
+        spec = build_clip_scene_spec(
+            start_sec=0.0,
+            end_sec=10.0,
+            analysis=analysis,
+        )
+
+        assert spec.section_id is None
+
+    def test_build_clip_scene_spec_uses_song_level_analysis(self):
+        """Test that clip mode uses song-level mood/genre, not section-specific."""
+        analysis = SongAnalysis(
+            duration_sec=180.0,
+            bpm=140.0,
+            sections=[
+                SongSection(
+                    id="verse-1", type="verse", startSec=0.0, endSec=32.0, confidence=0.9
+                ),
+                SongSection(
+                    id="chorus-1", type="chorus", startSec=32.0, endSec=64.0, confidence=0.9
+                ),
+            ],
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            mood_vector=MoodVector(energy=0.8, valence=0.7, danceability=0.8, tension=0.6),
+            primary_genre="Electronic",
+            lyrics_available=False,
+        )
+
+        spec = build_clip_scene_spec(
+            start_sec=10.0,
+            end_sec=25.0,
+            analysis=analysis,
+        )
+
+        # Should use song-level mood (energetic) not section type
+        assert spec.color_palette.mood == "vibrant"  # From energetic + high valence
+        # Should use song-level genre (Electronic)
+        assert spec.camera_motion.type == "fast_zoom"  # From Electronic genre
+        # Should NOT use section-specific shot pattern
+        assert spec.shot_pattern.pattern == "medium"  # Default, not section-based
+
+    def test_build_clip_scene_spec_default_shot_pattern(self):
+        """Test that clip mode uses default medium shot pattern."""
+        analysis = SongAnalysis(
+            duration_sec=150.0,
+            bpm=110.0,
+            sections=[],
+            mood_primary="calm",
+            mood_tags=["calm"],
+            mood_vector=MoodVector(energy=0.3, valence=0.5, danceability=0.3, tension=0.2),
+            primary_genre="Ambient",
+            lyrics_available=False,
+        )
+
+        spec = build_clip_scene_spec(
+            start_sec=20.0,
+            end_sec=35.0,
+            analysis=analysis,
+        )
+
+        # Should use default medium pattern
+        assert spec.shot_pattern.pattern == "medium"
+        assert spec.shot_pattern.pacing == "medium"
+        assert "cut" in spec.shot_pattern.transitions
+
+
+class TestBuildPromptWithOptionalSection:
+    """Tests for build_prompt with optional section parameter."""
+
+    def test_build_prompt_with_none_section(self):
+        """Test that prompt works without section context."""
+        from app.schemas.scene import CameraMotion, ColorPalette, ShotPattern
+
+        color_palette = ColorPalette(
+            primary="#FF6B9D", secondary="#FFD93D", accent="#6BCF7F", mood="vibrant"
+        )
+        camera_motion = CameraMotion(type="fast_zoom", intensity=0.8, speed="fast")
+        shot_pattern = ShotPattern(pattern="medium", pacing="medium", transitions=["cut"])
+
+        prompt = build_prompt(
+            section=None,
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            genre="Electronic",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            lyrics=None,
+        )
+
+        assert prompt is not None
+        assert len(prompt) > 0
+        # Should not include section-specific context
+        assert "dynamic and energetic" not in prompt  # Chorus-specific
+        assert "steady and narrative" not in prompt  # Verse-specific
+        # Should include general mood/genre
+        assert "energetic" in prompt.lower() or "vibrant" in prompt.lower()
+
+    def test_build_prompt_section_optional_with_section(self):
+        """Test that prompt works with section (existing behavior)."""
+        from app.schemas.scene import CameraMotion, ColorPalette, ShotPattern
+
+        section = SongSection(
+            id="chorus-1", type="chorus", startSec=32.0, endSec=64.0, confidence=0.9
+        )
+        color_palette = ColorPalette(
+            primary="#FF6B9D", secondary="#FFD93D", accent="#6BCF7F", mood="vibrant"
+        )
+        camera_motion = CameraMotion(type="fast_zoom", intensity=0.8, speed="fast")
+        shot_pattern = ShotPattern(
+            pattern="close_up_to_wide", pacing="fast", transitions=["zoom", "cut"]
+        )
+
+        prompt = build_prompt(
+            section=section,
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            genre="Electronic",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            lyrics=None,
+        )
+
+        assert prompt is not None
+        # Should include section-specific context for chorus
+        assert "dynamic and energetic" in prompt
+
+    def test_build_prompt_section_optional_without_section(self):
+        """Test that prompt works without section (new behavior)."""
+        from app.schemas.scene import CameraMotion, ColorPalette, ShotPattern
+
+        color_palette = ColorPalette(
+            primary="#4A90E2", secondary="#7B68EE", accent="#87CEEB", mood="calm"
+        )
+        camera_motion = CameraMotion(type="slow_pan", intensity=0.4, speed="slow")
+        shot_pattern = ShotPattern(pattern="medium", pacing="medium", transitions=["cut"])
+
+        prompt = build_prompt(
+            section=None,
+            mood_primary="calm",
+            mood_tags=["calm", "relaxed"],
+            genre="Ambient",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            lyrics=None,
+        )
+
+        assert prompt is not None
+        # Should not include section-specific context
+        assert "dynamic and energetic" not in prompt
+        assert "steady and narrative" not in prompt
+        assert "transitional and atmospheric" not in prompt
+        # Should still include mood/genre
+        assert "calm" in prompt.lower() or "ambient" in prompt.lower()
 
 
 if __name__ == "__main__":

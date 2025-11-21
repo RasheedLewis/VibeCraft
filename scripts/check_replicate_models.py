@@ -16,9 +16,9 @@ import replicate  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.services.video_generation import VIDEO_MODEL  # noqa: E402
 
-# Common text-to-video models to check
+# Common text-to-video models to check (alternatives to current model)
 MODELS_TO_CHECK = [
-    "anotherjesse/zeroscope-v2-xl",  # Current model (~$0.035/run)
+    "anotherjesse/zeroscope-v2-xl",  # Alternative (~$0.035/run)
     "lucataco/animate-diff",  # AnimateDiff
 ]
 
@@ -123,7 +123,7 @@ def list_alternative_models():
         print("\n⚠️  No alternative models found")
     
     print("💡 Check Replicate pricing: https://replicate.com/pricing")
-    print("   Current model (Zeroscope v2 XL): ~$0.035 per run")
+    print(f"   Current model ({VIDEO_MODEL}): Check pricing on Replicate")
 
 
 if __name__ == "__main__":

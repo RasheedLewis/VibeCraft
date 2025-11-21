@@ -26,13 +26,17 @@ from app.schemas.clip import (
 from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
 from app.schemas.song import SongRead, SongUploadResponse
 from app.services import preprocess_audio
-from app.services.beat_alignment import (
+from app.core.constants import (
     ACCEPTABLE_ALIGNMENT,
+    ALLOWED_CONTENT_TYPES,
+    DEFAULT_MAX_CONCURRENCY,
+    MAX_DURATION_SECONDS,
+)
+from app.services.beat_alignment import (
     calculate_beat_aligned_boundaries,
     validate_boundaries,
 )
 from app.services.clip_generation import (
-    DEFAULT_MAX_CONCURRENCY,
     compose_song_video,
     get_clip_generation_summary,
     retry_clip_generation,
@@ -42,6 +46,14 @@ from app.services.clip_planning import (
     ClipPlanningError,
     persist_clip_plans,
     plan_beat_aligned_clips,
+)
+from app.exceptions import (
+    ClipGenerationError,
+    ClipNotFoundError,
+    CompositionError,
+    JobNotFoundError,
+    JobStateError,
+    SongNotFoundError,
 )
 from app.services.composition_job import (
     cancel_job,
@@ -58,22 +70,6 @@ from app.schemas.composition import (
     ComposedVideoResponse,
     CompositionJobStatusResponse,
 )
-
-ALLOWED_CONTENT_TYPES = {
-    "audio/mpeg",
-    "audio/mp3",
-    "audio/wav",
-    "audio/x-wav",
-    "audio/ogg",
-    "audio/webm",
-    "audio/flac",
-    "audio/x-flac",
-    "audio/aac",
-    "audio/mp4",
-    "audio/x-m4a",
-    "audio/m4a",
-}
-MAX_DURATION_SECONDS = 7 * 60  # 7 minutes
 
 logger = logging.getLogger(__name__)
 
@@ -478,6 +474,39 @@ def get_clip_generation_status(song_id: UUID, db: Session = Depends(get_db)) -> 
         ) from exc
 
 
+@router.get(
+    "/{song_id}/clips/job",
+    response_model=Optional[ClipGenerationJobResponse],
+    summary="Get active clip generation job for a song",
+)
+def get_active_clip_generation_job(
+    song_id: UUID, db: Session = Depends(get_db)
+) -> Optional[ClipGenerationJobResponse]:
+    """Get the active (queued or processing) clip generation job for a song, if any."""
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+
+    from sqlmodel import select
+    from app.models.analysis import ClipGenerationJob
+
+    job = db.exec(
+        select(ClipGenerationJob)
+        .where(ClipGenerationJob.song_id == song_id)
+        .where(ClipGenerationJob.status.in_(["queued", "processing"]))
+        .order_by(ClipGenerationJob.created_at.desc())
+    ).first()
+
+    if not job:
+        return None
+
+    return ClipGenerationJobResponse(
+        job_id=job.id,
+        song_id=job.song_id,
+        status=job.status,
+    )
+
+
 @router.post(
     "/{song_id}/clips/generate",
     response_model=ClipGenerationJobResponse,
@@ -495,7 +524,7 @@ def generate_clip_batch(
 
     try:
         return start_clip_generation_job(song_id, max_parallel=max_parallel)
-    except ValueError as exc:
+    except ClipGenerationError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
@@ -548,7 +577,7 @@ async def compose_completed_clips(
 
     try:
         summary = get_clip_generation_summary(song_id)
-    except ValueError as exc:
+    except (ValueError, ClipGenerationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No clip plans found for this song.",
@@ -615,7 +644,7 @@ def compose_song_clips_async(
 
     try:
         summary = get_clip_generation_summary(song_id)
-    except ValueError as exc:
+    except (ValueError, ClipGenerationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No clip plans found for this song.",
@@ -647,7 +676,7 @@ def compose_song_clips_async(
 
     try:
         job_id, _ = enqueue_song_clip_composition(song_id)
-    except ValueError as e:
+    except (ValueError, CompositionError, SongNotFoundError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return ComposeVideoResponse(
@@ -706,7 +735,7 @@ def compose_video(
             clip_ids=request.clip_ids,
             clip_metadata=clip_metadata_dicts,
         )
-    except ValueError as e:
+    except (ValueError, CompositionError, SongNotFoundError, ClipNotFoundError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return ComposeVideoResponse(
@@ -742,7 +771,7 @@ def get_composition_job_status(
 
     try:
         return get_job_status(job_id)
-    except ValueError as e:
+    except (ValueError, JobNotFoundError) as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
@@ -773,7 +802,7 @@ def cancel_composition_job(
     try:
         cancel_job(job_id)
         return {"status": "cancelled", "job_id": job_id}
-    except ValueError as e:
+    except (ValueError, JobNotFoundError, JobStateError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
 

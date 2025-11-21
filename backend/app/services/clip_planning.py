@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlmodel import select
 
 from app.core.database import session_scope
+from app.exceptions import ClipPlanningError
 from app.models.clip import SongClip
 from app.schemas.analysis import SongAnalysis
 
@@ -21,10 +22,6 @@ class ClipPlan:
     start_beat_index: Optional[int]
     end_beat_index: Optional[int]
     num_frames: int
-
-
-class ClipPlanningError(RuntimeError):
-    """Raised when clip planning cannot generate a valid set of boundaries."""
 
 
 def plan_beat_aligned_clips(

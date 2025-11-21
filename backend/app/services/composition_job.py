@@ -7,25 +7,24 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
-import redis
-from rq import Queue
 from rq.job import Job, get_current_job
-
-from app.core.config import get_settings
-from app.core.database import session_scope
-from app.models.composition import ComposedVideo, CompositionJob
-from app.models.section_video import SectionVideo
-from app.models.song import Song
-from app.schemas.composition import CompositionJobStatusResponse
 from sqlmodel import select
 
+from app.core.constants import COMPOSITION_QUEUE_TIMEOUT_SEC
+from app.core.database import session_scope
+from app.core.queue import get_queue
+from app.exceptions import (
+    ClipNotFoundError,
+    CompositionError,
+    JobNotFoundError,
+    JobStateError,
+)
+from app.repositories import ClipRepository, SongRepository
+from app.models.composition import ComposedVideo, CompositionJob
+from app.models.section_video import SectionVideo
+from app.schemas.composition import CompositionJobStatusResponse
+
 logger = logging.getLogger(__name__)
-
-
-def _get_queue() -> Queue:
-    settings = get_settings()
-    connection = redis.from_url(settings.redis_url)
-    return Queue(settings.rq_worker_queue, connection=connection)
 
 
 def enqueue_composition(
@@ -47,28 +46,27 @@ def enqueue_composition(
     Raises:
         ValueError: If song or clips not found
     """
-    with session_scope() as session:
-        # Verify song exists
-        song = session.get(Song, song_id)
-        if not song:
-            raise ValueError(f"Song {song_id} not found")
+    # Verify song exists
+    SongRepository.get_by_id(song_id)
 
-        # Verify all clips exist and belong to the song
+    # Verify all clips exist and belong to the song
+    # Note: SectionVideo is not in repositories yet, so we keep direct access for now
+    with session_scope() as session:
         for clip_id in clip_ids:
             clip = session.get(SectionVideo, clip_id)
             if not clip:
-                raise ValueError(f"SectionVideo {clip_id} not found")
+                raise ClipNotFoundError(f"SectionVideo {clip_id} not found")
             if clip.song_id != song_id:
-                raise ValueError(f"SectionVideo {clip_id} does not belong to song {song_id}")
+                raise CompositionError(f"SectionVideo {clip_id} does not belong to song {song_id}")
             if clip.status != "completed" or not clip.video_url:
-                raise ValueError(f"SectionVideo {clip_id} is not ready (status: {clip.status})")
+                raise CompositionError(f"SectionVideo {clip_id} is not ready (status: {clip.status})")
 
         # Store clip IDs and metadata as JSON
         clip_ids_json = json.dumps([str(clip_id) for clip_id in clip_ids])
         clip_metadata_json = json.dumps(clip_metadata)
 
         # Enqueue to RQ
-        queue = _get_queue()
+        queue = get_queue(timeout=COMPOSITION_QUEUE_TIMEOUT_SEC)
         job_id = f"composition-{uuid4()}"
         job: Job = queue.enqueue(
             run_composition_job,
@@ -117,7 +115,7 @@ def run_composition_job(
     job_id = current_job.id if current_job else None
 
     if job_id is None:
-        raise RuntimeError("Cannot run composition job: no RQ job context")
+        raise CompositionError("Cannot run composition job: no RQ job context")
 
     try:
         from app.services.composition_execution import execute_composition_pipeline
@@ -150,43 +148,31 @@ def enqueue_song_clip_composition(song_id: UUID) -> tuple[str, CompositionJob]:
     Raises:
         ValueError: If song not found or no completed clips available
     """
-    from app.models.clip import SongClip
-    from sqlmodel import select
+    # Verify song exists
+    SongRepository.get_by_id(song_id)
 
+    # Get all completed SongClips for this song
+    clips = ClipRepository.get_completed_by_song_id(song_id)
+
+    if not clips:
+        raise CompositionError(f"No completed clips found for song {song_id}")
+
+    # Store clip IDs as JSON (no metadata needed for SongClip composition)
+    clip_ids_json = json.dumps([str(clip.id) for clip in clips])
+    clip_metadata_json = json.dumps([])  # Empty metadata for SongClip-based composition
+
+    # Enqueue to RQ
+    queue = get_queue(timeout=COMPOSITION_QUEUE_TIMEOUT_SEC)
+    job_id = f"composition-songclip-{uuid4()}"
+    job: Job = queue.enqueue(
+        run_song_clip_composition_job,
+        song_id,
+        job_id=job_id,
+        meta={"progress": 0},
+    )
+
+    # Create job record
     with session_scope() as session:
-        # Verify song exists
-        song = session.get(Song, song_id)
-        if not song:
-            raise ValueError(f"Song {song_id} not found")
-
-        # Get all completed SongClips for this song
-        statement = (
-            select(SongClip)
-            .where(SongClip.song_id == song_id)
-            .where(SongClip.status == "completed")
-            .where(SongClip.video_url.isnot(None))  # type: ignore[attr-defined]
-            .order_by(SongClip.clip_index)
-        )
-        clips = session.exec(statement).all()
-
-        if not clips:
-            raise ValueError(f"No completed clips found for song {song_id}")
-
-        # Store clip IDs as JSON (no metadata needed for SongClip composition)
-        clip_ids_json = json.dumps([str(clip.id) for clip in clips])
-        clip_metadata_json = json.dumps([])  # Empty metadata for SongClip-based composition
-
-        # Enqueue to RQ
-        queue = _get_queue()
-        job_id = f"composition-songclip-{uuid4()}"
-        job: Job = queue.enqueue(
-            run_song_clip_composition_job,
-            song_id,
-            job_id=job_id,
-            meta={"progress": 0},
-        )
-
-        # Create job record
         composition_job = CompositionJob(
             id=job.id,
             song_id=song_id,
@@ -199,11 +185,11 @@ def enqueue_song_clip_composition(song_id: UUID) -> tuple[str, CompositionJob]:
         session.commit()
         session.refresh(composition_job)
 
-        logger.info(
-            f"Enqueued SongClip composition job {job.id} for song {song_id} with {len(clips)} clips"
-        )
+    logger.info(
+        f"Enqueued SongClip composition job {job.id} for song {song_id} with {len(clips)} clips"
+    )
 
-        return job.id, composition_job
+    return job.id, composition_job
 
 
 def run_song_clip_composition_job(song_id: UUID) -> dict[str, Any]:
@@ -220,7 +206,7 @@ def run_song_clip_composition_job(song_id: UUID) -> dict[str, Any]:
     job_id = current_job.id if current_job else None
 
     if job_id is None:
-        raise RuntimeError("Cannot run composition job: no RQ job context")
+        raise CompositionError("Cannot run composition job: no RQ job context")
 
     try:
         from app.services.clip_generation import compose_song_video
@@ -249,7 +235,7 @@ def get_job_status(job_id: str) -> CompositionJobStatusResponse:
     with session_scope() as session:
         job_record = session.get(CompositionJob, job_id)
         if not job_record:
-            raise ValueError(f"Composition job {job_id} not found")
+            raise JobNotFoundError(f"Composition job {job_id} not found")
 
         return CompositionJobStatusResponse(
             job_id=job_record.id,
@@ -278,7 +264,8 @@ def update_job_progress(job_id: str, progress: int, status: str | None = None) -
             logger.warning(f"Job {job_id} not found for progress update")
             return
 
-        job_record.progress = max(0, min(100, progress))
+        # Ensure progress only increases (never decreases) to prevent UI from showing backward progress
+        job_record.progress = max(job_record.progress, min(100, progress))
         if status:
             job_record.status = status
         elif job_record.status == "queued":
@@ -345,10 +332,10 @@ def cancel_job(job_id: str) -> None:
     with session_scope() as session:
         job_record = session.get(CompositionJob, job_id)
         if not job_record:
-            raise ValueError(f"Composition job {job_id} not found")
+            raise JobNotFoundError(f"Composition job {job_id} not found")
 
         if job_record.status in ("completed", "failed", "cancelled"):
-            raise ValueError(f"Job {job_id} cannot be cancelled (status: {job_record.status})")
+            raise JobStateError(f"Job {job_id} cannot be cancelled (status: {job_record.status})")
 
         job_record.status = "cancelled"
         session.add(job_record)

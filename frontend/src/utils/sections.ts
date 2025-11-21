@@ -9,19 +9,42 @@ export const getSectionTitle = (section: SongSection, index: number) => {
 
 export const buildSectionsWithDisplayNames = (
   sections: SongSection[],
-): Array<SongSection & { displayName: string }> => {
+): Array<
+  SongSection & {
+    displayName: string
+    typeSoft: string | null
+    rawLabel: number | null
+  }
+> => {
   const counts: Record<string, number> = {}
   return sections.map((section) => {
-    const label = SECTION_TYPE_LABELS[section.type] ?? 'Section'
-    const nextCount = (counts[section.type] ?? 0) + 1
-    counts[section.type] = nextCount
+    const baseType = section.typeSoft ?? section.type
+
+    const label =
+      (section.displayName && section.displayName.split(' ')[0]) ??
+      SECTION_TYPE_LABELS[section.type] ??
+      'Section'
+
+    const key = baseType ?? section.type
+    const nextCount = (counts[key] ?? 0) + 1
+    counts[key] = nextCount
 
     const displayName =
-      section.type === 'intro' || section.type === 'outro' || section.type === 'bridge'
-        ? label
-        : `${label} ${nextCount}`
+      section.displayName ??
+      (key === 'intro_like' || key === 'intro'
+        ? 'Intro'
+        : key === 'outro_like' || key === 'outro'
+          ? 'Outro'
+          : key === 'bridge_like' || key === 'bridge'
+            ? 'Bridge'
+            : `${label} ${nextCount}`)
 
-    return { ...section, displayName }
+    return {
+      ...section,
+      typeSoft: section.typeSoft ?? null,
+      rawLabel: section.rawLabel ?? null,
+      displayName,
+    }
   })
 }
 

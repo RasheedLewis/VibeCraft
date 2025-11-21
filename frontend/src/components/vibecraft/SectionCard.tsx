@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { VCCard } from './VCCard'
 import { VCButton } from './VCButton'
 import { SectionMoodTag } from './SectionMoodTag'
+import { SectionAudioPlayer } from './SectionAudioPlayer'
 import type { MoodKind } from './SectionMoodTag'
 
 export interface SectionCardProps {
@@ -13,6 +14,7 @@ export interface SectionCardProps {
   mood: MoodKind
   lyricSnippet?: string
   hasVideo?: boolean
+  audioUrl?: string
   onGenerate?: () => void
   onRegenerate?: () => void
   onUseInFull?: () => void
@@ -34,6 +36,7 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   mood,
   lyricSnippet,
   hasVideo,
+  audioUrl,
   onGenerate,
   onRegenerate,
   onUseInFull,
@@ -52,8 +55,14 @@ export const SectionCard: React.FC<SectionCardProps> = ({
 
     {lyricSnippet && (
       <p className="border-l border-vc-border pl-3 text-xs italic text-vc-text-secondary">
-        “{lyricSnippet}”
+        "{lyricSnippet}"
       </p>
+    )}
+
+    {audioUrl && (
+      <div className="mt-3">
+        <SectionAudioPlayer audioUrl={audioUrl} startSec={startSec} endSec={endSec} />
+      </div>
     )}
 
     {(onGenerate || onRegenerate || onUseInFull) && (

@@ -54,8 +54,7 @@ export const UploadPage: React.FC = () => {
   const [result, setResult] = useState<SongUploadResponse | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [songDetails, setSongDetails] = useState<SongRead | null>(null)
-  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related state
-  // const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null)
+  const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null)
   const [isComposing, setIsComposing] = useState<boolean>(false)
   const [composeJobId, setComposeJobId] = useState<string | null>(null)
   const [playerActiveClipId, setPlayerActiveClipId] = useState<string | null>(null)
@@ -291,11 +290,22 @@ export const UploadPage: React.FC = () => {
   )
 
   const handleRetryClip = useCallback(
-    (clip: SongClipStatus) => {
-      console.info('Retry clip requested', clip.id)
-      clipPolling.setError('Retry is not available yet.')
+    async (clip: SongClipStatus) => {
+      if (!result?.songId) return
+      try {
+        clipPolling.setError(null)
+        clipPolling.setStatus('queued')
+        clipPolling.setProgress(0)
+        clipPolling.setJobId(null)
+        await apiClient.post<SongClipStatus>(
+          `/songs/${result.songId}/clips/${clip.id}/retry`,
+        )
+        await clipPolling.fetchClipSummary(result.songId)
+      } catch (err) {
+        clipPolling.setError(extractErrorMessage(err, 'Unable to retry clip generation.'))
+      }
     },
-    [clipPolling],
+    [result?.songId, clipPolling],
   )
 
   const handlePlayerClipSelect = useCallback(
@@ -318,30 +328,27 @@ export const UploadPage: React.FC = () => {
     [clipSummary?.clips, clipSummary?.composedVideoUrl, clipPolling],
   )
 
-  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related code
-  // const highlightTimeoutRef = useRef<number | null>(null)
+  const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
     () => mapMoodToMoodKind(analysisData?.moodPrimary ?? ''),
     [analysisData?.moodPrimary],
   )
-  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related code
-  // const lyricsBySection = useMemo(() => {
-  //   if (!analysisData?.sectionLyrics || !analysisData.sectionLyrics.length) {
-  //     return new Map<string, string>()
-  //   }
-  //   return new Map(analysisData.sectionLyrics.map((item) => [item.sectionId, item.text]))
-  // }, [analysisData])
+  const lyricsBySection = useMemo(() => {
+    if (!analysisData?.sectionLyrics || !analysisData.sectionLyrics.length) {
+      return new Map<string, string>()
+    }
+    return new Map(analysisData.sectionLyrics.map((item) => [item.sectionId, item.text]))
+  }, [analysisData])
 
-  // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
-  // useEffect(
-  //   () => () => {
-  //     if (highlightTimeoutRef.current) {
-  //       window.clearTimeout(highlightTimeoutRef.current)
-  //       highlightTimeoutRef.current = null
-  //     }
-  //   },
-  //   [],
-  // )
+  useEffect(
+    () => () => {
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current)
+        highlightTimeoutRef.current = null
+      }
+    },
+    [],
+  )
 
   const requirementsCopy = useMemo(
     () => ({
@@ -508,25 +515,24 @@ export const UploadPage: React.FC = () => {
     }, 0)
   }, [clipSummary, playerClipSelectionLocked])
 
-  // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related handlers
-  // const handleSectionSelect = useCallback((sectionId: string) => {
-  //   if (!sectionId) return
-  //   if (highlightTimeoutRef.current) {
-  //     window.clearTimeout(highlightTimeoutRef.current)
-  //     highlightTimeoutRef.current = null
-  //   }
-  //   setHighlightedSectionId(sectionId)
-  //
-  //   const element = document.getElementById(`section-${sectionId}`)
-  //   if (element) {
-  //     element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
-  //   }
-  //
-  //   highlightTimeoutRef.current = window.setTimeout(() => {
-  //     setHighlightedSectionId(null)
-  //     highlightTimeoutRef.current = null
-  //   }, 2000)
-  // }, [])
+  const handleSectionSelect = useCallback((sectionId: string) => {
+    if (!sectionId) return
+    if (highlightTimeoutRef.current) {
+      window.clearTimeout(highlightTimeoutRef.current)
+      highlightTimeoutRef.current = null
+    }
+    setHighlightedSectionId(sectionId)
+
+    const element = document.getElementById(`section-${sectionId}`)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+    }
+
+    highlightTimeoutRef.current = window.setTimeout(() => {
+      setHighlightedSectionId(null)
+      highlightTimeoutRef.current = null
+    }, 2000)
+  }, [])
 
   const handleFileUpload = useCallback(
     async (file: File) => {
@@ -755,11 +761,9 @@ export const UploadPage: React.FC = () => {
             isComposing={isComposing}
             composeJobProgress={composeJobProgress}
             playerActiveClipId={playerActiveClipId}
-            // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
-            // highlightedSectionId={highlightedSectionId}
+            highlightedSectionId={highlightedSectionId}
             metadata={metadata}
-            // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
-            // lyricsBySection={lyricsBySection}
+            lyricsBySection={lyricsBySection}
             audioUrl={result?.audioUrl ?? null}
             onGenerateClips={handleGenerateClips}
             onCancelClipJob={handleCancelClipJob}
@@ -768,8 +772,7 @@ export const UploadPage: React.FC = () => {
             onRegenerateClip={handleRegenerateClip}
             onRetryClip={handleRetryClip}
             onPlayerClipSelect={handlePlayerClipSelect}
-            // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
-            // onSectionSelect={handleSectionSelect}
+            onSectionSelect={handleSectionSelect}
           />
         </div>
       )}

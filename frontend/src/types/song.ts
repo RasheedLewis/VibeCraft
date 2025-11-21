@@ -93,6 +93,9 @@ export type SongSectionType =
 export interface SongSection {
   id: string
   type: SongSectionType
+  typeSoft?: string | null
+  displayName?: string | null
+  rawLabel?: number | null
   startSec: number
   endSec: number
   confidence: number

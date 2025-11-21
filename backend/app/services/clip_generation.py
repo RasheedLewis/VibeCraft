@@ -60,7 +60,11 @@ def enqueue_clip_generation_batch(
     if max_parallel < 1:
         raise ValueError("max_parallel must be at least 1")
 
-    queue = get_queue(timeout=QUEUE_TIMEOUT_SEC)
+    settings = get_settings()
+    queue = get_queue(
+        queue_name=f"{settings.rq_worker_queue}:clip-generation",
+        timeout=QUEUE_TIMEOUT_SEC
+    )
 
     # Get clips using repository
     all_clips = ClipRepository.get_by_song_id(song_id)
@@ -109,6 +113,54 @@ def enqueue_clip_generation_batch(
         )
 
     return [job.id for job in jobs]
+
+
+def retry_clip_generation(clip_id: UUID) -> SongClipStatus:
+    """Reset clip state and enqueue a new generation job."""
+    settings = get_settings()
+    queue = get_queue(
+        queue_name=f"{settings.rq_worker_queue}:clip-generation",
+        timeout=QUEUE_TIMEOUT_SEC
+    )
+
+    try:
+        clip = ClipRepository.get_by_id(clip_id)
+    except ClipNotFoundError:
+        raise ValueError(f"Clip {clip_id} not found")
+
+    if clip.status in {"processing", "queued"}:
+        raise RuntimeError("Clip is already queued or processing")
+
+    song_id = clip.song_id
+    clip_index = clip.clip_index
+    clip_fps = clip.fps or 8
+    num_frames = clip.num_frames
+    if num_frames <= 0 and clip.duration_sec:
+        num_frames = max(int(round(clip.duration_sec * clip_fps)), 1)
+
+    clip.num_frames = num_frames
+    clip.status = "queued"
+    clip.error = None
+    clip.video_url = None
+    clip.replicate_job_id = None
+    clip.rq_job_id = None
+    ClipRepository.update(clip)
+
+    job = queue.enqueue(
+        run_clip_generation_job,
+        clip_id,
+        job_timeout=QUEUE_TIMEOUT_SEC,
+        meta={"song_id": str(song_id), "clip_index": clip_index, "retry": True},
+    )
+
+    try:
+        clip = ClipRepository.get_by_id(clip_id)
+    except ClipNotFoundError:
+        raise ValueError(f"Clip {clip_id} disappeared after enqueue")
+    
+    clip.rq_job_id = job.id
+    ClipRepository.update(clip)
+    return SongClipStatus.model_validate(clip)
 
 
 def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
@@ -216,23 +268,16 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
     song = SongRepository.get_by_id(song_id)
     clips = ClipRepository.get_by_song_id(song_id)
 
-    # Handle case where no clips have been planned yet (return empty summary)
     if not clips:
-        status_counts = Counter()
-        total = 0
-        completed = 0
-        failed = 0
-        processing = 0
-        queued = 0
-        clip_statuses: list[SongClipStatus] = []
-    else:
-        status_counts = Counter(clip.status for clip in clips)
-        total = len(clips)
-        completed = status_counts.get("completed", 0)
-        failed = status_counts.get("failed", 0)
-        processing = status_counts.get("processing", 0)
-        queued = status_counts.get("queued", 0)
-        clip_statuses = [SongClipStatus.model_validate(clip) for clip in clips]
+        raise ValueError("No planned clips found for song.")
+
+    status_counts = Counter(clip.status for clip in clips)
+    total = len(clips)
+    completed = status_counts.get("completed", 0)
+    failed = status_counts.get("failed", 0)
+    processing = status_counts.get("processing", 0)
+    queued = status_counts.get("queued", 0)
+    clip_statuses = [SongClipStatus.model_validate(clip) for clip in clips]
 
     composed_video_url: Optional[str] = None
     composed_video_poster_url: Optional[str] = None

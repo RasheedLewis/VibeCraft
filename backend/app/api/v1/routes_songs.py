@@ -17,7 +17,12 @@ from app.core.config import get_settings
 from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import BeatAlignedBoundariesResponse, ClipBoundaryMetadata, SongAnalysis
-from app.schemas.clip import ClipGenerationSummary, ClipPlanBatchResponse, SongClipRead
+from app.schemas.clip import (
+    ClipGenerationSummary,
+    ClipPlanBatchResponse,
+    SongClipRead,
+    SongClipStatus,
+)
 from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
 from app.schemas.song import SongRead, SongUploadResponse
 from app.services import preprocess_audio
@@ -34,6 +39,7 @@ from app.services.beat_alignment import (
 from app.services.clip_generation import (
     compose_song_video,
     get_clip_generation_summary,
+    retry_clip_generation,
     start_clip_generation_job,
 )
 from app.services.clip_planning import (
@@ -167,11 +173,17 @@ async def upload_song(
             content_type=preprocess_result.content_type,
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Failed to upload audio assets to storage (bucket=%s, song_id=%s, filename=%s)",
+            settings.s3_bucket_name,
+            song.id,
+            sanitized_filename,
+        )
         db.delete(song)
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to store audio file. Please try again later.",
+            detail="Failed to store audio file. Verify storage configuration and try again.",
         ) from exc
 
     song.original_s3_key = original_s3_key
@@ -188,9 +200,14 @@ async def upload_song(
             key=original_s3_key,
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Failed to generate presigned URL for uploaded audio (bucket=%s, key=%s)",
+            settings.s3_bucket_name,
+            original_s3_key,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to generate access URL for uploaded audio.",
+            detail="Failed to generate access URL for uploaded audio. Verify storage configuration.",
         ) from exc
 
     return SongUploadResponse(
@@ -448,7 +465,13 @@ def get_clip_generation_status(song_id: UUID, db: Session = Depends(get_db)) -> 
     if not song:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
 
-    return get_clip_generation_summary(song_id)
+    try:
+        return get_clip_generation_summary(song_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No clip plans found for this song.",
+        ) from exc
 
 
 @router.get(
@@ -506,6 +529,37 @@ def generate_clip_batch(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/{song_id}/clips/{clip_id}/retry",
+    response_model=SongClipStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Retry generation for a single clip",
+)
+def retry_clip_generation_route(
+    song_id: UUID,
+    clip_id: UUID,
+    db: Session = Depends(get_db),
+) -> SongClipStatus:
+    clip = db.get(SongClip, clip_id)
+    if not clip or clip.song_id != song_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found for song")
+
+    if clip.status in {"processing", "queued"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Clip is already queued or processing.",
+        )
+
+    try:
+        refreshed = retry_clip_generation(clip_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    return refreshed
 
 
 @router.post(

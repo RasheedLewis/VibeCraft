@@ -74,7 +74,7 @@ test_api_call() {
         echo "$body" > /tmp/test_response.json
         return 0
     else
-        log_error "$description (expected $expected_status, got $http_code)"
+        log_error "$description - expected $expected_status, got $http_code"
         echo "Response: $body" >&2
         return 1
     fi
@@ -91,11 +91,11 @@ check_json_field() {
             log_success "$description"
             return 0
         else
-            log_error "$description (expected '$expected_value', got '$actual_value')"
+            log_error "$description - expected '$expected_value', got '$actual_value'"
             return 1
         fi
     else
-        log_error "$description (no response file)"
+        log_error "$description - no response file"
         return 1
     fi
 }
@@ -306,7 +306,7 @@ test_character_image_upload_api() {
         elif [ "$http_code" = "000" ]; then
             log_warn "API server not running - skipping live API test"
         else
-            log_warn "API test returned status $http_code (may need valid image or server setup)"
+            log_warn "API test returned status $http_code - may need valid image or server setup"
         fi
     else
         log_warn "No test song available - skipping live API test"
@@ -517,7 +517,7 @@ test_unit_tests() {
         if $PYTEST_CMD tests/unit/test_image_validation.py -v --tb=short 2>&1 | grep -q "passed\|PASSED"; then
             log_success "Image validation unit tests passed"
         else
-            log_warn "Unit tests may have issues (check output above)"
+            log_warn "Unit tests may have issues - check output above"
         fi
         cd ..
     else
@@ -536,7 +536,7 @@ main() {
     echo "=========================================="
     echo ""
     echo "Testing:"
-    echo "  - Database schema (character fields)"
+    echo "  - Database schema: character fields"
     echo "  - Image validation service"
     echo "  - Character image upload API"
     echo "  - Video generation with image input"
@@ -579,4 +579,5 @@ main() {
 
 # Run main function
 main
+
 

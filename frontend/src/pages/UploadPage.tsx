@@ -842,7 +842,8 @@ export const UploadPage: React.FC = () => {
             <section className="mb-8 space-y-4">
               <div className="vc-label">Character Consistency (Optional)</div>
               <p className="text-sm text-vc-text-secondary">
-                Upload a character reference image to maintain consistent character appearance across all clips.
+                Upload a character reference image to maintain consistent character
+                appearance across all clips.
               </p>
               <CharacterImageUpload
                 songId={result.songId}
@@ -850,9 +851,12 @@ export const UploadPage: React.FC = () => {
                   console.log('Character image uploaded:', imageUrl)
                   // Optionally refresh song details to show character consistency is enabled
                   if (result?.songId) {
-                    apiClient.get(`/songs/${result.songId}`).then((response) => {
-                      setSongDetails(response.data)
-                    }).catch(console.error)
+                    apiClient
+                      .get(`/songs/${result.songId}`)
+                      .then((response) => {
+                        setSongDetails(response.data)
+                      })
+                      .catch(console.error)
                   }
                 }}
                 onUploadError={(error) => {

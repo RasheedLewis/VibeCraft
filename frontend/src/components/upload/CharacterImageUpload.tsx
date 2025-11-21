@@ -71,9 +71,12 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
         const data = response.data
         onUploadSuccess?.(data.image_url)
         setError(null)
-      } catch (err: any) {
+      } catch (err: unknown) {
         const errorMessage =
-          err.response?.data?.detail || err.message || 'Upload failed'
+          (err as { response?: { data?: { detail?: string }; message?: string } })
+            .response?.data?.detail ||
+          (err as { message?: string }).message ||
+          'Upload failed'
         setError(errorMessage)
         onUploadError?.(errorMessage)
       } finally {
@@ -193,10 +196,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
         )}
       </div>
 
-      {error && (
-        <p className="mt-2 text-sm text-red-400">{error}</p>
-      )}
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
     </div>
   )
 }
-

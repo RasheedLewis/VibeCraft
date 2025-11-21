@@ -20,7 +20,6 @@ from PIL import Image  # noqa: E402
 from io import BytesIO  # noqa: E402
 
 from app.services.image_validation import (  # noqa: E402
-    ALLOWED_IMAGE_FORMATS,
     MAX_IMAGE_DIMENSION,
     MAX_IMAGE_SIZE_MB,
     MIN_IMAGE_DIMENSION,
@@ -53,10 +52,11 @@ class TestValidateImage:
         assert is_valid is True
         assert error_msg is None
         assert metadata is not None
-        assert metadata["format"] == "JPEG"
-        assert metadata["width"] == 512
-        assert metadata["height"] == 512
-        assert metadata["size_bytes"] > 0
+        if metadata is not None:  # Type guard for type checker
+            assert metadata["format"] == "JPEG"
+            assert metadata["width"] == 512
+            assert metadata["height"] == 512
+            assert metadata["size_bytes"] > 0
 
     def test_valid_png_image(self):
         """Test that a valid PNG image passes validation."""
@@ -65,7 +65,9 @@ class TestValidateImage:
         
         assert is_valid is True
         assert error_msg is None
-        assert metadata["format"] == "PNG"
+        assert metadata is not None
+        if metadata is not None:  # Type guard for type checker
+            assert metadata["format"] == "PNG"
 
     def test_valid_webp_image(self):
         """Test that a valid WEBP image passes validation."""
@@ -105,7 +107,9 @@ class TestValidateImage:
         is_valid, error_msg, metadata = validate_image(image_bytes, "test.jpg")
         # This should pass since 2048x2048 JPEG is < 10MB
         assert is_valid is True
-        assert metadata["size_mb"] < MAX_IMAGE_SIZE_MB
+        assert metadata is not None
+        if metadata is not None:  # Type guard for type checker
+            assert metadata["size_mb"] < MAX_IMAGE_SIZE_MB
 
     def test_dimensions_too_large(self):
         """Test that images exceeding max dimension are rejected."""
@@ -141,8 +145,10 @@ class TestValidateImage:
         
         assert is_valid is True
         assert error_msg is None
-        assert metadata["width"] == MIN_IMAGE_DIMENSION
-        assert metadata["height"] == MIN_IMAGE_DIMENSION
+        assert metadata is not None
+        if metadata is not None:  # Type guard for type checker
+            assert metadata["width"] == MIN_IMAGE_DIMENSION
+            assert metadata["height"] == MIN_IMAGE_DIMENSION
 
     def test_maximum_valid_dimensions(self):
         """Test that images at maximum dimension pass validation."""
@@ -152,8 +158,10 @@ class TestValidateImage:
         
         assert is_valid is True
         assert error_msg is None
-        assert metadata["width"] == MAX_IMAGE_DIMENSION
-        assert metadata["height"] == MAX_IMAGE_DIMENSION
+        assert metadata is not None
+        if metadata is not None:  # Type guard for type checker
+            assert metadata["width"] == MAX_IMAGE_DIMENSION
+            assert metadata["height"] == MAX_IMAGE_DIMENSION
 
     def test_landscape_image(self):
         """Test that landscape images (width > height) are validated correctly."""
@@ -162,8 +170,10 @@ class TestValidateImage:
         is_valid, error_msg, metadata = validate_image(image_bytes, "test.jpg")
         
         assert is_valid is True
-        assert metadata["width"] == 1024
-        assert metadata["height"] == 512
+        assert metadata is not None
+        if metadata is not None:  # Type guard for type checker
+            assert metadata["width"] == 1024
+            assert metadata["height"] == 512
 
     def test_portrait_image(self):
         """Test that portrait images (height > width) are validated correctly."""
@@ -172,8 +182,10 @@ class TestValidateImage:
         is_valid, error_msg, metadata = validate_image(image_bytes, "test.jpg")
         
         assert is_valid is True
-        assert metadata["width"] == 512
-        assert metadata["height"] == 1024
+        assert metadata is not None
+        if metadata is not None:  # Type guard for type checker
+            assert metadata["width"] == 512
+            assert metadata["height"] == 1024
 
     def test_invalid_image_bytes(self):
         """Test that invalid image bytes are rejected."""

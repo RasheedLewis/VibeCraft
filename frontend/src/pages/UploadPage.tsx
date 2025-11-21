@@ -295,7 +295,6 @@ export const UploadPage: React.FC = () => {
       try {
         clipPolling.setError(null)
         clipPolling.setStatus('queued')
-        clipPolling.setProgress(0)
         clipPolling.setJobId(null)
         await apiClient.post<SongClipStatus>(
           `/songs/${result.songId}/clips/${clip.id}/retry`,
@@ -305,7 +304,7 @@ export const UploadPage: React.FC = () => {
         clipPolling.setError(extractErrorMessage(err, 'Unable to retry clip generation.'))
       }
     },
-    [result?.songId, clipPolling],
+    [result, clipPolling],
   )
 
   const handlePlayerClipSelect = useCallback(

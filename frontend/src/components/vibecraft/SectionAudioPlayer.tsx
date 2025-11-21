@@ -158,4 +158,3 @@ export const SectionAudioPlayer: React.FC<SectionAudioPlayerProps> = ({
     </div>
   )
 }
-

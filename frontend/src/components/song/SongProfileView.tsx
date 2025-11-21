@@ -11,8 +11,7 @@ import { formatSeconds, formatBpm, formatMoodTags } from '../../utils/formatting
 import { buildSectionsWithDisplayNames, mapMoodToMoodKind } from '../../utils/sections'
 import { parseWaveformJson } from '../../utils/waveform'
 import { normalizeClipStatus } from '../../utils/status'
-// NOTE: Sections are NOT implemented in the backend right now - commenting out section-related UI
-// import { SongTimeline } from './SongTimeline'
+import { SongTimeline } from './SongTimeline'
 import { WaveformDisplay } from './WaveformDisplay'
 import { MoodVectorMeter } from './MoodVectorMeter'
 import { ClipGenerationPanel } from './ClipGenerationPanel'
@@ -225,8 +224,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
         />
       </section>
 
-      {/* NOTE: Sections are NOT implemented in the backend right now - commenting out section-related UI */}
-      {/* <section className="space-y-2">
+      <section className="space-y-2">
         <div className="vc-label">Song structure</div>
         <SongTimeline
           sections={sectionsWithDisplay}

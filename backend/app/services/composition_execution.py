@@ -15,7 +15,7 @@ from app.core.config import get_settings
 from app.core.database import session_scope
 from app.models.composition import CompositionJob
 from app.models.section_video import SectionVideo
-from app.models.song import Song
+from app.repositories import SongRepository
 from app.services.composition_job import (
     complete_job,
     create_composed_video,
@@ -83,19 +83,17 @@ def execute_composition_pipeline(
 
         # Step 1: Validate inputs
         logger.info(f"Validating composition inputs for job {job_id}")
+        song = SongRepository.get_by_id(song_id)
+
+        if song.duration_sec and song.duration_sec > MAX_DURATION_SECONDS:
+            raise ValueError(
+                f"Song duration ({song.duration_sec}s) exceeds maximum ({MAX_DURATION_SECONDS}s)"
+            )
+
+        # Get clips
+        clips = []
+        clip_urls = []
         with session_scope() as session:
-            song = session.get(Song, song_id)
-            if not song:
-                raise ValueError(f"Song {song_id} not found")
-
-            if song.duration_sec and song.duration_sec > MAX_DURATION_SECONDS:
-                raise ValueError(
-                    f"Song duration ({song.duration_sec}s) exceeds maximum ({MAX_DURATION_SECONDS}s)"
-                )
-
-            # Get clips
-            clips = []
-            clip_urls = []
             for clip_id in clip_ids:
                 clip = session.get(SectionVideo, clip_id)
                 if not clip:

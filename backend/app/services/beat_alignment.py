@@ -7,6 +7,8 @@ Supports configurable FPS (defaults to 24 FPS).
 import logging
 from typing import NamedTuple
 
+from app.core.constants import ACCEPTABLE_ALIGNMENT
+
 logger = logging.getLogger(__name__)
 
 # Default video FPS (can be overridden)
@@ -21,7 +23,6 @@ MAX_CLIP_DURATION = 6.0
 # These are absolute time thresholds that work well across common FPS values (8-30 FPS)
 EXCELLENT_ALIGNMENT = 0.02  # Excellent: < 20ms error
 GOOD_ALIGNMENT = 0.05  # Good: < 50ms error
-ACCEPTABLE_ALIGNMENT = 0.1  # Acceptable: < 100ms error
 
 
 class BeatFrameAlignment(NamedTuple):

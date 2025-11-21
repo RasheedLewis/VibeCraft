@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -31,9 +31,9 @@ class Song(SQLModel, table=True):
     composed_video_poster_s3_key: Optional[str] = Field(default=None, max_length=1024)
     composed_video_duration_sec: Optional[float] = Field(default=None, ge=0)
     composed_video_fps: Optional[int] = Field(default=None, ge=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
-        sa_column_kwargs={"onupdate": datetime.utcnow},
+        default_factory=lambda: datetime.now(UTC),
+        sa_column_kwargs={"onupdate": lambda: datetime.now(UTC)},
     )
 

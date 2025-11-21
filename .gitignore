@@ -43,6 +43,8 @@ frontend/.vite/
 .idea/
 .specstory/
 .cursorindexingignore
+.cursor/
+.stash/
 
 # Media & tmp outputs
 storage/
@@ -60,6 +62,4 @@ samples/audio/**/*.flac
 
 # Test composition outputs (large files)
 samples/compTest/testComp*.mp4
-
-
-.trigger
+logs/

@@ -1,20 +1,17 @@
 """Lyric extraction service using Whisper via Replicate API."""
 
 import logging
+import time
 from pathlib import Path
 from typing import List, Optional
 
 import replicate
 
 from app.core.config import get_settings
+from app.core.constants import WHISPER_MODEL
 from app.schemas.analysis import SectionLyrics, SongSection
 
 logger = logging.getLogger(__name__)
-
-# Replicate Whisper model
-# Use latest version explicitly for reproducibility
-# Version: 8099696689d249cf8b122d833c36ac3f75505c666a395ca40ef26f68e7d3d16e
-WHISPER_MODEL = "openai/whisper:8099696689d249cf8b122d833c36ac3f75505c666a395ca40ef26f68e7d3d16e"
 
 
 def extract_lyrics_with_whisper(audio_path: str | Path) -> List[dict]:
@@ -38,6 +35,7 @@ def extract_lyrics_with_whisper(audio_path: str | Path) -> List[dict]:
 
         # Replicate expects audio as a file object (it handles upload automatically)
         # Open audio file
+        whisper_start = time.time()
         with open(audio_path, "rb") as audio_file:
             # Run Whisper on Replicate
             # Note: audio parameter accepts file-like objects, Replicate handles upload
@@ -52,6 +50,8 @@ def extract_lyrics_with_whisper(audio_path: str | Path) -> List[dict]:
                     "condition_on_previous_text": True,
                 },
             )
+        whisper_time = time.time() - whisper_start
+        logger.info("Lyric extraction - Whisper API call: %.2fs", whisper_time)
 
         # Parse output - Replicate Whisper returns segments with start, end, text
         segments = []

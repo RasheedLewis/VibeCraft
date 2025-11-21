@@ -172,9 +172,10 @@ def test_enqueue_clip_generation_batch_controls_concurrency(monkeypatch):
     song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(32)], clip_count=5)
 
     dummy_queue = DummyQueue()
+    # Patch at the import site in clip_generation module
     monkeypatch.setattr(
-        "app.services.clip_generation._get_clip_queue",
-        lambda: dummy_queue,
+        "app.services.clip_generation.get_queue",
+        lambda *args, **kwargs: dummy_queue,
     )
 
     job_ids = enqueue_clip_generation_batch(song_id=song_id, max_parallel=2)
@@ -250,7 +251,9 @@ def test_run_clip_generation_job_failure(monkeypatch):
 
     monkeypatch.setattr("app.services.clip_generation.generate_section_video", _fail_generation)
 
-    with pytest.raises(RuntimeError):
+    from app.exceptions import ClipGenerationError
+
+    with pytest.raises(ClipGenerationError):
         run_clip_generation_job(clip_id)
 
     with session_scope() as session:
@@ -446,7 +449,7 @@ def test_start_clip_generation_job_and_status(monkeypatch):
     song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=3)
 
     dummy_queue = DummyQueue()
-    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+    monkeypatch.setattr("app.core.queue.get_queue", lambda *args, **kwargs: dummy_queue)
 
     response = start_clip_generation_job(song_id)
     assert response.song_id == song_id
@@ -463,7 +466,7 @@ def test_start_clip_generation_job_and_status(monkeypatch):
     assert status.result.total_clips == 3
 
     api_queue = DummyQueue()
-    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: api_queue)
+    monkeypatch.setattr("app.core.queue.get_queue", lambda *args, **kwargs: api_queue)
     other_song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(16)], clip_count=2)
 
     with TestClient(create_app()) as client:

@@ -45,14 +45,14 @@ export interface ClipGenerationSummary {
   composedVideoPosterUrl?: string | null
 }
 
-export interface JobStatusResponse {
+export interface JobStatusResponse<T = SongAnalysis | ClipGenerationSummary | null> {
   jobId: string
   songId: string
   status: 'queued' | 'processing' | 'completed' | 'failed' | string
   progress?: number
   analysisId?: string | null
   error?: string | null
-  result?: SongAnalysis | ClipGenerationSummary | null
+  result?: T
 }
 
 export interface ComposeVideoResponse {

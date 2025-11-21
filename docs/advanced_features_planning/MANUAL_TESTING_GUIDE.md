@@ -1,6 +1,8 @@
 # Manual Testing Guide - Advanced Features Branch
 
-This guide provides **prescriptive, step-by-step instructions** for manually testing all new features and user flows in the `advancedFeatures` branch. Each step includes exact actions, expected results, verification methods, and checkpoints.
+This guide provides **prescriptive, step-by-step instructions** for manually testing all new
+features and user flows in the `advancedFeatures` branch. Each step includes exact actions,
+expected results, verification methods, and checkpoints.
 
 **Last Updated**: Based on branch state as of testing date
 
@@ -126,7 +128,8 @@ This guide provides **prescriptive, step-by-step instructions** for manually tes
 
 ---
 
-**Note**: This smoke test covers the happy path only. For comprehensive testing including edge cases, error handling, and detailed verification, proceed to the full test suite below.
+**Note**: This smoke test covers the happy path only. For comprehensive testing including edge
+cases, error handling, and detailed verification, proceed to the full test suite below.
 
 ---
 
@@ -488,7 +491,8 @@ mkdir -p test_audio_files
    - [ ] Final analysis response contains analysis data
 
 3. **Backend Logs Check**:
-   - [ ] Check backend terminal for log message: `⏭️ [ANALYSIS] Skipping section detection (short-form video)`
+   - [ ] Check backend terminal for log message:
+     `⏭️ [ANALYSIS] Skipping section detection (short-form video)`
    - [ ] Analysis completes without errors
 
 **If Analysis Fails**:
@@ -907,7 +911,7 @@ mkdir -p test_audio_files
 **Verification Steps**:
 1. **Backend Logs Check**:
    - [ ] Check backend terminal for log message:
-     ```
+     ```text
      ⏭️ [ANALYSIS] Skipping section detection (short-form video) - song_id=...
      ```
    - [ ] No section detection code runs (no section-related log messages)
@@ -1006,13 +1010,14 @@ mkdir -p test_audio_files
 
 ## Character Consistency Foundation (Quick Test)
 
-**Goal**: Verify that character image upload works for short-form videos (foundation only - full workflow not yet implemented).
+**Goal**: Verify that character image upload works for short-form videos (foundation only - full
+workflow not yet implemented).
 
 **Estimated Time**: 10-15 minutes
 
 ---
 
-#### Checkpoint 4.1: Character Upload Appears
+### Checkpoint 4.1: Character Upload Appears
 
 **Action**: Complete analysis for short-form video, observe page
 
@@ -1038,7 +1043,7 @@ mkdir -p test_audio_files
 
 ---
 
-#### Checkpoint 4.2: Upload Valid Character Image
+### Checkpoint 4.2: Upload Valid Character Image
 
 **Action**: Drag and drop or select a valid image file (JPEG, PNG, WEBP)
 
@@ -1071,7 +1076,7 @@ mkdir -p test_audio_files
 
 ---
 
-#### Checkpoint 4.3: Test Image Validation
+### Checkpoint 4.3: Test Image Validation
 
 **Action**: Try uploading invalid files
 
@@ -1115,7 +1120,8 @@ mkdir -p test_audio_files
 - **Image interrogation** (Phase 2) not yet implemented
 - **Character image generation** (Phase 3) not yet implemented
 - **Full workflow** (Phase 5) not yet implemented
-- Currently: Reference image is stored and can be passed to video generation, but full consistency workflow is pending
+- Currently: Reference image is stored and can be passed to video generation, but full
+  consistency workflow is pending
 
 ---
 
@@ -1127,7 +1133,7 @@ mkdir -p test_audio_files
 
 ---
 
-#### Checkpoint 5.1: Verify Beat Detection
+### Checkpoint 5.1: Verify Beat Detection
 
 **Action**: Complete analysis for any video type
 
@@ -1151,7 +1157,7 @@ mkdir -p test_audio_files
 
 ---
 
-#### Checkpoint 5.2: Verify Prompt Enhancement
+### Checkpoint 5.2: Verify Prompt Enhancement
 
 **Action**: Generate clips for a song
 
@@ -1175,7 +1181,7 @@ mkdir -p test_audio_files
 
 ---
 
-#### Checkpoint 5.3: Verify Beat Filters
+### Checkpoint 5.3: Verify Beat Filters
 
 **Action**: Compose final video
 
@@ -1421,7 +1427,7 @@ When you encounter a problem during testing, follow these steps:
 
 When asking an AI agent (like me) to fix an issue, use this template:
 
-```
+```text
 I found an issue during manual testing of the advancedFeatures branch.
 
 **Checkpoint**: [e.g., "Checkpoint 2.4: Drag Start Marker"]
@@ -1458,7 +1464,7 @@ I found an issue during manual testing of the advancedFeatures branch.
 
 #### Example 1: Marker Dragging Issue
 
-```
+```text
 I found an issue during manual testing of the advancedFeatures branch.
 
 **Checkpoint**: Checkpoint 2.4: Drag Start Marker
@@ -1481,7 +1487,7 @@ I found an issue during manual testing of the advancedFeatures branch.
 - Console shows error: "Cannot read property 'clientX' of undefined"
 
 **Error Messages**:
-```
+```javascript
 Uncaught TypeError: Cannot read property 'clientX' of undefined
     at AudioSelectionTimeline.handleMouseMove (AudioSelectionTimeline.tsx:123)
 ```
@@ -1492,12 +1498,13 @@ Uncaught TypeError: Cannot read property 'clientX' of undefined
 - Video Type: short_form
 - Audio File: 45 seconds, MP3
 
-**Request**: Please fix the marker dragging functionality. The mouse event handler seems to be missing the event parameter or the event is not being passed correctly.
+**Request**: Please fix the marker dragging functionality. The mouse event handler seems to be
+missing the event parameter or the event is not being passed correctly.
 ```
 
 #### Example 2: Validation Issue
 
-```
+```text
 I found an issue during manual testing of the advancedFeatures branch.
 
 **Checkpoint**: Checkpoint 2.6: Test 30-Second Maximum Constraint
@@ -1534,7 +1541,7 @@ None in console, but validation should prevent this.
 
 #### Example 3: UX Improvement Request
 
-```
+```text
 I found a UX issue during manual testing of the advancedFeatures branch.
 
 **Checkpoint**: Checkpoint 2.8: Test Audio Preview
@@ -1571,7 +1578,7 @@ None
 
 For simple issues, you can use a shorter format:
 
-```
+```text
 **Issue**: [Brief description]
 **Location**: [Component/File name]
 **Fix**: [What needs to be fixed]
@@ -1579,7 +1586,7 @@ For simple issues, you can use a shorter format:
 ```
 
 **Example**:
-```
+```text
 **Issue**: Start marker doesn't drag smoothly
 **Location**: AudioSelectionTimeline.tsx
 **Fix**: Mouse event handler is missing event parameter
@@ -1592,7 +1599,7 @@ For simple issues, you can use a shorter format:
 
 Even if something works, you can request UX improvements:
 
-```
+```text
 **UX Improvement Request**
 
 **Feature**: Audio Selection Timeline
@@ -1672,6 +1679,7 @@ Even if something works, you can request UX improvements:
 
 ---
 
-**Happy Testing! 🎬**
+## Happy Testing! 🎬
 
-Remember: If you find any issues, use the [AI Fix Request Template](#ai-fix-request-template) to request fixes and improvements.
+Remember: If you find any issues, use the [AI Fix Request Template](#ai-fix-request-template) to
+request fixes and improvements.

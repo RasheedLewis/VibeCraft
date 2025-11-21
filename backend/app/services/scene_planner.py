@@ -292,6 +292,8 @@ def build_prompt(
     camera_motion: CameraMotion,
     shot_pattern: ShotPattern,
     lyrics: Optional[str] = None,
+    bpm: Optional[float] = None,  # NEW PARAMETER
+    motion_type: Optional[str] = None,  # NEW PARAMETER
 ) -> str:
     """
     Build video generation prompt combining all features.
@@ -305,6 +307,8 @@ def build_prompt(
         camera_motion: CameraMotion object
         shot_pattern: ShotPattern object
         lyrics: Optional lyrics text for motif injection
+        bpm: Optional BPM for rhythm enhancement
+        motion_type: Optional motion type for rhythm enhancement
 
     Returns:
         Complete prompt string for video generation
@@ -349,9 +353,31 @@ def build_prompt(
         if key_words:
             components.append(f"inspired by: {', '.join(key_words)}")
 
-    # Combine into final prompt
-    prompt = ", ".join(components)
-    return prompt
+    # Combine into base prompt
+    base_prompt = ", ".join(components)
+    
+    # Enhance with rhythm if BPM provided
+    if bpm and bpm > 0:
+        from app.services.prompt_enhancement import (
+            enhance_prompt_with_rhythm,
+            get_motion_type_from_genre,
+        )
+        
+        # Determine motion type
+        effective_motion_type = motion_type
+        if not effective_motion_type and genre:
+            effective_motion_type = get_motion_type_from_genre(genre)
+        if not effective_motion_type:
+            effective_motion_type = "bouncing"  # Default
+        
+        # Enhance prompt
+        base_prompt = enhance_prompt_with_rhythm(
+            base_prompt,
+            bpm=bpm,
+            motion_type=effective_motion_type,
+        )
+    
+    return base_prompt
 
 
 def build_scene_spec(
@@ -405,6 +431,8 @@ def build_scene_spec(
         camera_motion=camera_motion,
         shot_pattern=shot_pattern,
         lyrics=lyrics_text,
+        bpm=analysis.bpm,  # NEW: Pass BPM for rhythm enhancement
+        motion_type=None,  # Can be made configurable later
     )
 
     # Calculate duration
@@ -465,6 +493,8 @@ def build_clip_scene_spec(
         camera_motion=camera_motion,
         shot_pattern=shot_pattern,
         lyrics=None,  # Could extract lyrics for time range if needed
+        bpm=analysis.bpm,  # NEW: Pass BPM for rhythm enhancement
+        motion_type=None,  # Can be made configurable later
     )
 
     intensity = (analysis.mood_vector.energy + analysis.mood_vector.tension) / 2.0

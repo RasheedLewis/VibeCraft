@@ -16,6 +16,7 @@ from app.core.database import session_scope
 from app.models.composition import CompositionJob
 from app.repositories import SongRepository
 from app.services.clip_model_selector import get_clips_for_composition
+from app.services.song_analysis import get_latest_analysis
 from app.services.composition_job import (
     complete_job,
     create_composed_video,
@@ -237,12 +238,22 @@ def execute_composition_pipeline(
             logger.info(f"Stitching {len(normalized_paths)} clips for job {job_id}")
             update_job_progress(job_id, PROGRESS_STITCH, "processing")
 
+            # Get beat times from analysis for beat filters
+            beat_times = None
+            analysis = get_latest_analysis(song_id)
+            if analysis and hasattr(analysis, 'beat_times') and analysis.beat_times:
+                beat_times = analysis.beat_times
+                logger.info(f"Found {len(beat_times)} beat times for beat filter application")
+            
             output_path = temp_path / "composed.mp4"
             composition_result = concatenate_clips(
                 normalized_clip_paths=normalized_paths,
                 audio_path=audio_path,
                 output_path=output_path,
                 song_duration_sec=song_duration,
+                beat_times=beat_times,  # NEW: Pass beat times for filters
+                filter_type="flash",  # Can be made configurable later
+                frame_rate=24.0,
             )
             logger.info(
                 f"Composed video: {composition_result.duration_sec:.2f}s, "

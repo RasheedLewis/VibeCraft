@@ -732,6 +732,126 @@ class TestBuildPrompt:
         assert "pacing" in prompt  # Shot pattern pacing
         assert "camera motion" in prompt
 
+    def test_prompt_with_bpm_enhancement(self):
+        """Test that BPM enhances prompt with rhythm descriptors."""
+        section = SongSection(
+            id="section-1", type="chorus", startSec=0.0, endSec=32.0, confidence=0.9
+        )
+        color_palette = map_mood_to_color_palette(
+            "energetic", MoodVector(energy=0.8, valence=0.7, danceability=0.7, tension=0.5)
+        )
+        camera_motion = map_genre_to_camera_motion("Electronic", bpm=128.0)
+        shot_pattern = map_section_type_to_shot_pattern("chorus")
+
+        prompt_with_bpm = build_prompt(
+            section=section,
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            genre="Electronic",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            lyrics=None,
+            bpm=120.0,  # NEW: BPM parameter
+        )
+
+        prompt_without_bpm = build_prompt(
+            section=section,
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            genre="Electronic",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            lyrics=None,
+            bpm=None,  # No BPM
+        )
+
+        # Prompt with BPM should include rhythm enhancement
+        assert "BPM" in prompt_with_bpm
+        assert "rhythmic" in prompt_with_bpm.lower()
+        assert "synchronized" in prompt_with_bpm.lower()
+        
+        # Prompt without BPM should not include rhythm enhancement
+        assert "BPM" not in prompt_without_bpm
+        assert prompt_without_bpm in prompt_with_bpm  # Enhanced prompt should contain base
+
+    def test_prompt_with_bpm_and_motion_type(self):
+        """Test that motion type affects rhythm enhancement."""
+        section = SongSection(
+            id="section-1", type="verse", startSec=0.0, endSec=32.0, confidence=0.9
+        )
+        color_palette = map_mood_to_color_palette(
+            "energetic", MoodVector(energy=0.8, valence=0.7, danceability=0.7, tension=0.5)
+        )
+        camera_motion = map_genre_to_camera_motion("Rock", bpm=140.0)
+        shot_pattern = map_section_type_to_shot_pattern("verse")
+
+        prompt_pulsing = build_prompt(
+            section=section,
+            mood_primary="energetic",
+            mood_tags=["energetic"],
+            genre="Electronic",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            bpm=100.0,
+            motion_type="pulsing",
+        )
+
+        prompt_bouncing = build_prompt(
+            section=section,
+            mood_primary="energetic",
+            mood_tags=["energetic"],
+            genre="Electronic",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            bpm=100.0,
+            motion_type="bouncing",
+        )
+
+        # Different motion types should produce different enhancements
+        assert "pulsing" in prompt_pulsing.lower()
+        assert "bouncing" in prompt_bouncing.lower()
+
+    def test_prompt_with_invalid_bpm_skips_enhancement(self):
+        """Test that invalid BPM (<= 0) skips rhythm enhancement."""
+        section = SongSection(
+            id="section-1", type="verse", startSec=0.0, endSec=32.0, confidence=0.9
+        )
+        color_palette = map_mood_to_color_palette(
+            "energetic", MoodVector(energy=0.8, valence=0.7, danceability=0.7, tension=0.5)
+        )
+        camera_motion = map_genre_to_camera_motion("Electronic", bpm=128.0)
+        shot_pattern = map_section_type_to_shot_pattern("verse")
+
+        prompt_zero_bpm = build_prompt(
+            section=section,
+            mood_primary="energetic",
+            mood_tags=["energetic"],
+            genre="Electronic",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            bpm=0.0,  # Invalid BPM
+        )
+
+        prompt_negative_bpm = build_prompt(
+            section=section,
+            mood_primary="energetic",
+            mood_tags=["energetic"],
+            genre="Electronic",
+            color_palette=color_palette,
+            camera_motion=camera_motion,
+            shot_pattern=shot_pattern,
+            bpm=-10.0,  # Invalid BPM
+        )
+
+        # Invalid BPM should not add rhythm enhancement
+        assert "BPM" not in prompt_zero_bpm
+        assert "BPM" not in prompt_negative_bpm
+
 
 class TestBuildSceneSpec:
     """Test scene spec building logic."""
@@ -818,6 +938,51 @@ class TestBuildSceneSpec:
 
         with pytest.raises(ValueError, match="Section.*not found"):
             build_scene_spec("missing-section", analysis=analysis)
+
+    def test_build_scene_spec_passes_bpm_to_prompt(self):
+        """Test that build_scene_spec passes BPM from analysis to build_prompt."""
+        analysis = SongAnalysis(
+            duration_sec=240.0,
+            bpm=128.0,  # Fast BPM
+            sections=[
+                SongSection(
+                    id="test-section", type="chorus", startSec=64.0, endSec=96.0, confidence=0.9
+                )
+            ],
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            mood_vector=MoodVector(energy=0.8, valence=0.7, danceability=0.7, tension=0.5),
+            primary_genre="Electronic",
+            lyrics_available=False,
+        )
+
+        spec = build_scene_spec("test-section", analysis=analysis)
+
+        # Prompt should include BPM enhancement
+        assert "BPM" in spec.prompt
+        assert "128" in spec.prompt or "rhythmic" in spec.prompt.lower()
+
+    def test_build_scene_spec_without_bpm_skips_enhancement(self):
+        """Test that build_scene_spec without BPM skips rhythm enhancement."""
+        analysis = SongAnalysis(
+            duration_sec=240.0,
+            bpm=None,  # No BPM
+            sections=[
+                SongSection(
+                    id="test-section", type="chorus", startSec=64.0, endSec=96.0, confidence=0.9
+                )
+            ],
+            mood_primary="energetic",
+            mood_tags=["energetic", "upbeat"],
+            mood_vector=MoodVector(energy=0.8, valence=0.7, danceability=0.7, tension=0.5),
+            primary_genre="Electronic",
+            lyrics_available=False,
+        )
+
+        spec = build_scene_spec("test-section", analysis=analysis)
+
+        # Prompt should not include BPM enhancement
+        assert "BPM" not in spec.prompt
 
     def test_intensity_calculation(self):
         """Test intensity is calculated as (energy + tension) / 2.0."""

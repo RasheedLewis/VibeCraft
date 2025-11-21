@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import ffmpeg
 
@@ -256,6 +257,9 @@ def concatenate_clips(
     song_duration_sec: float,
     ffmpeg_bin: str | None = None,
     job_id: str | None = None,
+    beat_times: Optional[list[float]] = None,  # NEW PARAMETER
+    filter_type: str = "flash",  # NEW PARAMETER
+    frame_rate: float = 24.0,  # NEW PARAMETER
 ) -> CompositionResult:
     """
     Concatenate normalized clips and mux with audio.
@@ -408,6 +412,74 @@ def concatenate_clips(
                     trimmed_output_path.rename(temp_video_path)
                 finally:
                     trimmed_output_path.unlink(missing_ok=True)
+            
+            # Apply beat filters if provided (before muxing with audio)
+            if beat_times and len(beat_times) > 0:
+                if job_id:
+                    update_job_progress(job_id, 78, "processing")  # Applying beat filters
+                logger.info(f"Applying {filter_type} beat filters for {len(beat_times)} beats")
+                
+                try:
+                    from app.services.beat_filters import generate_beat_filter_complex
+                    
+                    # Generate filter complex for beat effects
+                    beat_filters = generate_beat_filter_complex(
+                        beat_times=beat_times,
+                        filter_type=filter_type,
+                        frame_rate=frame_rate,
+                    )
+                    
+                    if beat_filters and filter_type == "flash":
+                        # Apply brightness pulse on beats using time-based filter
+                        filtered_video_path = temp_video_path.parent / "temp_filtered.mp4"
+                        filtered_input = ffmpeg.input(str(temp_video_path))
+                        
+                        # Build time-based condition for all beats
+                        # FFmpeg's between(t,start,end) returns 1 if true, 0 if false
+                        tolerance_sec = 0.05  # 50ms tolerance
+                        
+                        # Create a filter expression that triggers on any beat
+                        # We'll use a geq filter with a condition that checks if current time
+                        # is within any beat window
+                        beat_conditions = []
+                        for beat_time in beat_times[:50]:  # Limit to first 50 beats for expression length
+                            start_time = max(0, beat_time - tolerance_sec)
+                            end_time = min(beat_time + tolerance_sec, song_duration_sec)
+                            beat_conditions.append(f"between(t,{start_time},{end_time})")
+                        
+                        if beat_conditions:
+                            # Combine conditions with OR (using addition since they return 0/1)
+                            # In FFmpeg expressions, we can use min(1, sum) to create OR logic
+                            condition_expr = "+".join(beat_conditions)
+                            
+                            # Apply brightness increase on beats using geq filter
+                            # Increase RGB values by 30 when condition is true
+                            filtered_video = filtered_input["v"].filter(
+                                "geq",
+                                r=f"r+if(min(1,{condition_expr}),30,0)",
+                                g=f"g+if(min(1,{condition_expr}),30,0)",
+                                b=f"b+if(min(1,{condition_expr}),30,0)",
+                            )
+                        else:
+                            filtered_video = filtered_input["v"]
+                        
+                        (
+                            ffmpeg.output(
+                                filtered_video,
+                                str(filtered_video_path),
+                                vcodec=DEFAULT_VIDEO_CODEC,
+                            )
+                            .overwrite_output()
+                            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+                        )
+                        
+                        # Replace temp video with filtered version
+                        temp_video_path.unlink(missing_ok=True)
+                        filtered_video_path.rename(temp_video_path)
+                        logger.info("Beat filters applied successfully")
+                except Exception as filter_exc:
+                    logger.warning(f"Failed to apply beat filters, continuing without filters: {filter_exc}")
+                    # Continue without filters if application fails
             
             # Now mux the video (which matches audio duration) with audio
             if job_id:

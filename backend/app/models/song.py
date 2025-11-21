@@ -34,6 +34,10 @@ class Song(SQLModel, table=True):
     selected_start_sec: Optional[float] = Field(default=None, ge=0)
     selected_end_sec: Optional[float] = Field(default=None, ge=0)
     video_type: Optional[str] = Field(default=None, max_length=32)
+    character_reference_image_s3_key: Optional[str] = Field(default=None, max_length=1024)
+    character_consistency_enabled: bool = Field(default=False)
+    character_interrogation_prompt: Optional[str] = Field(default=None)
+    character_generated_image_s3_key: Optional[str] = Field(default=None, max_length=1024)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

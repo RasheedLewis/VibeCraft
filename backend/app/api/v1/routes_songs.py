@@ -64,7 +64,12 @@ from app.services.composition_job import (
     get_job_status,
 )
 from app.services.song_analysis import enqueue_song_analysis, get_latest_analysis
-from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
+from app.services.storage import (
+    generate_presigned_get_url,
+    upload_bytes_to_s3,
+    get_character_image_s3_key,
+)
+from app.services.image_validation import validate_image, normalize_image_format
 from app.schemas.composition import (
     ComposeVideoRequest,
     ComposeVideoResponse,
@@ -330,6 +335,94 @@ def update_audio_selection(
     db.refresh(song)
     
     return song
+
+
+@router.post(
+    "/{song_id}/character-image",
+    status_code=status.HTTP_200_OK,
+    summary="Upload character reference image",
+)
+async def upload_character_image(
+    song_id: UUID,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Upload a character reference image for a song.
+    
+    Only available for songs with video_type='short_form'.
+    The image will be validated, normalized to JPEG, and stored in S3.
+    """
+    settings = get_settings()
+    
+    # Get song
+    song = get_song_or_404(song_id, db)
+    
+    # Only allow for short_form videos
+    if song.video_type != "short_form":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Character consistency only available for short_form videos"
+        )
+    
+    # Read image bytes
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image file is empty")
+    
+    # Validate image
+    is_valid, error_msg, metadata = validate_image(image_bytes, image.filename)
+    if not is_valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+    
+    # Normalize to JPEG
+    normalized_bytes = normalize_image_format(image_bytes, "JPEG")
+    
+    # Generate S3 key
+    s3_key = get_character_image_s3_key(str(song_id), "reference")
+    
+    # Upload to S3
+    try:
+        await asyncio.to_thread(
+            upload_bytes_to_s3,
+            bucket_name=settings.s3_bucket_name,
+            key=s3_key,
+            data=normalized_bytes,
+            content_type="image/jpeg",
+        )
+    except Exception as exc:
+        logger.exception(f"Failed to upload character image to S3: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to store image. Verify storage configuration."
+        ) from exc
+    
+    # Update song record
+    song.character_reference_image_s3_key = s3_key
+    song.character_consistency_enabled = True
+    db.add(song)
+    db.commit()
+    db.refresh(song)
+    
+    # Generate presigned URL
+    try:
+        image_url = await asyncio.to_thread(
+            generate_presigned_get_url,
+            bucket_name=settings.s3_bucket_name,
+            key=s3_key,
+            expires_in=3600,
+        )
+    except Exception as exc:
+        logger.exception(f"Failed to generate presigned URL: {exc}")
+        image_url = None
+    
+    return {
+        "song_id": str(song_id),
+        "image_s3_key": s3_key,
+        "image_url": image_url,
+        "metadata": metadata,
+        "status": "uploaded",
+    }
 
 
 @router.get(

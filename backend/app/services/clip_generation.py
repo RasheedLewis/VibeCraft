@@ -213,8 +213,44 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     scene_spec = _build_scene_spec_for_clip(clip_id, analysis)
     seed = _determine_seed_for_clip(clip_id)
 
+    # Get character image URL if character consistency is enabled
+    character_image_url = None
+    try:
+        song = SongRepository.get_by_id(song_id)
+        if song and song.character_consistency_enabled and song.character_generated_image_s3_key:
+            settings = get_settings()
+            try:
+                character_image_url = generate_presigned_get_url(
+                    bucket_name=settings.s3_bucket_name,
+                    key=song.character_generated_image_s3_key,
+                    expires_in=3600,
+                )
+                logger.info(f"Using character image for clip generation: {song.character_generated_image_s3_key}")
+            except Exception as e:
+                logger.warning(f"Failed to generate presigned URL for character image: {e}")
+        elif song and song.character_consistency_enabled and song.character_reference_image_s3_key:
+            # Fallback to reference image if generated image not available yet
+            settings = get_settings()
+            try:
+                character_image_url = generate_presigned_get_url(
+                    bucket_name=settings.s3_bucket_name,
+                    key=song.character_reference_image_s3_key,
+                    expires_in=3600,
+                )
+                logger.info(f"Using character reference image for clip generation: {song.character_reference_image_s3_key}")
+            except Exception as e:
+                logger.warning(f"Failed to generate presigned URL for character reference image: {e}")
+    except SongNotFoundError:
+        logger.warning(f"Song {song_id} not found when checking character consistency")
+    except Exception as e:
+        logger.warning(f"Error checking character consistency: {e}")
+
     success, video_url, metadata = generate_section_video(
-        scene_spec, seed=seed, num_frames=clip_num_frames, fps=clip_fps
+        scene_spec,
+        seed=seed,
+        num_frames=clip_num_frames,
+        fps=clip_fps,
+        reference_image_url=character_image_url,
     )
     metadata = metadata or {}
 

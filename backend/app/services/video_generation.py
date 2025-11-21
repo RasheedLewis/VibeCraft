@@ -23,6 +23,7 @@ def generate_section_video(
     seed: Optional[int] = None,
     num_frames: Optional[int] = None,
     fps: Optional[int] = None,
+    reference_image_url: Optional[str] = None,
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
 ) -> tuple[bool, Optional[str], Optional[dict]]:
@@ -32,6 +33,9 @@ def generate_section_video(
     Args:
         scene_spec: SceneSpec object with prompt and parameters
         seed: Optional seed for reproducibility
+        num_frames: Optional frame count override
+        fps: Optional FPS override
+        reference_image_url: Optional image URL for image-to-video generation
         max_poll_attempts: Maximum number of polling attempts
         poll_interval_sec: Seconds between polling attempts
 
@@ -48,8 +52,12 @@ def generate_section_video(
         # Create Replicate client
         client = replicate.Client(api_token=settings.replicate_api_token)
 
-        # Prepare input parameters for Minimax Hailuo 2.3 (text-to-video)
-        # Parameters: prompt, num_frames, width, height, fps, seed
+        # Determine if using image-to-video or text-to-video
+        is_image_to_video = reference_image_url is not None
+        
+        # Prepare input parameters for Minimax Hailuo 2.3
+        # Supports both text-to-video and image-to-video
+        # Parameters: prompt, num_frames, width, height, fps, seed, image (optional)
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
         input_params = {
@@ -60,10 +68,16 @@ def generate_section_video(
             "fps": effective_fps,
         }
 
+        # Add image input if provided (for image-to-video)
+        if reference_image_url:
+            input_params["image"] = reference_image_url
+            logger.info(f"Using image-to-video generation with reference image: {reference_image_url}")
+
         if seed is not None:
             input_params["seed"] = seed
 
-        logger.info(f"Starting video generation for section {scene_spec.section_id}")
+        generation_type = "image-to-video" if is_image_to_video else "text-to-video"
+        logger.info(f"Starting {generation_type} generation for section {scene_spec.section_id}")
         logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
 
         # Start the prediction (async - use predictions.create for long-running jobs)
@@ -88,7 +102,10 @@ def generate_section_video(
             "resolution_height": input_params["height"],
             "seed": seed,
             "job_id": job_id,
+            "generation_type": generation_type,
         }
+        if reference_image_url:
+            metadata["reference_image_url"] = reference_image_url
 
         for attempt in range(max_poll_attempts):
             prediction = client.predictions.get(job_id)

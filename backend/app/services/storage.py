@@ -154,3 +154,22 @@ def download_bytes_from_s3(*, bucket_name: str, key: str) -> bytes:
     return body.read()
 
 
+def get_character_image_s3_key(song_id: str, image_type: str = "reference") -> str:
+    """
+    Generate S3 key for character images.
+    
+    Args:
+        song_id: Song UUID (as string)
+        image_type: "reference" or "generated"
+    
+    Returns:
+        S3 key path
+    """
+    if image_type == "reference":
+        return f"songs/{song_id}/character_reference.jpg"
+    elif image_type == "generated":
+        return f"songs/{song_id}/character_generated.jpg"
+    else:
+        raise ValueError(f"Unknown image_type: {image_type}. Must be 'reference' or 'generated'")
+
+

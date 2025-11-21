@@ -24,7 +24,7 @@ from app.schemas.clip import (
     SongClipStatus,
 )
 from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
-from app.schemas.song import SongRead, SongUploadResponse
+from app.schemas.song import AudioSelectionUpdate, SongRead, SongUploadResponse
 from app.services import preprocess_audio
 from app.core.constants import (
     ACCEPTABLE_ALIGNMENT,
@@ -266,6 +266,71 @@ def get_song(song_id: UUID, db: Session = Depends(get_db)) -> Song:
     return song
 
 
+@router.patch(
+    "/{song_id}/selection",
+    response_model=SongRead,
+    summary="Update audio selection range",
+)
+def update_audio_selection(
+    song_id: UUID,
+    selection: AudioSelectionUpdate,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Update the selected audio segment for a song."""
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+    
+    if song.duration_sec is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Song duration not available. Please wait for analysis to complete.",
+        )
+    
+    # Validate selection
+    start_sec = selection.start_sec
+    end_sec = selection.end_sec
+    
+    if start_sec < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Start time must be >= 0")
+    
+    if end_sec > song.duration_sec:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"End time ({end_sec}s) exceeds song duration ({song.duration_sec}s)",
+        )
+    
+    if end_sec <= start_sec:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End time must be greater than start time",
+        )
+    
+    duration = end_sec - start_sec
+    MAX_SELECTION_DURATION = 30.0
+    if duration > MAX_SELECTION_DURATION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Selection duration ({duration:.1f}s) exceeds maximum ({MAX_SELECTION_DURATION}s)",
+        )
+    
+    MIN_SELECTION_DURATION = 1.0
+    if duration < MIN_SELECTION_DURATION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Selection duration ({duration:.1f}s) is below minimum ({MIN_SELECTION_DURATION}s)",
+        )
+    
+    # Update song
+    song.selected_start_sec = start_sec
+    song.selected_end_sec = end_sec
+    db.add(song)
+    db.commit()
+    db.refresh(song)
+    
+    return song
+
+
 @router.get(
     "/{song_id}/beat-aligned-boundaries",
     response_model=BeatAlignedBoundariesResponse,
@@ -397,7 +462,20 @@ def plan_clips_for_song(
             detail="Song analysis not found. Run analysis before planning clips.",
         )
 
-    min_required_clips = max(1, int(math.ceil(song.duration_sec / max_clip_sec)))
+    # Determine effective duration and time offset based on selection
+    if song.selected_start_sec is not None and song.selected_end_sec is not None:
+        effective_duration = song.selected_end_sec - song.selected_start_sec
+        time_offset = song.selected_start_sec
+        logger.info(
+            f"Using selected audio range: {song.selected_start_sec}s - {song.selected_end_sec}s "
+            f"(duration: {effective_duration}s) for song {song_id}"
+        )
+    else:
+        effective_duration = song.duration_sec
+        time_offset = 0.0
+        logger.info(f"Using full audio duration: {effective_duration}s for song {song_id}")
+
+    min_required_clips = max(1, int(math.ceil(effective_duration / max_clip_sec)))
 
     effective_clip_count = clip_count if clip_count is not None else min_required_clips
     effective_clip_count = max(3, min(64, effective_clip_count))
@@ -406,18 +484,18 @@ def plan_clips_for_song(
         effective_clip_count = min(64, min_required_clips)
 
     min_total_required = min_clip_sec * effective_clip_count
-    if song.duration_sec < min_total_required - 1e-3:
+    if effective_duration < min_total_required - 1e-3:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Unable to plan clips: song duration is shorter than minimum total clip "
+                "Unable to plan clips: effective duration is shorter than minimum total clip "
                 "duration. Reduce clip_count or lower min_clip_sec."
             ),
         )
 
     try:
         plans = plan_beat_aligned_clips(
-            duration_sec=song.duration_sec,
+            duration_sec=effective_duration,
             analysis=analysis,
             clip_count=effective_clip_count,
             min_clip_sec=min_clip_sec,
@@ -426,6 +504,12 @@ def plan_clips_for_song(
         )
     except ClipPlanningError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    # Adjust clip start/end times by time offset if selection is active
+    if time_offset > 0:
+        for plan in plans:
+            plan.start_sec = round(plan.start_sec + time_offset, 4)
+            plan.end_sec = round(plan.end_sec + time_offset, 4)
 
     persisted = persist_clip_plans(
         song_id=song_id,

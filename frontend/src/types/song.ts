@@ -141,6 +141,8 @@ export interface SongRead {
   composed_video_poster_s3_key?: string | null
   composed_video_duration_sec?: number | null
   composed_video_fps?: number | null
+  selected_start_sec?: number | null
+  selected_end_sec?: number | null
   created_at: string
   updated_at: string
 }

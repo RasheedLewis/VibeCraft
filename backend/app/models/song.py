@@ -31,6 +31,8 @@ class Song(SQLModel, table=True):
     composed_video_poster_s3_key: Optional[str] = Field(default=None, max_length=1024)
     composed_video_duration_sec: Optional[float] = Field(default=None, ge=0)
     composed_video_fps: Optional[int] = Field(default=None, ge=1)
+    selected_start_sec: Optional[float] = Field(default=None, ge=0)
+    selected_end_sec: Optional[float] = Field(default=None, ge=0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

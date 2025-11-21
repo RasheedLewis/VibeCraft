@@ -35,6 +35,7 @@ import {
   HardDriveIcon,
   ErrorIcon,
 } from '../components/upload/Icons'
+import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimeline'
 import { SongProfileView } from '../components/song/SongProfileView'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
@@ -61,6 +62,11 @@ export const UploadPage: React.FC = () => {
   const [playerClipSelectionLocked, setPlayerClipSelectionLocked] =
     useState<boolean>(false)
   const compositionCompleteHandledRef = useRef<string | null>(null)
+  const [audioSelection, setAudioSelection] = useState<{
+    startSec: number
+    endSec: number
+  } | null>(null)
+  const [isSavingSelection, setIsSavingSelection] = useState(false)
 
   // Use polling hooks with bugfixes
   const analysisPolling = useAnalysisPolling(result?.songId ?? null)
@@ -474,6 +480,55 @@ export const UploadPage: React.FC = () => {
     }
   }, [analysisState, result?.songId, songDetails, fetchSongDetails])
 
+  // Load existing selection when song loads
+  useEffect(() => {
+    if (
+      songDetails?.selected_start_sec !== undefined &&
+      songDetails?.selected_start_sec !== null &&
+      songDetails?.selected_end_sec !== undefined &&
+      songDetails?.selected_end_sec !== null
+    ) {
+      setAudioSelection({
+        startSec: songDetails.selected_start_sec,
+        endSec: songDetails.selected_end_sec,
+      })
+    }
+  }, [songDetails])
+
+  // Handler for selection changes
+  const handleSelectionChange = useCallback(
+    async (startSec: number, endSec: number) => {
+      if (!result?.songId) return
+
+      setAudioSelection({ startSec, endSec })
+      setIsSavingSelection(true)
+
+      try {
+        await apiClient.patch(`/songs/${result.songId}/selection`, {
+          start_sec: startSec,
+          end_sec: endSec,
+        })
+      } catch (err) {
+        console.error('Failed to save audio selection:', err)
+        // Don't show error to user - selection is saved locally
+      } finally {
+        setIsSavingSelection(false)
+      }
+    },
+    [result?.songId],
+  )
+
+  // Parse waveform data
+  const waveformValues = useMemo(() => {
+    if (!songDetails?.waveform_json) return []
+    try {
+      const parsed = JSON.parse(songDetails.waveform_json)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }, [songDetails?.waveform_json])
+
   useEffect(() => {
     if (!clipSummary?.composedVideoUrl) {
       return
@@ -749,30 +804,65 @@ export const UploadPage: React.FC = () => {
 
       {analysisState === 'completed' && analysisData && songDetails && (
         <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
-          <SongProfileView
-            analysisData={analysisData}
-            songDetails={songDetails}
-            clipSummary={clipSummary}
-            clipJobId={clipJobId}
-            clipJobStatus={clipJobStatus}
-            clipJobProgress={clipJobProgress}
-            clipJobError={clipJobError}
-            isComposing={isComposing}
-            composeJobProgress={composeJobProgress}
-            playerActiveClipId={playerActiveClipId}
-            highlightedSectionId={highlightedSectionId}
-            metadata={metadata}
-            lyricsBySection={lyricsBySection}
-            audioUrl={result?.audioUrl ?? null}
-            onGenerateClips={handleGenerateClips}
-            onCancelClipJob={handleCancelClipJob}
-            onCompose={handleComposeClips}
-            onPreviewClip={handlePreviewClip}
-            onRegenerateClip={handleRegenerateClip}
-            onRetryClip={handleRetryClip}
-            onPlayerClipSelect={handlePlayerClipSelect}
-            onSectionSelect={handleSectionSelect}
-          />
+          {/* Audio Selection Step */}
+          {!audioSelection && (
+            <section className="mb-8 space-y-4">
+              <div className="vc-label">Select Audio Segment (Up to 30s)</div>
+              <p className="text-sm text-vc-text-secondary">
+                Choose up to 30 seconds from your track to generate video clips.
+              </p>
+              {result?.audioUrl && songDetails.duration_sec && (
+                <AudioSelectionTimeline
+                  audioUrl={result.audioUrl}
+                  waveform={waveformValues}
+                  durationSec={songDetails.duration_sec}
+                  beatTimes={analysisData.beatTimes}
+                  onSelectionChange={handleSelectionChange}
+                />
+              )}
+              {audioSelection && (
+                <div className="flex justify-end">
+                  <VCButton
+                    onClick={() => {
+                      // Selection is saved automatically, proceed
+                      setAudioSelection(audioSelection)
+                    }}
+                    disabled={isSavingSelection}
+                  >
+                    {isSavingSelection ? 'Saving...' : 'Continue with Selection'}
+                  </VCButton>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Song Profile View - shown after selection is made */}
+          {audioSelection && (
+            <SongProfileView
+              analysisData={analysisData}
+              songDetails={songDetails}
+              clipSummary={clipSummary}
+              clipJobId={clipJobId}
+              clipJobStatus={clipJobStatus}
+              clipJobProgress={clipJobProgress}
+              clipJobError={clipJobError}
+              isComposing={isComposing}
+              composeJobProgress={composeJobProgress}
+              playerActiveClipId={playerActiveClipId}
+              highlightedSectionId={highlightedSectionId}
+              metadata={metadata}
+              lyricsBySection={lyricsBySection}
+              audioUrl={result?.audioUrl ?? null}
+              onGenerateClips={handleGenerateClips}
+              onCancelClipJob={handleCancelClipJob}
+              onCompose={handleComposeClips}
+              onPreviewClip={handlePreviewClip}
+              onRegenerateClip={handleRegenerateClip}
+              onRetryClip={handleRetryClip}
+              onPlayerClipSelect={handlePlayerClipSelect}
+              onSectionSelect={handleSectionSelect}
+            />
+          )}
         </div>
       )}
       {analysisState === 'completed' && (!analysisData || !songDetails) && (

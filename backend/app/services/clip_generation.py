@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import subprocess
 from collections import Counter
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -405,6 +406,56 @@ def _verify_url_exists(url: str, timeout: float = 10.0) -> bool:
             return False
 
 
+def _extract_audio_segment(
+    audio_path: Path,
+    start_sec: float,
+    end_sec: float,
+    output_path: Path,
+) -> None:
+    """Extract audio segment using ffmpeg.
+    
+    Args:
+        audio_path: Path to input audio file
+        start_sec: Start time in seconds
+        end_sec: End time in seconds
+        output_path: Path to output audio file
+        
+    Raises:
+        RuntimeError: If ffmpeg extraction fails
+    """
+    settings = get_settings()
+    ffmpeg_bin = settings.ffmpeg_bin
+    
+    duration = end_sec - start_sec
+    cmd = [
+        ffmpeg_bin,
+        "-i", str(audio_path),
+        "-ss", str(start_sec),
+        "-t", str(duration),
+        "-acodec", "copy",  # Copy codec to avoid re-encoding
+        "-y",  # Overwrite output file
+        str(output_path),
+    ]
+    
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60.0,
+        )
+        logger.info(
+            f"Extracted audio segment: {start_sec}s - {end_sec}s "
+            f"({duration:.2f}s) from {audio_path} to {output_path}"
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg extraction failed: {e.stderr}")
+        raise RuntimeError(f"Failed to extract audio segment: {e.stderr}") from e
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Audio extraction timed out after 60 seconds") from None
+
+
 def _download_clip_to_path(url: str, destination: Path, timeout: float = 120.0) -> None:
     # Verify URL exists before attempting download
     if not _verify_url_exists(url, timeout=10.0):
@@ -631,8 +682,27 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         # Download audio (key has already been validated to exist in S3 above)
         audio_bytes = download_bytes_from_s3(bucket_name=bucket, key=audio_key)
         audio_extension = Path(audio_key).suffix or ".wav"
-        audio_path = temp_dir / f"song_audio{audio_extension}"
-        audio_path.write_bytes(audio_bytes)
+        full_audio_path = temp_dir / f"song_audio_full{audio_extension}"
+        full_audio_path.write_bytes(audio_bytes)
+
+        # Extract audio segment if selection exists
+        if song.selected_start_sec is not None and song.selected_end_sec is not None:
+            logger.info(
+                f"Extracting selected audio segment: {song.selected_start_sec}s - {song.selected_end_sec}s "
+                f"(duration: {song.selected_end_sec - song.selected_start_sec}s)"
+            )
+            audio_path = temp_dir / f"song_audio_selected{audio_extension}"
+            _extract_audio_segment(
+                audio_path=full_audio_path,
+                start_sec=song.selected_start_sec,
+                end_sec=song.selected_end_sec,
+                output_path=audio_path,
+            )
+            # Use selected duration for composition
+            effective_duration = song.selected_end_sec - song.selected_start_sec
+        else:
+            audio_path = full_audio_path
+            effective_duration = float(song_duration)
 
         if job_id:
             update_job_progress(job_id, 65, "processing")  # Starting concatenation
@@ -643,7 +713,7 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
             [str(path) for path in normalized_paths],
             str(audio_path),
             str(output_path),
-            song_duration_sec=float(song_duration),
+            song_duration_sec=effective_duration,
             job_id=job_id,
         )
         

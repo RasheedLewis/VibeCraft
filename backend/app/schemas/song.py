@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SongRead(BaseModel):
@@ -25,6 +25,8 @@ class SongRead(BaseModel):
     composed_video_poster_s3_key: Optional[str] = None
     composed_video_duration_sec: Optional[float] = None
     composed_video_fps: Optional[int] = None
+    selected_start_sec: Optional[float] = None
+    selected_end_sec: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 
@@ -38,4 +40,20 @@ class SongUploadResponse(BaseModel):
     status: str
 
     model_config = {"populate_by_name": True}
+
+
+class AudioSelectionUpdate(BaseModel):
+    start_sec: float = Field(ge=0, description="Start time in seconds")
+    end_sec: float = Field(gt=0, description="End time in seconds")
+    
+    @model_validator(mode='after')
+    def validate_range(self) -> 'AudioSelectionUpdate':
+        if self.end_sec <= self.start_sec:
+            raise ValueError("end_sec must be greater than start_sec")
+        duration = self.end_sec - self.start_sec
+        if duration > 30.0:
+            raise ValueError(f"Selection duration ({duration}s) exceeds maximum (30s)")
+        if duration < 1.0:
+            raise ValueError(f"Selection duration ({duration}s) is below minimum (1s)")
+        return self
 

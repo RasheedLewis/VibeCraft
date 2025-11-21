@@ -35,6 +35,30 @@ Implement a three-phase beat synchronization system that:
 - Beat alignment utilities exist (`beat_alignment.py`) for calculating boundaries
 - Clip generation happens via Replicate API
 
+### Foundation Status (✅ COMPLETE)
+
+**Beat Sync Foundation has been implemented** (see `FOUNDATION-IMPLEMENTATION-GUIDE.md`):
+
+- ✅ **Prompt Enhancement Service** (`prompt_enhancement.py`):
+  - `get_tempo_classification()` - Classifies BPM into slow/medium/fast/very_fast
+  - `get_motion_descriptor()` - Gets motion descriptors based on BPM and motion type
+  - `enhance_prompt_with_rhythm()` - Enhances prompts with rhythmic motion cues
+  - `get_motion_type_from_genre()` - Suggests motion type based on genre
+  - Integrated into `scene_planner.py` - `build_prompt()` now accepts `bpm` and `motion_type` parameters
+
+- ✅ **Beat Filter Service** (`beat_filters.py`):
+  - `generate_beat_filter_expression()` - Generates FFmpeg filter expressions
+  - `generate_beat_filter_complex()` - Generates filter_complex expressions
+  - Supports: flash, color_burst, zoom_pulse, brightness_pulse filter types
+  - Integrated into `video_composition.py` - `concatenate_clips()` now accepts `beat_times`, `filter_type`, `frame_rate` parameters
+
+- ✅ **Integration**:
+  - BPM flows from analysis → scene planning → prompt enhancement
+  - Beat times flow from analysis → composition execution → video composition → beat filters
+  - All changes are backward compatible (optional parameters)
+
+**Next Steps**: The foundation enables Phase 3.1 and Phase 3.2 full implementation. See sections below for remaining work.
+
 ### Target State
 
 After implementation:
@@ -69,73 +93,35 @@ Enhance the base prompt template with rhythmic motion descriptors based on:
 
 #### 3.1.1: Prompt Enhancement Service
 
-**Location**: `backend/app/services/prompt_enhancement.py` (new file)
+**Status**: ✅ **FOUNDATION COMPLETE** - Basic implementation done, enhancements needed
 
-**Key Functions**:
+**Location**: `backend/app/services/prompt_enhancement.py` (✅ exists)
 
-```python
-def enhance_prompt_with_rhythm(
-    base_prompt: str,
-    bpm: float,
-    motion_type: str = "bouncing",
-    style_context: dict | None = None
-) -> str:
-    """
-    Enhance base prompt with rhythmic motion cues.
-    
-    Args:
-        base_prompt: Original user prompt or generated prompt
-        bpm: Song BPM from song analysis
-        motion_type: Type of rhythmic motion (bouncing, pulsing, rotating, stepping, looping)
-        style_context: Optional dict with mood, colors, setting
-    
-    Returns:
-        Enhanced prompt string with rhythmic descriptors
-    """
-    # Map BPM to tempo descriptors
-    tempo_descriptor = get_tempo_descriptor(bpm)
-    motion_style = get_motion_style(bpm, motion_type)
-    
-    # Build rhythmic phrase
-    rhythmic_phrase = f"{motion_style} at {int(bpm)} BPM tempo"
-    
-    # Combine with base prompt
-    enhanced = f"{base_prompt}. {rhythmic_phrase}. Clear periodic motion, minimal complexity."
-    
-    return enhanced
+**Current Implementation** (Foundation):
 
-def get_tempo_descriptor(bpm: float) -> str:
-    """Map BPM to tempo descriptor."""
-    if bpm < 100:
-        return "slow, flowing"
-    elif 100 <= bpm < 130:
-        return "steady, moderate"
-    elif 130 <= bpm < 160:
-        return "energetic, driving"
-    else:  # bpm >= 160
-        return "frenetic, rapid"
+The service has been implemented with the following functions:
+- ✅ `get_tempo_classification(bpm)` - Classifies BPM into "slow", "medium", "fast", "very_fast" (boundaries: 60, 100, 140 BPM)
+- ✅ `get_motion_descriptor(bpm, motion_type)` - Gets motion descriptors based on BPM and motion type
+- ✅ `enhance_prompt_with_rhythm(base_prompt, bpm, motion_type)` - Enhances prompts with rhythmic motion cues
+- ✅ `get_motion_type_from_genre(genre)` - Suggests motion type based on genre
 
-def get_motion_style(bpm: float, motion_type: str) -> str:
-    """Get motion style descriptor based on BPM and motion type."""
-    motion_templates = {
-        "bouncing": {
-            "slow": "gentle swaying",
-            "moderate": "steady rhythmic bouncing",
-            "fast": "energetic bouncing",
-            "very_fast": "rapid pulsing"
-        },
-        "pulsing": {
-            "slow": "slow pulsing",
-            "moderate": "rhythmic pulsing",
-            "fast": "rapid pulsing",
-            "very_fast": "frenetic pulsing"
-        },
-        # ... other motion types
-    }
-    
-    tempo_key = get_tempo_key(bpm)
-    return motion_templates.get(motion_type, {}).get(tempo_key, "rhythmic motion")
-```
+**Integration Status**:
+- ✅ Integrated into `scene_planner.py` - `build_prompt()` accepts `bpm` and `motion_type` parameters
+- ✅ BPM flows from `SongAnalysis` → `build_scene_spec()` → `build_prompt()` → `enhance_prompt_with_rhythm()`
+
+**Remaining Work** (Full Phase 3.1):
+
+1. **API-Specific Optimization** (not yet implemented):
+   - Add `optimize_prompt_for_api()` function for Runway, Pika, Kling-specific prompt formats
+   - Test and tune prompt formats for each API
+
+2. **Enhanced Motion Templates** (partially implemented):
+   - Current: Basic motion descriptors work
+   - Future: Add more detailed motion templates (see `RHYTHMIC_MOTION_TEMPLATES` in plan)
+
+3. **Motion Type Selection Logic** (partially implemented):
+   - Current: `get_motion_type_from_genre()` provides basic genre-based selection
+   - Future: Add more sophisticated selection based on mood, scene context, user preferences
 
 **Motion Type Templates**:
 
@@ -169,39 +155,25 @@ RHYTHMIC_MOTION_TEMPLATES = {
 
 #### 3.1.2: Integration with Clip Generation
 
-**Location**: `backend/app/services/clip_generation.py` (modify existing)
+**Status**: ✅ **FOUNDATION COMPLETE** - Integrated at scene planning level
 
-**Changes Required**:
+**Current Implementation**:
 
-1. Import prompt enhancement service
-2. Enhance prompt before sending to Replicate API
-3. Add motion_type parameter (can be user-selected or auto-detected)
+The prompt enhancement is integrated at the scene planning level:
+- ✅ `scene_planner.py` → `build_scene_spec()` passes BPM from analysis to `build_prompt()`
+- ✅ `build_prompt()` calls `enhance_prompt_with_rhythm()` when BPM is provided
+- ✅ Motion type is auto-selected via `get_motion_type_from_genre()` if not provided
 
-**Code Changes**:
+**Remaining Work**:
 
-```python
-from app.services.prompt_enhancement import enhance_prompt_with_rhythm
-from app.repositories import SongRepository
+1. **Direct Integration in Clip Generation** (optional enhancement):
+   - Currently prompts are enhanced in `build_scene_spec()` before clip generation
+   - Could add direct integration in `clip_generation.py` for more control
+   - Would allow user-selected motion types per clip
 
-def generate_clip_prompt(
-    scene_description: str,
-    song_id: UUID,
-    motion_type: str = "bouncing"
-) -> str:
-    """Generate enhanced prompt with rhythmic cues."""
-    # Get song analysis for BPM
-    song = SongRepository.get_by_id(song_id)
-    bpm = song.analysis.bpm if song.analysis else 120.0  # Default fallback
-    
-    # Enhance prompt
-    enhanced_prompt = enhance_prompt_with_rhythm(
-        base_prompt=scene_description,
-        bpm=bpm,
-        motion_type=motion_type
-    )
-    
-    return enhanced_prompt
-```
+2. **Motion Type Selection UI** (future):
+   - Add UI controls for motion type selection
+   - Store user preferences
 
 #### 3.1.3: API-Specific Optimization
 
@@ -312,12 +284,17 @@ def select_motion_type(
 
 ### Effort Estimate
 
-- **Prompt Enhancement Service**: 1 day
-- **Integration with Clip Generation**: 0.5 days
+**Foundation (✅ COMPLETE)**:
+- ✅ Prompt Enhancement Service: Done
+- ✅ Integration with Scene Planning: Done
+- ✅ Basic Motion Type Selection: Done
+
+**Remaining Work**:
 - **API-Specific Optimization**: 1 day
-- **Motion Type Selection**: 0.5 days
+- **Enhanced Motion Templates**: 0.5 days
+- **Advanced Motion Type Selection**: 0.5 days
 - **Testing & Validation**: 1 day
-- **Total: ~4 days**
+- **Total Remaining: ~3 days**
 
 ---
 
@@ -335,43 +312,40 @@ Use FFmpeg's `select` and `geq` filters to apply effects at exact frame timestam
 
 #### 3.2.1: Beat Effect Service
 
-**Location**: `backend/app/services/beat_effects.py` (new file)
+**Status**: ✅ **FOUNDATION COMPLETE** - Basic implementation done, enhancements needed
 
-**Key Functions**:
+**Location**: `backend/app/services/beat_filters.py` (✅ exists - note: named `beat_filters.py` not `beat_effects.py`)
 
-```python
-def create_beat_effect_filter(
-    beat_times: list[float],
-    effect_type: str = "flash",
-    effect_params: dict | None = None
-) -> str:
-    """
-    Create FFmpeg filter complex for beat-synced visual effects.
-    
-    Args:
-        beat_times: List of beat timestamps in seconds
-        effect_type: Type of effect (flash, color_burst, zoom_pulse, glitch)
-        effect_params: Optional parameters for effect customization
-    
-    Returns:
-        FFmpeg filter complex string
-    """
-    fps = 24  # Default FPS (should match video FPS)
-    frame_interval = 1.0 / fps
-    
-    # Convert beat times to frame indices
-    beat_frames = [int(beat_time * fps) for beat_time in beat_times]
-    
-    if effect_type == "flash":
-        return create_flash_filter(beat_frames, effect_params or {})
-    elif effect_type == "color_burst":
-        return create_color_burst_filter(beat_frames, effect_params or {})
-    elif effect_type == "zoom_pulse":
-        return create_zoom_pulse_filter(beat_frames, effect_params or {})
-    elif effect_type == "glitch":
-        return create_glitch_filter(beat_frames, effect_params or {})
-    else:
-        raise ValueError(f"Unknown effect type: {effect_type}")
+**Current Implementation** (Foundation):
+
+The service has been implemented with the following functions:
+- ✅ `generate_beat_filter_expression(beat_times, filter_type, frame_rate, tolerance_ms)` - Generates FFmpeg filter expressions
+- ✅ `generate_beat_filter_complex(beat_times, filter_type, frame_rate, tolerance_ms)` - Generates filter_complex expressions
+- ✅ Supports filter types: `flash`, `color_burst`, `zoom_pulse`, `brightness_pulse`
+- ✅ Frame-accurate timing with tolerance windows
+
+**Integration Status**:
+- ✅ Integrated into `video_composition.py` - `concatenate_clips()` accepts `beat_times`, `filter_type`, `frame_rate` parameters
+- ✅ Beat times flow from `SongAnalysis` → `composition_execution.py` → `concatenate_clips()` → beat filter application
+- ✅ Basic flash effect implementation using time-based FFmpeg filters
+
+**Remaining Work** (Full Phase 3.2):
+
+1. **Enhanced Effect Implementations** (partially implemented):
+   - ✅ Flash effect: Basic implementation done
+   - ✅ Color burst: Basic implementation done
+   - ⚠️ Zoom pulse: Filter expression generated, but complex filter chain needs refinement
+   - ❌ Glitch effect: Not yet implemented
+
+2. **Effect Parameter Customization** (not yet implemented):
+   - Current: Fixed effect parameters
+   - Future: Add `effect_params` dict for intensity, color, duration customization
+   - Add configuration in `config.py` for effect settings
+
+3. **Frame-Accurate Timing Verification** (needs testing):
+   - Current: Time-based filters with tolerance windows
+   - Future: Add frame-accurate verification and testing
+   - Ensure effects trigger within ±20ms of beat timestamps
 
 def create_flash_filter(beat_frames: list[int], params: dict) -> str:
     """
@@ -465,29 +439,32 @@ def create_glitch_filter(beat_frames: list[int], params: dict) -> str:
 
 #### 3.2.2: Integration with Video Composition
 
-**Location**: `backend/app/services/video_composition.py` (modify existing)
+**Status**: ✅ **FOUNDATION COMPLETE** - Basic integration done
 
-**Changes Required**:
+**Current Implementation**:
 
-1. Add beat effect application step in `concatenate_clips` function
-2. Accept `beat_times` and `effect_config` parameters
-3. Apply effects before final audio muxing
+The beat filters are integrated into video composition:
+- ✅ `concatenate_clips()` accepts `beat_times`, `filter_type`, `frame_rate` parameters
+- ✅ Beat filters are applied before audio muxing
+- ✅ Uses `generate_beat_filter_complex()` from `beat_filters.py`
+- ✅ Basic flash effect implementation using time-based FFmpeg filters
 
-**Code Changes**:
+**Integration Flow**:
+- ✅ `composition_execution.py` → Gets `beat_times` from analysis via `get_latest_analysis()`
+- ✅ Passes `beat_times` to `concatenate_clips()`
+- ✅ `concatenate_clips()` applies filters to concatenated video before muxing
 
-```python
-from app.services.beat_effects import create_beat_effect_filter
+**Remaining Work**:
 
-def concatenate_clips(
-    normalized_clip_paths: list[str | Path],
-    audio_path: str | Path,
-    output_path: str | Path,
-    song_duration_sec: float,
-    beat_times: list[float] | None = None,  # NEW
-    beat_effect_config: dict | None = None,  # NEW
-    ffmpeg_bin: str | None = None,
-    job_id: str | None = None,
-) -> CompositionResult:
+1. **Effect Configuration** (not yet implemented):
+   - Current: Simple `filter_type` string parameter
+   - Future: Add `beat_effect_config` dict with enabled flag, effect_params, etc.
+   - Add configuration in `config.py`
+
+2. **Enhanced Filter Application** (basic implementation done, needs refinement):
+   - Current: Basic time-based filter application
+   - Future: Improve filter expression generation for better visual quality
+   - Add support for more complex filter chains (zoom_pulse, glitch)
     """
     Concatenate normalized clips, apply beat effects, and mux with audio.
     
@@ -663,12 +640,18 @@ def convert_beat_times_to_frames(
 
 ### Effort Estimate
 
-- **Beat Effect Service**: 2-3 days
-- **Integration with Video Composition**: 1 day
-- **Frame-Accurate Timing**: 1 day
-- **Effect Configuration**: 0.5 days
+**Foundation (✅ COMPLETE)**:
+- ✅ Beat Filter Service: Done
+- ✅ Integration with Video Composition: Done
+- ✅ Basic Frame Timing: Done
+
+**Remaining Work**:
+- **Enhanced Effect Implementations** (glitch, improved zoom_pulse): 1-2 days
+- **Effect Parameter Customization**: 1 day
+- **Frame-Accurate Timing Verification**: 0.5 days
+- **Effect Configuration System**: 0.5 days
 - **Testing & Validation**: 1-2 days
-- **Total: ~6-8 days**
+- **Total Remaining: ~4-6 days**
 
 ---
 
@@ -1073,13 +1056,24 @@ def verify_beat_aligned_transitions(
 
 ### Component Overview
 
+**Status**: ✅ Foundation components implemented, full architecture pending
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Clip Generation Layer                     │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  Prompt Enhancement Service (Phase 3.1)               │  │
-│  │  - enhance_prompt_with_rhythm()                      │  │
-│  │  - optimize_prompt_for_api()                         │  │
+│  │  Prompt Enhancement Service (Phase 3.1) ✅ FOUNDATION   │  │
+│  │  ✅ enhance_prompt_with_rhythm()                      │  │
+│  │  ✅ get_tempo_classification()                        │  │
+│  │  ✅ get_motion_descriptor()                           │  │
+│  │  ✅ get_motion_type_from_genre()                      │  │
+│  │  ⚠️ optimize_prompt_for_api() (not yet implemented)   │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                          ↓                                   │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Scene Planner (✅ INTEGRATED)                        │  │
+│  │  ✅ build_prompt() accepts bpm, motion_type          │  │
+│  │  ✅ build_scene_spec() passes BPM from analysis      │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                          ↓                                   │
 │  ┌──────────────────────────────────────────────────────┐  │
@@ -1091,42 +1085,56 @@ def verify_beat_aligned_transitions(
 ┌─────────────────────────────────────────────────────────────┐
 │                  Composition Execution Layer                  │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  Beat Alignment Service (Phase 3.3)                  │  │
+│  │  Composition Execution (✅ INTEGRATED)                 │  │
+│  │  ✅ Gets beat_times from analysis                    │  │
+│  │  ✅ Passes beat_times to concatenate_clips()         │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                          ↓                                   │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Beat Alignment Service (Phase 3.3) ⚠️ NOT STARTED    │  │
 │  │  - calculate_beat_aligned_clip_boundaries()          │  │
 │  │  - verify_beat_aligned_transitions()                  │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                          ↓                                   │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  Video Composition Service                             │  │
-│  │  - trim_clip_to_beat_boundary()                       │  │
-│  │  - extend_clip_to_beat_boundary()                     │  │
-│  │  - concatenate_clips() (with beat alignment)          │  │
+│  │  Video Composition Service (✅ INTEGRATED)             │  │
+│  │  ✅ concatenate_clips() accepts beat_times           │  │
+│  │  ✅ Applies beat filters before audio muxing        │  │
+│  │  ⚠️ trim_clip_to_beat_boundary() (not yet implemented)│ │
+│  │  ⚠️ extend_clip_to_beat_boundary() (not yet implemented)││
 │  └──────────────────────────────────────────────────────┘  │
 │                          ↓                                   │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  Beat Effects Service (Phase 3.2)                    │  │
-│  │  - create_beat_effect_filter()                       │  │
-│  │  - apply_beat_effects_to_video()                     │  │
+│  │  Beat Filters Service (Phase 3.2) ✅ FOUNDATION      │  │
+│  │  ✅ generate_beat_filter_expression()                │  │
+│  │  ✅ generate_beat_filter_complex()                   │  │
+│  │  ✅ Supports: flash, color_burst, zoom_pulse,         │  │
+│  │     brightness_pulse                                 │  │
+│  │  ⚠️ Enhanced effects (glitch, improved zoom) pending  │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                          ↓                                   │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  Final Composed Video                                 │  │
-│  │  - Rhythmic motion (Phase 3.1)                       │  │
-│  │  - Beat-aligned transitions (Phase 3.3)               │  │
-│  │  - Visual beat effects (Phase 3.2)                   │  │
+│  │  ✅ Rhythmic motion (Phase 3.1 Foundation)            │  │
+│  │  ⚠️ Beat-aligned transitions (Phase 3.3 - pending)    │  │
+│  │  ✅ Visual beat effects (Phase 3.2 Foundation)       │  │
 │  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
 
-1. **Song Analysis** → Provides `beat_times` array and `bpm`
-2. **Prompt Enhancement** → Uses `bpm` to enhance prompts
-3. **Clip Generation** → Generates clips with enhanced prompts
-4. **Beat Alignment** → Uses `beat_times` to calculate boundaries
-5. **Clip Trimming/Extension** → Aligns clips to boundaries
-6. **Beat Effects** → Uses `beat_times` to apply effects
-7. **Final Composition** → Combines all elements
+**Current Implementation (Foundation)**:
+1. ✅ **Song Analysis** → Provides `beat_times` array and `bpm` (via `SongAnalysis` schema)
+2. ✅ **Prompt Enhancement** → Uses `bpm` to enhance prompts in `build_prompt()`
+3. ✅ **Clip Generation** → Generates clips with enhanced prompts (via `build_scene_spec()`)
+4. ✅ **Composition Execution** → Gets `beat_times` from analysis via `get_latest_analysis()`
+5. ✅ **Beat Filters** → Uses `beat_times` to apply effects in `concatenate_clips()`
+6. ✅ **Final Composition** → Combines clips with beat-reactive effects
+
+**Remaining Work**:
+- ⚠️ **Beat Alignment** → Uses `beat_times` to calculate boundaries (Phase 3.3)
+- ⚠️ **Clip Trimming/Extension** → Aligns clips to boundaries (Phase 3.3)
 
 ### Feature Flags
 
@@ -1166,17 +1174,22 @@ class BeatSyncConfig(BaseSettings):
 
 ### Unit Tests
 
-**Phase 3.1: Prompt Engineering**
-- Test `enhance_prompt_with_rhythm()` with various BPM values
-- Test `get_motion_style()` returns correct descriptors
-- Test `optimize_prompt_for_api()` for each supported API
+**Phase 3.1: Prompt Engineering** ✅ **FOUNDATION TESTS COMPLETE**
+- ✅ Test `enhance_prompt_with_rhythm()` with various BPM values (27 tests in `test_prompt_enhancement.py`)
+- ✅ Test `get_tempo_classification()` boundary values and tempo ranges
+- ✅ Test `get_motion_descriptor()` with all motion types and BPM combinations
+- ✅ Test `get_motion_type_from_genre()` genre mapping
+- ✅ Test BPM integration in `build_prompt()` (3 tests in `test_scene_planner.py`)
+- ⚠️ Test `optimize_prompt_for_api()` for each supported API (not yet implemented)
 
-**Phase 3.2: Beat Effects**
-- Test `create_beat_effect_filter()` generates valid FFmpeg filters
-- Test `convert_beat_times_to_frames()` accuracy
-- Test effect filter syntax correctness
+**Phase 3.2: Beat Effects** ✅ **FOUNDATION TESTS COMPLETE**
+- ✅ Test `generate_beat_filter_expression()` generates valid FFmpeg filters (16 tests in `test_beat_filters.py`)
+- ✅ Test `generate_beat_filter_complex()` filter complex generation
+- ✅ Test all filter types (flash, color_burst, zoom_pulse, brightness_pulse)
+- ✅ Test edge cases (empty beat_times, invalid filter types, tolerance handling)
+- ⚠️ Test `convert_beat_times_to_frames()` accuracy (needs frame-accurate verification tests)
 
-**Phase 3.3: Structural Sync**
+**Phase 3.3: Structural Sync** (Not yet started)
 - Test `calculate_beat_aligned_clip_boundaries()` with various inputs
 - Test `trim_clip_to_beat_boundary()` and `extend_clip_to_beat_boundary()`
 - Test `verify_beat_aligned_transitions()` accuracy
@@ -1219,42 +1232,56 @@ class BeatSyncConfig(BaseSettings):
 
 ### Phase 3.1: Prompt Engineering (Week 1)
 
-**Days 1-2**: Implement prompt enhancement service
-- Create `prompt_enhancement.py`
-- Implement core functions
-- Add motion type templates
+**✅ Foundation Complete** (Already Done):
+- ✅ Created `prompt_enhancement.py` with core functions
+- ✅ Integrated with `scene_planner.py`
+- ✅ Basic motion type selection implemented
+- ✅ Unit tests written (27 tests)
 
-**Day 3**: Integration with clip generation
-- Modify `clip_generation.py`
-- Add motion type selection logic
+**Remaining Work**:
+- **Day 1**: API-specific optimization
+  - Add `optimize_prompt_for_api()` function
+  - Test with each API (Runway, Pika, Kling)
+  - Tune prompt formats
 
-**Day 4**: API-specific optimization
-- Test with each API
-- Tune prompt formats
+- **Day 2**: Enhanced motion templates
+  - Add more detailed motion templates
+  - Improve motion descriptor quality
 
-**Day 5**: Testing & validation
-- Unit tests
-- Motion analysis validation
+- **Day 3**: Advanced motion type selection
+  - Add mood-based selection
+  - Add user preference support
+  - Testing & validation
 
 ### Phase 3.2: Audio-Reactive Filters (Week 2)
 
-**Days 1-2**: Implement beat effects service
-- Create `beat_effects.py`
-- Implement effect filter generation
-- Test FFmpeg filter syntax
+**✅ Foundation Complete** (Already Done):
+- ✅ Created `beat_filters.py` (note: named `beat_filters.py` not `beat_effects.py`)
+- ✅ Implemented basic filter generation functions
+- ✅ Integrated with `video_composition.py`
+- ✅ Basic frame timing implemented
+- ✅ Unit tests written (16 tests)
 
-**Day 3**: Integration with video composition
-- Modify `concatenate_clips()`
-- Add effect application step
+**Remaining Work**:
+- **Day 1**: Enhanced effect implementations
+  - Improve zoom_pulse filter chain
+  - Implement glitch effect
+  - Refine color_burst implementation
 
-**Day 4**: Frame-accurate timing
-- Implement frame conversion
-- Verify timing accuracy
+- **Day 2**: Effect parameter customization
+  - Add `effect_params` dict support
+  - Add configuration in `config.py`
+  - Test with various parameter combinations
 
-**Days 5-6**: Testing & validation
-- Frame accuracy tests
-- Effect visibility tests
-- Performance tests
+- **Day 3**: Frame-accurate timing verification
+  - Add timing verification tests
+  - Ensure ±20ms accuracy
+  - Optimize filter expressions
+
+- **Days 4-5**: Testing & validation
+  - Frame accuracy tests
+  - Effect visibility tests
+  - Performance tests
 
 ### Phase 3.3: Structural Sync (Week 3)
 
@@ -1299,11 +1326,18 @@ class BeatSyncConfig(BaseSettings):
 
 ### Total Timeline
 
-- **Phase 3.1**: 5 days
-- **Phase 3.2**: 6 days
-- **Phase 3.3**: 6 days
-- **Integration**: 5 days
-- **Total: ~22 days (~4.5 weeks)**
+**Foundation Status**:
+- ✅ **Phase 3.1 Foundation**: Complete (prompt enhancement service + integration)
+- ✅ **Phase 3.2 Foundation**: Complete (beat filters service + integration)
+
+**Remaining Work**:
+- **Phase 3.1 Completion**: 3 days (API optimization, enhanced templates, advanced selection)
+- **Phase 3.2 Completion**: 5 days (enhanced effects, parameter customization, verification)
+- **Phase 3.3**: 6 days (unchanged - structural sync)
+- **Integration**: 5 days (unchanged)
+- **Total Remaining: ~19 days (~4 weeks)**
+
+**Note**: Foundation work has reduced remaining effort by ~3 days and enabled parallel work on Phase 3.3.
 
 ---
 

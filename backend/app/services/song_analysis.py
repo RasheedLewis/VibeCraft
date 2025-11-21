@@ -36,13 +36,6 @@ from app.services.audjust_client import (
 from app.services.section_inference import infer_section_types
 from sqlmodel import select
 
-from app.services.audjust_client import (
-    AudjustConfigurationError,
-    AudjustRequestError,
-    fetch_structure_segments,
-)
-from app.services.section_inference import infer_section_types
-
 logger = logging.getLogger(__name__)
 
 

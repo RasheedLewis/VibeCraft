@@ -11,10 +11,11 @@ from uuid import UUID
 
 import httpx
 
-from app.core.config import get_settings
+from app.core.config import get_settings, is_sections_enabled
 from app.core.database import session_scope
 from app.models.composition import CompositionJob
 from app.models.section_video import SectionVideo
+from app.models.clip import SongClip
 from app.repositories import SongRepository
 from app.services.composition_job import (
     complete_job,
@@ -61,7 +62,7 @@ def execute_composition_pipeline(
     Args:
         job_id: Composition job ID
         song_id: Song ID
-        clip_ids: List of SectionVideo IDs
+        clip_ids: List of SectionVideo or SongClip IDs (depending on feature flag)
         clip_metadata: List of metadata dicts with clipId, startFrame, endFrame
 
     Raises:
@@ -90,18 +91,30 @@ def execute_composition_pipeline(
                 f"Song duration ({song.duration_sec}s) exceeds maximum ({MAX_DURATION_SECONDS}s)"
             )
 
-        # Get clips
+        # Get clips (support both SectionVideo and SongClip based on feature flag)
         clips = []
         clip_urls = []
         with session_scope() as session:
-            for clip_id in clip_ids:
-                clip = session.get(SectionVideo, clip_id)
-                if not clip:
-                    raise ValueError(f"SectionVideo {clip_id} not found")
-                if not clip.video_url:
-                    raise ValueError(f"SectionVideo {clip_id} has no video_url")
-                clips.append(clip)
-                clip_urls.append(clip.video_url)
+            if is_sections_enabled():
+                # Use SectionVideo (existing behavior)
+                for clip_id in clip_ids:
+                    clip = session.get(SectionVideo, clip_id)
+                    if not clip:
+                        raise ValueError(f"SectionVideo {clip_id} not found")
+                    if not clip.video_url:
+                        raise ValueError(f"SectionVideo {clip_id} has no video_url")
+                    clips.append(clip)
+                    clip_urls.append(clip.video_url)
+            else:
+                # Use SongClip directly
+                for clip_id in clip_ids:
+                    clip = session.get(SongClip, clip_id)
+                    if not clip:
+                        raise ValueError(f"SongClip {clip_id} not found")
+                    if not clip.video_url:
+                        raise ValueError(f"SongClip {clip_id} has no video_url")
+                    clips.append(clip)
+                    clip_urls.append(clip.video_url)
 
         # Validate clip URLs
         clip_metadata_list = validate_composition_inputs(clip_urls)

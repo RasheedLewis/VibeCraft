@@ -11,6 +11,7 @@ from rq.job import Job, get_current_job
 from sqlmodel import select
 
 from app.core.constants import COMPOSITION_QUEUE_TIMEOUT_SEC
+from app.core.config import is_sections_enabled
 from app.core.database import session_scope
 from app.core.queue import get_queue
 from app.exceptions import (
@@ -22,6 +23,7 @@ from app.exceptions import (
 from app.repositories import ClipRepository, SongRepository
 from app.models.composition import ComposedVideo, CompositionJob
 from app.models.section_video import SectionVideo
+from app.models.clip import SongClip
 from app.schemas.composition import CompositionJobStatusResponse
 
 logger = logging.getLogger(__name__)
@@ -37,7 +39,7 @@ def enqueue_composition(
 
     Args:
         song_id: Song ID
-        clip_ids: List of SectionVideo IDs to compose
+        clip_ids: List of SectionVideo or SongClip IDs to compose (depending on feature flag)
         clip_metadata: List of metadata dicts with clipId, startFrame, endFrame
 
     Returns:
@@ -50,16 +52,27 @@ def enqueue_composition(
     SongRepository.get_by_id(song_id)
 
     # Verify all clips exist and belong to the song
-    # Note: SectionVideo is not in repositories yet, so we keep direct access for now
     with session_scope() as session:
-        for clip_id in clip_ids:
-            clip = session.get(SectionVideo, clip_id)
-            if not clip:
-                raise ClipNotFoundError(f"SectionVideo {clip_id} not found")
-            if clip.song_id != song_id:
-                raise CompositionError(f"SectionVideo {clip_id} does not belong to song {song_id}")
-            if clip.status != "completed" or not clip.video_url:
-                raise CompositionError(f"SectionVideo {clip_id} is not ready (status: {clip.status})")
+        if is_sections_enabled():
+            # Use SectionVideo (existing behavior)
+            for clip_id in clip_ids:
+                clip = session.get(SectionVideo, clip_id)
+                if not clip:
+                    raise ClipNotFoundError(f"SectionVideo {clip_id} not found")
+                if clip.song_id != song_id:
+                    raise CompositionError(f"SectionVideo {clip_id} does not belong to song {song_id}")
+                if clip.status != "completed" or not clip.video_url:
+                    raise CompositionError(f"SectionVideo {clip_id} is not ready (status: {clip.status})")
+        else:
+            # Use SongClip directly
+            for clip_id in clip_ids:
+                clip = session.get(SongClip, clip_id)
+                if not clip:
+                    raise ClipNotFoundError(f"SongClip {clip_id} not found")
+                if clip.song_id != song_id:
+                    raise CompositionError(f"SongClip {clip_id} does not belong to song {song_id}")
+                if clip.status != "completed" or not clip.video_url:
+                    raise CompositionError(f"SongClip {clip_id} is not ready (status: {clip.status})")
 
         # Store clip IDs and metadata as JSON
         clip_ids_json = json.dumps([str(clip_id) for clip_id in clip_ids])
@@ -105,7 +118,7 @@ def run_composition_job(
 
     Args:
         song_id: Song ID
-        clip_ids: List of SectionVideo IDs
+        clip_ids: List of SectionVideo or SongClip IDs (depending on feature flag)
         clip_metadata: List of metadata dicts
 
     Returns:
@@ -365,7 +378,7 @@ def create_composed_video(
         resolution_width: Video width
         resolution_height: Video height
         fps: Frames per second
-        clip_ids: List of SectionVideo IDs used
+        clip_ids: List of SectionVideo or SongClip IDs used
 
     Returns:
         ComposedVideo record

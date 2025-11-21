@@ -16,6 +16,7 @@ import { WaveformDisplay } from './WaveformDisplay'
 import { MoodVectorMeter } from './MoodVectorMeter'
 import { ClipGenerationPanel } from './ClipGenerationPanel'
 import { ArrowRightIcon } from '../upload/Icons'
+import { useFeatureFlags } from '../../hooks/useFeatureFlags'
 
 interface SongProfileViewProps {
   analysisData: SongAnalysis
@@ -66,6 +67,8 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   onSectionSelect,
   audioUrl,
 }) => {
+  const { data: featureFlags } = useFeatureFlags()
+  const sectionsEnabled = featureFlags?.sections ?? true // Default to true for backward compatibility
   const sectionsWithDisplay = buildSectionsWithDisplayNames(analysisData.sections)
   const waveformValues = parseWaveformJson(songDetails.waveform_json)
   const durationValue = analysisData.durationSec ?? songDetails.duration_sec ?? 0
@@ -224,53 +227,57 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
         />
       </section>
 
-      <section className="space-y-2">
-        <div className="vc-label">Song structure</div>
-        <SongTimeline
-          sections={sectionsWithDisplay}
-          duration={durationValue || 1}
-          onSelect={onSectionSelect}
-        />
-      </section>
+      {sectionsEnabled && (
+        <>
+          <section className="space-y-2">
+            <div className="vc-label">Song structure</div>
+            <SongTimeline
+              sections={sectionsWithDisplay}
+              duration={durationValue || 1}
+              onSelect={onSectionSelect}
+            />
+          </section>
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="vc-label">Sections</div>
-          <div className="text-xs text-vc-text-muted">
-            {analysisData.sections.length} section
-            {analysisData.sections.length === 1 ? '' : 's'}
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          {sectionsWithDisplay.map((section) => {
-            const lyric = lyricsBySection.get(section.id) ?? undefined
-            const highlightClass =
-              highlightedSectionId === section.id
-                ? 'ring-2 ring-vc-accent-primary ring-offset-2 ring-offset-[rgba(12,12,18,0.9)]'
-                : ''
-
-            return (
-              <div
-                key={section.id}
-                id={`section-${section.id}`}
-                className={highlightClass}
-              >
-                <SectionCard
-                  name={section.displayName}
-                  startSec={section.startSec}
-                  endSec={section.endSec}
-                  mood={sectionMood}
-                  lyricSnippet={lyric}
-                  hasVideo={false}
-                  audioUrl={audioUrl ?? undefined}
-                  className="h-full bg-[rgba(12,12,18,0.78)]"
-                />
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="vc-label">Sections</div>
+              <div className="text-xs text-vc-text-muted">
+                {analysisData.sections.length} section
+                {analysisData.sections.length === 1 ? '' : 's'}
               </div>
-            )
-          })}
-        </div>
-      </section>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {sectionsWithDisplay.map((section) => {
+                const lyric = lyricsBySection.get(section.id) ?? undefined
+                const highlightClass =
+                  highlightedSectionId === section.id
+                    ? 'ring-2 ring-vc-accent-primary ring-offset-2 ring-offset-[rgba(12,12,18,0.9)]'
+                    : ''
+
+                return (
+                  <div
+                    key={section.id}
+                    id={`section-${section.id}`}
+                    className={highlightClass}
+                  >
+                    <SectionCard
+                      name={section.displayName}
+                      startSec={section.startSec}
+                      endSec={section.endSec}
+                      mood={sectionMood}
+                      lyricSnippet={lyric}
+                      hasVideo={false}
+                      audioUrl={audioUrl ?? undefined}
+                      className="h-full bg-[rgba(12,12,18,0.78)]"
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        </>
+      )}
     </section>
   )
 }

@@ -284,7 +284,7 @@ def map_section_type_to_shot_pattern(section_type: str) -> ShotPattern:
 
 
 def build_prompt(
-    section: SongSection,
+    section: Optional[SongSection],
     mood_primary: str,
     mood_tags: list[str],
     genre: Optional[str],
@@ -297,7 +297,7 @@ def build_prompt(
     Build video generation prompt combining all features.
 
     Args:
-        section: SongSection object
+        section: SongSection object (optional, None for clip-based generation)
         mood_primary: Primary mood tag
         mood_tags: List of mood tags
         genre: Primary genre
@@ -332,13 +332,14 @@ def build_prompt(
     # Camera motion
     components.append(f"{camera_motion.type} camera motion ({camera_motion.speed} speed)")
 
-    # Section type context
-    if section.type == "chorus":
-        components.append("dynamic and energetic")
-    elif section.type == "verse":
-        components.append("steady and narrative")
-    elif section.type == "bridge":
-        components.append("transitional and atmospheric")
+    # Section type context (only if section is provided)
+    if section:
+        if section.type == "chorus":
+            components.append("dynamic and energetic")
+        elif section.type == "verse":
+            components.append("steady and narrative")
+        elif section.type == "bridge":
+            components.append("transitional and atmospheric")
 
     # Lyrics motif (if available)
     if lyrics:
@@ -411,6 +412,65 @@ def build_scene_spec(
 
     return SceneSpec(
         section_id=section_id,
+        template=template,
+        prompt=prompt,
+        color_palette=color_palette,
+        camera_motion=camera_motion,
+        shot_pattern=shot_pattern,
+        intensity=intensity,
+        duration_sec=duration_sec,
+    )
+
+
+def build_clip_scene_spec(
+    start_sec: float,
+    end_sec: float,
+    analysis: SongAnalysis,
+    template: TemplateType = DEFAULT_TEMPLATE,
+) -> SceneSpec:
+    """
+    Build scene specification for a clip (non-section mode).
+
+    Uses song-level analysis instead of section-specific data.
+
+    Args:
+        start_sec: Clip start time in seconds
+        end_sec: Clip end time in seconds
+        analysis: SongAnalysis object
+        template: Template type (default: "abstract")
+
+    Returns:
+        SceneSpec object with complete scene parameters
+    """
+    duration_sec = end_sec - start_sec
+
+    # Use song-level mood/genre
+    color_palette = map_mood_to_color_palette(analysis.mood_primary, analysis.mood_vector)
+    camera_motion = map_genre_to_camera_motion(analysis.primary_genre, analysis.bpm)
+
+    # Default shot pattern (no section type)
+    shot_pattern = ShotPattern(
+        pattern="medium",
+        pacing="medium",
+        transitions=["cut"],
+    )
+
+    # Build prompt from song-level data (no section context)
+    prompt = build_prompt(
+        section=None,  # No section context
+        mood_primary=analysis.mood_primary,
+        mood_tags=analysis.mood_tags,
+        genre=analysis.primary_genre,
+        color_palette=color_palette,
+        camera_motion=camera_motion,
+        shot_pattern=shot_pattern,
+        lyrics=None,  # Could extract lyrics for time range if needed
+    )
+
+    intensity = (analysis.mood_vector.energy + analysis.mood_vector.tension) / 2.0
+
+    return SceneSpec(
+        section_id=None,  # No section ID in clip mode
         template=template,
         prompt=prompt,
         color_palette=color_palette,

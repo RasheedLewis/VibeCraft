@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     ffmpeg_bin: str = Field(default="ffmpeg", alias="FFMPEG_BIN")
     librosa_cache_dir: str = Field(default=".cache/librosa", alias="LIBROSA_CACHE_DIR")
 
+    enable_sections: bool = Field(default=True, alias="ENABLE_SECTIONS")
+
     @field_validator(
         "s3_endpoint_url",
         "s3_access_key_id",
@@ -79,4 +81,10 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
+
+
+@lru_cache
+def is_sections_enabled() -> bool:
+    """Check if section-based generation is enabled."""
+    return get_settings().enable_sections
 

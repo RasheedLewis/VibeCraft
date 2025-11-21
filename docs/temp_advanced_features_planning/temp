@@ -1,0 +1,98 @@
+## FOR PREREQUISITE-1-FEATURE-FLAG-SECTIONS.md
+
+docs: add detailed plan for feature-flagging section logic (prerequisite step 1)
+
+Add comprehensive implementation plan for adding ENABLE_SECTIONS feature flag
+to allow switching between 2-level (vid→sections→clips) and 1-level
+(vid→clips) hierarchy at runtime.
+
+The document outlines:
+- Current vs target architecture
+- Feature flag configuration approach
+- Detailed breakdown of 10 components requiring changes
+- Implementation checklist with phased approach
+- Migration strategy and backward compatibility
+- Edge cases and testing considerations
+- Success criteria
+
+This is prerequisite step 1 from Friday Plan, enabling the simplified
+1-level hierarchy needed for sync + consistency features.
+
+Files changed:
+- docs/temp_advanced_features_planning/PREREQUISITE-1-FEATURE-FLAG-SECTIONS.md (new)
+
+## FOR PREREQUISITE-2-AUDIO-SELF-SELECTION.md
+
+docs: Add prerequisite step 2 planning document for audio selection feature
+
+Add comprehensive planning document for user audio selection feature
+(Prerequisite Step 2). This document outlines:
+
+- User interface for selecting up to 30s from uploaded audio
+- Draggable start/end markers on waveform visualization
+- Audio preview starting from playhead position
+- Backend API changes for storing selection range
+- Database schema updates with migration plan
+- Frontend component implementation details
+- Integration with clip planning and generation
+- Testing strategy and implementation checklist
+
+The document follows the same structure as Prerequisite Step 1
+and provides implementation-ready code examples for both backend
+and frontend components.
+
+Related to Friday Plan prerequisite steps for sync + consistency features.
+
+## FOR CHARACTER_CONSISTENCY_IMPLEMENTATION.md
+
+docs: add detailed Character Consistency implementation plan
+
+Add comprehensive implementation plan for Character Consistency feature
+as outlined in Section 2 of the High-Level Plan. This document provides:
+
+- Complete architecture and design for multi-step character consistency
+  workflow (Image Interrogation → Consistent Image Generation → Video
+  Generation)
+- Detailed implementation steps across 6 phases with code examples
+- Database schema changes and migration plan
+- API endpoint modifications and new services
+- Testing strategy and error handling approach
+- Performance considerations and cost analysis
+- Future enhancement roadmap
+
+The plan addresses the Replicate API constraint by implementing a
+3-step process:
+1. Image interrogation using multimodal LLM (OpenAI GPT-4 Vision)
+2. Consistent character image generation using Replicate SDXL
+3. Image-to-video generation using consistent character image
+
+Includes graceful degradation, feature flag support, and comprehensive
+error handling to ensure video generation continues even if character
+consistency fails.
+
+Related to: docs/temp_advanced_features_planning/High-Level Plan.md
+
+## FOR BEAT-SYNC-IMPLEMENTATION.md
+
+docs: Add comprehensive Beat Sync implementation plan
+
+Add detailed implementation plan for Section 3 Beat Synchronization
+feature from High-Level Plan, covering all three phases:
+
+- Phase 3.1: Prompt Engineering - Enhance video generation prompts
+  with rhythmic motion descriptors based on BPM
+- Phase 3.2: Audio-Reactive FFmpeg Filters - Apply visual effects
+  (flash, color burst, zoom pulse) precisely on beat timestamps
+- Phase 3.3: Structural Sync - Align all clip transitions to occur
+  exactly on musical beat boundaries
+
+The plan includes:
+- Detailed technical implementation for each phase
+- Code examples and function signatures
+- Integration architecture and data flow diagrams
+- Testing strategies (unit, integration, performance)
+- Timeline estimates (~4.5 weeks total)
+- Success metrics and acceptance criteria
+
+This document provides a complete roadmap for implementing beat
+synchronization features to enhance video-music alignment.

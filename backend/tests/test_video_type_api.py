@@ -98,14 +98,20 @@ class TestVideoTypeEndpoint:
             assert song.video_type == "short_form"
 
     def test_set_video_type_invalid_value(self):
-        """Test that invalid video_type returns 400."""
+        """Test that invalid video_type returns 422 (Pydantic validation error)."""
         response = self.client.patch(
             f"/api/v1/songs/{self.song_id}/video-type",
             json={"video_type": "invalid"},
         )
         
-        assert response.status_code == 400
-        assert "full_length" in response.json()["detail"].lower() or "short_form" in response.json()["detail"].lower()
+        # FastAPI returns 422 for Pydantic validation errors
+        assert response.status_code == 422
+        # Check that the error detail mentions the validation issue
+        detail = response.json().get("detail", [])
+        assert isinstance(detail, list)
+        # Find the error about video_type
+        video_type_errors = [err for err in detail if "video_type" in str(err).lower()]
+        assert len(video_type_errors) > 0
 
     def test_set_video_type_song_not_found(self):
         """Test that setting video_type for non-existent song returns 404."""
@@ -119,12 +125,30 @@ class TestVideoTypeEndpoint:
 
     def test_set_video_type_after_analysis_fails(self):
         """Test that changing video_type after analysis returns 409."""
-        # Create analysis record
+        # Create a complete analysis record with all required fields
+        from app.schemas.analysis import SongAnalysis
+        
+        complete_analysis = SongAnalysis(
+            durationSec=30.0,
+            bpm=128.0,
+            beatTimes=[i * 0.5 for i in range(60)],
+            sections=[],
+            moodPrimary="energetic",
+            moodTags=["energetic"],
+            moodVector={"energy": 0.8, "valence": 0.7, "danceability": 0.6, "tension": 0.5},
+            primaryGenre="Electronic",
+            subGenres=[],
+            lyricsAvailable=False,
+            sectionLyrics=[],
+        )
+        
+        # Create analysis record with complete JSON
         with session_scope() as session:
             analysis_record = SongAnalysisRecord(
                 song_id=self.song_id,
-                analysis_json='{"durationSec": 30.0, "sections": []}',
+                analysis_json=complete_analysis.model_dump_json(by_alias=True),
                 duration_sec=30.0,
+                bpm=128.0,
             )
             session.add(analysis_record)
             session.commit()

@@ -282,7 +282,11 @@ def test_retry_clip_generation_resets_state(monkeypatch):
         clip_id = clip.id
 
     dummy_queue = DummyQueue()
-    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+    # Patch get_queue to return our dummy queue
+    monkeypatch.setattr(
+        "app.services.clip_generation.get_queue",
+        lambda *args, **kwargs: dummy_queue,
+    )
 
     status = retry_clip_generation(clip_id)
 
@@ -305,7 +309,8 @@ def test_retry_clip_generation_resets_state(monkeypatch):
 
 
 def test_retry_clip_generation_endpoint(monkeypatch):
-    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(16)], clip_count=3)
+    # Use longer duration to ensure 3 clips can be created (need at least 9 seconds for 3 clips at 3s each)
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(20)], clip_count=3)
 
     with session_scope() as session:
         clip = session.exec(
@@ -320,7 +325,11 @@ def test_retry_clip_generation_endpoint(monkeypatch):
         clip_id = clip.id
 
     dummy_queue = DummyQueue()
-    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+    # Patch get_queue to return our dummy queue
+    monkeypatch.setattr(
+        "app.services.clip_generation.get_queue",
+        lambda *args, **kwargs: dummy_queue,
+    )
 
     with TestClient(create_app()) as client:
         response = client.post(f"/api/v1/songs/{song_id}/clips/{clip_id}/retry")

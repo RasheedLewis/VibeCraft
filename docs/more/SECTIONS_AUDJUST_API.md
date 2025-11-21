@@ -1,9 +1,11 @@
-You’re right to zoom in on this, because “what is a chorus vs verse vs bridge?” is *not* something the Audjust API will hand you for free.
+You're right to zoom in on this, because "what is a chorus vs verse vs bridge?" is *not*
+something the Audjust API will hand you for free.
 
 Short version:
 
 * Audjust gives you **segments + similarity labels**, not semantic names.
-* You can use those labels + some audio heuristics (energy, repetition, position) to infer **“this is probably a chorus / verse / intro / bridge / outro”**.
+* You can use those labels + some audio heuristics (energy, repetition, position) to infer
+  **"this is probably a chorus / verse / intro / bridge / outro"**.
 * And you should have a **graceful fallback** for weird/edge-case song forms.
 
 Let’s walk through a concrete strategy you can actually implement.
@@ -27,7 +29,9 @@ From their structure example, the API returns:
 
 They explicitly say:
 
-> The label values will be between 0 and 1000 and can be used to identify similar sections in the song. When the numbers are closer together, the sections are more similar in terms of audio characteristics. ([audjust.com][1])
+> The label values will be between 0 and 1000 and can be used to identify similar sections in
+> the song. When the numbers are closer together, the sections are more similar in terms of
+> audio characteristics. ([audjust.com][1])
 
 So those **labels are cluster IDs / similarity codes**, *not* “chorus / verse” names. Your job is to:
 
@@ -63,7 +67,8 @@ At a high level:
   * In the middle or 2/3 through the song
   * Different harmony/texture than verse/chorus
 
-And: if the heuristics aren’t confident, you just fall back to **A/B/C sections** or “Section 1, Section 2…” – which is still usable for your video prompts.
+And: if the heuristics aren't confident, you just fall back to **A/B/C sections** or
+"Section 1, Section 2…" – which is still usable for your video prompts.
 
 ---
 
@@ -118,14 +123,17 @@ For each group:
 * `total_duration`
 * `mean_energy`
 
-You can also treat labels “close” in value as similar if you want, since Audjust says closer label numbers = more similar audio ([audjust.com][1]), but starting with strict equality is fine.
+You can also treat labels "close" in value as similar if you want, since Audjust says closer
+label numbers = more similar audio ([audjust.com][1]), but starting with strict equality is
+fine.
 
 ### Step 3: Pick a **chorus candidate**
 
 Heuristic:
 
 1. Candidate labels must appear **≥ 2 times**.
-2. Exclude groups whose first instance starts too early (e.g., first 10–15 seconds) – usually not the chorus.
+2. Exclude groups whose first instance starts too early (e.g., first 10–15 seconds) – usually not
+   the chorus.
 3. Score each candidate label:
 
 ```python
@@ -136,11 +144,14 @@ score = (
 )
 ```
 
-4. The highest scoring group → **chorus**.
+1. The highest scoring group → **chorus**.
 
-This aligns with MIR research that chorus regions are typically the most repeated, high-energy passages. ([ACM Digital Library][2])
+This aligns with MIR research that chorus regions are typically the most repeated,
+high-energy passages. ([ACM Digital Library][2])
 
-If there is **no label with ≥ 2 occurrences** → maybe the song is through-composed / strophic / ambient. In that case, skip chorus labeling and just keep neutral labels (A/B/C). ([Wikipedia][3])
+If there is **no label with ≥ 2 occurrences** → maybe the song is through-composed /
+strophic / ambient. In that case, skip chorus labeling and just keep neutral labels (A/B/C).
+([Wikipedia][3])
 
 ### Step 4: Pick **verse** candidates
 
@@ -154,7 +165,8 @@ Once you have `chorus_label`:
 
 That cluster becomes **verse**.
 
-If there’s still ambiguity, you can even tag them as `section_type = "verse_like"` internally and only display “Verse” in the UI when you’re above some confidence threshold.
+If there's still ambiguity, you can even tag them as `section_type = "verse_like"` internally
+and only display "Verse" in the UI when you're above some confidence threshold.
 
 ### Step 5: Intro & Outro
 
@@ -171,7 +183,9 @@ Given the labeled verse/chorus clusters:
   * Last segment(s) **after** last chorus/verse
   * If unique and/or with fading energy, label as outro.
 
-If none of that fits, just mark them as “Section 1 / Section N” in the UI and use “opening shot / ending shot” semantics in your prompt builder (which is often enough for your music video context).
+If none of that fits, just mark them as "Section 1 / Section N" in the UI and use
+"opening shot / ending shot" semantics in your prompt builder (which is often enough for your
+music video context).
 
 ### Step 6: Bridge / middle special sections (optional)
 
@@ -183,11 +197,13 @@ Look in the **middle third** of the track:
 
 This is your **bridge / drop / solo / breakdown** candidate.
 
-You don’t have to get this perfectly right. For video prompts, it can just be “experimental middle section where visuals take a twist.”
+You don't have to get this perfectly right. For video prompts, it can just be "experimental
+middle section where visuals take a twist."
 
 ### Step 7: Confidence and fallbacks
 
-You definitely don’t want to hallucinate full pop structure on ambient / jazz / classical pieces. So keep a simple “confidence” estimate per label:
+You definitely don't want to hallucinate full pop structure on ambient / jazz / classical
+pieces. So keep a simple "confidence" estimate per label:
 
 * If:
 
@@ -228,7 +244,8 @@ Your prompt builder doesn’t actually *need* to know “this is a textbook brid
   * **narrative / evolving**,
   * **intro**, **ending**, or **detour**.
 
-You can deduce that robustly from **repetition patterns + position + energy** even if theoretical labels are fuzzy.
+You can deduce that robustly from **repetition patterns + position + energy** even if
+theoretical labels are fuzzy.
 
 ---
 
@@ -236,11 +253,15 @@ You can deduce that robustly from **repetition patterns + position + energy** ev
 
 If you want more out-of-the-box labeling:
 
-* **Music.AI “song sections” workflow** advertises directly labeled intro/verse/chorus/etc with lyrics alignment. ([Music AI][4])
-* **Moises.ai “Song Parts”** also auto-detects sections for practice (they don’t expose an open API AFAIK, but conceptually similar). ([Moises][5])
-* Recent research like **MuSFA** explicitly predicts verse/chorus labels from audio using supervised training. ([arXiv][6])
+* **Music.AI "song sections" workflow** advertises directly labeled intro/verse/chorus/etc
+  with lyrics alignment. ([Music AI][4])
+* **Moises.ai "Song Parts"** also auto-detects sections for practice (they don't expose an
+  open API AFAIK, but conceptually similar). ([Moises][5])
+* Recent research like **MuSFA** explicitly predicts verse/chorus labels from audio using
+  supervised training. ([arXiv][6])
 
-These confirm that what you’re trying to do is essentially Music Structure Analysis (MSA) with semantic labels, not just boundaries. ([PLOS][7])
+These confirm that what you're trying to do is essentially Music Structure Analysis (MSA) with
+semantic labels, not just boundaries. ([PLOS][7])
 
 ---
 
@@ -252,7 +273,8 @@ For your current stack & timeline, I’d implement:
 2. **Compute basic features per segment** (RMS energy, maybe vocal activity from your lyrics engine).
 3. **Heuristic labeler**:
 
-   * Determine `chorus_like`, `verse_like`, `intro_like`, `outro_like`, `bridge_like`, `other` using the rules above.
+   * Determine `chorus_like`, `verse_like`, `intro_like`, `outro_like`, `bridge_like`, `other`
+     using the rules above.
 4. **Expose both**:
 
    * `section.type_soft` (those heuristics)
@@ -260,9 +282,8 @@ For your current stack & timeline, I’d implement:
 5. In your UI and prompts:
 
    * Use human names when confident,
-   * Otherwise fall back to neutral “Section A/B/C” and rely on “opening / middle / climax / ending” in the prompt language.
-
-
+   * Otherwise fall back to neutral "Section A/B/C" and rely on "opening / middle / climax /
+     ending" in the prompt language.
 
 [1]: https://www.audjust.com/api/examples/find-chorus-verse-sections-of-song "Audjust - Break Down a Song into Sections like Chorus and Verse"
 [2]: https://dl.acm.org/doi/10.1145/1178723.1178733?utm_source=chatgpt.com "Music structure analysis by finding repeated parts"

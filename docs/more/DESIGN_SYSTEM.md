@@ -1,5 +1,7 @@
-Below is a **complete Design System Document for *VibeCraft*** — structured like a professional product team spec (similar to Figma/Notion design systems).
-It gives you: identity, color tokens, spacing, grids, typography, components, interaction patterns, motion rules, and voice/tone.
+Below is a **complete Design System Document for *VibeCraft*** — structured like a professional
+product team spec (similar to Figma/Notion design systems).
+It gives you: identity, color tokens, spacing, grids, typography, components, interaction
+patterns, motion rules, and voice/tone.
 
 You can drop this into your repo as `DESIGN_SYSTEM.md`.
 
@@ -13,11 +15,13 @@ You can drop this into your repo as `DESIGN_SYSTEM.md`.
 
 ## **Purpose**
 
-The **VibeCraft Design System** ensures a cohesive, expressive, music-driven experience across web, product UI, and marketing assets. It reflects VibeCraft’s core mission:
+The **VibeCraft Design System** ensures a cohesive, expressive, music-driven experience across
+web, product UI, and marketing assets. It reflects VibeCraft's core mission:
 
 > **Transform music into motion using AI-driven synesthetic visuals.**
 
-The design system balances **artistic expression** with a **clean, cinematic UI** musicians feel comfortable working in.
+The design system balances **artistic expression** with a **clean, cinematic UI** musicians feel
+comfortable working in.
 
 ---
 
@@ -54,7 +58,8 @@ The design system balances **artistic expression** with a **clean, cinematic UI*
 
 # 2. **Color System**
 
-VibeCraft has a **dark-first**, neon-accent palette inspired by synthwave, audio meters, and cinematic UIs.
+VibeCraft has a **dark-first**, neon-accent palette inspired by synthwave, audio meters, and
+cinematic UIs.
 
 ## 2.1 Core Palette
 
@@ -256,7 +261,7 @@ Three styles:
 
 ### Pulse Bars
 
-```
+```text
 ▮ ▮ ▮
 ```
 

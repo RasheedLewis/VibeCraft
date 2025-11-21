@@ -12,7 +12,7 @@ DEFAULT_USER_ID = "default-user"
 
 
 class Song(SQLModel, table=True):
-    __tablename__ = "songs"
+    __tablename__ = "songs"  # type: ignore[assignment]
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: str = Field(default=DEFAULT_USER_ID, index=True, foreign_key="users.id")

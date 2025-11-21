@@ -10,12 +10,14 @@
 
 # **1. Product Summary**
 
-The AI Music Video Generator allows a user to upload a song (audio only), automatically analyzes its musical structure, lyrics, genre, and mood, and then generates:
+The AI Music Video Generator allows a user to upload a song (audio only), automatically
+analyzes its musical structure, lyrics, genre, and mood, and then generates:
 
 1. **Full-length music videos (1–3 minutes)**
 2. **Section-level videos for individual song segments**
 
-The system creates coherent, beat-synced visuals using a template-driven scene planner, AI video models, and a composition engine.
+The system creates coherent, beat-synced visuals using a template-driven scene planner, AI video
+models, and a composition engine.
 
 This PRD captures:
 
@@ -232,7 +234,7 @@ For each scene:
 
 ## **6.1 High-Level Pipeline**
 
-```
+```text
 User Upload
    → Audio Preprocessor
    → Music Analysis Engine
@@ -454,7 +456,8 @@ Returns `SongAnalysis`.
 
 # **Done.**
 
-Nice, that stack is perfect for what you’re doing. Let’s lock in how TS+React+Python maps onto the roadmap so you can actually start building.
+Nice, that stack is perfect for what you're doing. Let's lock in how TS+React+Python maps onto
+the roadmap so you can actually start building.
 
 I’ll do three things:
 
@@ -610,7 +613,8 @@ You don’t need to change the **numbers**, but the implementation details sharp
   * `npm create vite@latest` → React + TS
   * Install React Query / TanStack Query for API calls (nice but optional)
 
-> The rest of the PR list still stands; now we’re just clear that all backend subtasks are Python/FastAPI and all UI is React+TS.
+> The rest of the PR list still stands; now we're just clear that all backend subtasks are
+> Python/FastAPI and all UI is React+TS.
 
 ---
 
@@ -780,5 +784,5 @@ You don’t need a new roadmap—just mentally tag:
 If you want, next I can:
 
 * Turn **each PR into concrete GitHub issues** (with labels `[backend]`, `[frontend]`, `[ai]`)
-* Or design a **concrete `tasks_generate_section.py`** showing how a section video job runs end-to-end in Python.
-
+* Or design a **concrete `tasks_generate_section.py`** showing how a section video job runs
+  end-to-end in Python.

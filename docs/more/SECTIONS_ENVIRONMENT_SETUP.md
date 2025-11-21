@@ -2,7 +2,8 @@
 
 ## Required Environment Variables for Audjust Integration
 
-To enable song section analysis using the Audjust API, you need to configure the following environment variables in your `backend/.env` file:
+To enable song section analysis using the Audjust API, you need to configure the following
+environment variables in your `backend/.env` file:
 
 ### Audjust API Configuration
 
@@ -29,9 +30,10 @@ AUDJUST_TIMEOUT_SEC=30.0
 
 ### Testing Your Configuration
 
-After setting up the environment variables, restart your backend server and check the logs when uploading a song for analysis. You should see:
+After setting up the environment variables, restart your backend server and check the logs when
+uploading a song for analysis. You should see:
 
-```
+```text
 INFO: Checking Audjust configuration: base_url=https://api.audjust.com, api_key=***
 INFO: Audjust is configured, attempting to fetch structure segments for song <song_id>
 INFO: fetch_structure_segments called with audio_path=<path>
@@ -42,16 +44,18 @@ INFO: Fetched N sections from Audjust for song <song_id>
 ### Troubleshooting
 
 **If you see:** `WARNING: Audjust API not configured`
+
 - Check that both `AUDJUST_BASE_URL` and `AUDJUST_API_KEY` are set in your `.env` file
 - Verify there are no extra spaces or quotes in the values
 - Make sure the `.env` file is in the `backend/` directory
 
 **If the API call fails:**
+
 - Check that your API key is valid
 - Verify you have sufficient API credits
 - Check the logs for specific error messages
 
 **If no logs appear at all:**
+
 - Check that your log level is set to `info` or `debug`: `API_LOG_LEVEL=info`
 - Ensure the song analysis job is actually running (check Redis/RQ worker logs)
-

@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     s3_secret_access_key: Optional[str] = Field(default=None, alias="S3_SECRET_ACCESS_KEY")
     s3_region: Optional[str] = Field(default=None, alias="S3_REGION")
 
+    audjust_base_url: Optional[AnyUrl] = Field(default=None, alias="AUDJUST_BASE_URL")
+    audjust_api_key: Optional[str] = Field(default=None, alias="AUDJUST_API_KEY")
+    audjust_upload_path: str = Field(default="/upload", alias="AUDJUST_UPLOAD_PATH")
+    audjust_structure_path: str = Field(default="/structure", alias="AUDJUST_STRUCTURE_PATH")
+    audjust_timeout_sec: float = Field(default=30.0, alias="AUDJUST_TIMEOUT_SEC")
+
     replicate_api_token: Optional[str] = Field(default=None, alias="REPLICATE_API_TOKEN")
     whisper_api_token: Optional[str] = Field(default=None, alias="WHISPER_API_TOKEN")
     lyrics_api_key: Optional[str] = Field(default=None, alias="LYRICS_API_KEY")

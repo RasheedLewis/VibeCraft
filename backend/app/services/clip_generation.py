@@ -438,7 +438,7 @@ def _extract_audio_segment(
     ]
     
     try:
-        result = subprocess.run(
+        subprocess.run(
             cmd,
             check=True,
             capture_output=True,

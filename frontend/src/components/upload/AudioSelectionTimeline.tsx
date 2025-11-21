@@ -14,7 +14,6 @@ export interface AudioSelectionTimelineProps {
 
 const MAX_SELECTION_DURATION = 30.0
 const MIN_SELECTION_DURATION = 1.0
-const MARKER_WIDTH = 12
 const MARKER_HANDLE_WIDTH = 20
 
 export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
@@ -30,10 +29,15 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
   const containerRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const [startSec, setStartSec] = useState<number>(
-    initialStartSec ?? Math.max(0, durationSec - MAX_SELECTION_DURATION)
+    initialStartSec ?? Math.max(0, durationSec - MAX_SELECTION_DURATION),
   )
   const [endSec, setEndSec] = useState<number>(
-    initialEndSec ?? Math.min(durationSec, (initialStartSec ?? Math.max(0, durationSec - MAX_SELECTION_DURATION)) + MAX_SELECTION_DURATION)
+    initialEndSec ??
+      Math.min(
+        durationSec,
+        (initialStartSec ?? Math.max(0, durationSec - MAX_SELECTION_DURATION)) +
+          MAX_SELECTION_DURATION,
+      ),
   )
   const [isDragging, setIsDragging] = useState<'start' | 'end' | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -43,13 +47,13 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
 
   // Validate and constrain selection
   useEffect(() => {
-    let newStart = Math.max(0, startSec)
+    const newStart = Math.max(0, startSec)
     let newEnd = Math.min(durationSec, endSec)
-    
+
     if (newEnd <= newStart) {
       newEnd = Math.min(durationSec, newStart + MIN_SELECTION_DURATION)
     }
-    
+
     const duration = newEnd - newStart
     if (duration > MAX_SELECTION_DURATION) {
       newEnd = newStart + MAX_SELECTION_DURATION
@@ -57,14 +61,19 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
     if (duration < MIN_SELECTION_DURATION) {
       newEnd = newStart + MIN_SELECTION_DURATION
     }
-    
+
+    // Only update state if values changed, otherwise notify parent
     if (newStart !== startSec || newEnd !== endSec) {
-      setStartSec(newStart)
-      setEndSec(newEnd)
+      // Use requestAnimationFrame to defer state update
+      requestAnimationFrame(() => {
+        setStartSec(newStart)
+        setEndSec(newEnd)
+      })
     } else {
       onSelectionChange(newStart, newEnd)
     }
-  }, [startSec, endSec, durationSec, onSelectionChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startSec, endSec, durationSec])
 
   // Handle mouse drag for markers
   const handleMouseDown = useCallback((marker: 'start' | 'end', e: React.MouseEvent) => {
@@ -78,7 +87,7 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return
-      
+
       const rect = containerRef.current.getBoundingClientRect()
       const x = e.clientX - rect.left
       const percent = Math.max(0, Math.min(1, x / rect.width))
@@ -113,31 +122,37 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
   }, [isDragging, durationSec, startSec, endSec])
 
   // Handle timeline click to set playhead
-  const handleTimelineClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current || isDragging) return
-    
-    const rect = containerRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const percent = Math.max(0, Math.min(1, x / rect.width))
-    const time = percent * durationSec
-    
-    // If click is within selection, set playhead
-    if (time >= startSec && time <= endSec) {
-      if (audioRef.current) {
-        audioRef.current.currentTime = time
-        setPlayheadSec(time)
+  const handleTimelineClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!containerRef.current || isDragging) return
+
+      const rect = containerRef.current.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const percent = Math.max(0, Math.min(1, x / rect.width))
+      const time = percent * durationSec
+
+      // If click is within selection, set playhead
+      if (time >= startSec && time <= endSec) {
+        if (audioRef.current) {
+          audioRef.current.currentTime = time
+          setPlayheadSec(time)
+        }
       }
-    }
-  }, [durationSec, startSec, endSec, isDragging])
+    },
+    [durationSec, startSec, endSec, isDragging],
+  )
 
   // Handle hover for time display
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const percent = Math.max(0, Math.min(1, x / rect.width))
-    setHoverSec(percent * durationSec)
-  }, [durationSec])
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      const x = e.clientX - rect.left
+      const percent = Math.max(0, Math.min(1, x / rect.width))
+      setHoverSec(percent * durationSec)
+    },
+    [durationSec],
+  )
 
   // Audio playback control
   const handlePlayPause = useCallback(() => {
@@ -156,7 +171,7 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
         audioRef.current.currentTime = startSec
         setPlayheadSec(startSec)
       }
-      
+
       audioRef.current.play()
       setIsPlaying(true)
 
@@ -165,7 +180,7 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
         if (audioRef.current) {
           const time = audioRef.current.currentTime
           setPlayheadSec(time)
-          
+
           // Stop at end marker
           if (time >= endSec) {
             audioRef.current.pause()
@@ -238,16 +253,24 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
-            <svg className="h-5 w-5 text-vc-accent-primary" fill="currentColor" viewBox="0 0 24 24">
+            <svg
+              className="h-5 w-5 text-vc-accent-primary"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
             </svg>
           ) : (
-            <svg className="h-5 w-5 text-vc-accent-primary" fill="currentColor" viewBox="0 0 24 24">
+            <svg
+              className="h-5 w-5 text-vc-accent-primary"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path d="M8 5v14l11-7z" />
             </svg>
           )}
         </button>
-        
+
         <div className="flex-1 text-sm text-vc-text-secondary">
           <span className="tabular-nums">
             {formatTime(playheadSec)} / {formatTime(selectionDuration)}
@@ -311,7 +334,11 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
         {/* Start marker */}
         <div
           className="absolute top-0 bottom-0 cursor-ew-resize group"
-          style={{ left: `${startPercent}%`, width: `${MARKER_HANDLE_WIDTH}px`, marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px` }}
+          style={{
+            left: `${startPercent}%`,
+            width: `${MARKER_HANDLE_WIDTH}px`,
+            marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px`,
+          }}
           onMouseDown={(e) => handleMouseDown('start', e)}
         >
           <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary" />
@@ -322,7 +349,11 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
         {/* End marker */}
         <div
           className="absolute top-0 bottom-0 cursor-ew-resize group"
-          style={{ left: `${endPercent}%`, width: `${MARKER_HANDLE_WIDTH}px`, marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px` }}
+          style={{
+            left: `${endPercent}%`,
+            width: `${MARKER_HANDLE_WIDTH}px`,
+            marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px`,
+          }}
           onMouseDown={(e) => handleMouseDown('end', e)}
         >
           <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary" />
@@ -352,7 +383,8 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
       {/* Selection info */}
       <div className="flex items-center justify-between text-xs text-vc-text-secondary">
         <div>
-          Selected: <span className="tabular-nums font-medium text-vc-text-primary">
+          Selected:{' '}
+          <span className="tabular-nums font-medium text-vc-text-primary">
             {selectionDuration.toFixed(1)}s
           </span>
           {selectionDuration > MAX_SELECTION_DURATION && (
@@ -368,4 +400,3 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
     </div>
   )
 }
-

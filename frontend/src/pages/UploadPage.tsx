@@ -417,7 +417,7 @@ export const UploadPage: React.FC = () => {
     () => ({
       formats: 'MP3, WAV, M4A, FLAC, OGG',
       duration: 'Up to 7 minutes',
-      size: 'We recommend files under ~200 MB',
+      size: 'Up to 100 MB',
     }),
     [],
   )
@@ -440,6 +440,10 @@ export const UploadPage: React.FC = () => {
     setPlayerClipSelectionLocked(false)
     setVideoTypeSelectorVisible(true)
     autoScrollCompletedRef.current = false // Reset scroll flag for new upload
+
+    // Clear persisted state
+    localStorage.removeItem('vibecraft_current_song_id')
+
     videoTypeSelection.reset()
     audioSelection.reset()
     // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
@@ -462,10 +466,20 @@ export const UploadPage: React.FC = () => {
     }
   }, [])
 
-  // Load song from URL parameter if present
+  // Persist songId to localStorage when it changes
+  useEffect(() => {
+    if (result?.songId) {
+      localStorage.setItem('vibecraft_current_song_id', result.songId)
+    } else {
+      localStorage.removeItem('vibecraft_current_song_id')
+    }
+  }, [result?.songId])
+
+  // Load song from URL parameter or localStorage on mount
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
-    const songIdParam = urlParams.get('songId')
+    const songIdParam =
+      urlParams.get('songId') || localStorage.getItem('vibecraft_current_song_id')
 
     if (songIdParam && !result) {
       const loadSongById = async () => {

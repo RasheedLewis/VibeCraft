@@ -288,7 +288,7 @@ class TestRetryClipGeneration:
     @patch("app.services.clip_generation.ClipRepository")
     @patch("app.services.clip_generation.get_settings")
     def test_queue_name_with_suffix(self, mock_get_settings, mock_repo, mock_get_queue):
-        """Test that queue name includes :clip-generation suffix."""
+        """Test that queue name uses main queue (no :clip-generation suffix)."""
         clip_id = uuid4()
         song_id = uuid4()
 
@@ -322,8 +322,8 @@ class TestRetryClipGeneration:
 
         retry_clip_generation(clip_id)
 
-        # Verify queue was created with correct name
+        # Verify queue was created with correct name (main queue, no suffix)
         mock_get_queue.assert_called_once()
         call_kwargs = mock_get_queue.call_args[1]
-        assert call_kwargs["queue_name"] == "test-queue:clip-generation"
+        assert call_kwargs["queue_name"] == "test-queue"
 

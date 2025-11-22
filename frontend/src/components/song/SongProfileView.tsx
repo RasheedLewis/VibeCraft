@@ -95,8 +95,26 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   const playerPosterUrl = composedPosterUrl ?? activePlayerClip?.videoUrl ?? undefined
   // Only use audio URL if we don't have a composed video (composed video includes audio)
   const playerAudioUrl = composedVideoUrl ? null : audioUrl
+
+  // Calculate duration: use selected range if available, otherwise use composed video duration or sum of clips
+  const selectedDuration =
+    songDetails.selected_start_sec != null && songDetails.selected_end_sec != null
+      ? songDetails.selected_end_sec - songDetails.selected_start_sec
+      : null
+  const composedDuration =
+    composedVideoUrl && clipSummary?.songDurationSec ? clipSummary.songDurationSec : null
+  const clipsDuration =
+    clipSummary?.clips && clipSummary.clips.length > 0
+      ? Math.max(...clipSummary.clips.map((c) => c.endSec)) -
+        Math.min(...clipSummary.clips.map((c) => c.startSec))
+      : null
   const playerDurationSec =
-    clipSummary?.songDurationSec ?? durationValue ?? activePlayerClip?.endSec ?? null
+    selectedDuration ??
+    composedDuration ??
+    clipsDuration ??
+    durationValue ??
+    activePlayerClip?.endSec ??
+    null
   const playerClips =
     clipSummary?.clips?.map((clip) => ({
       id: clip.id,
@@ -227,7 +245,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
         />
       </section>
 
-      {sectionsEnabled && (
+      {sectionsEnabled && analysisData.sections.length > 0 && (
         <>
           <section className="space-y-2">
             <div className="vc-label">Song structure</div>

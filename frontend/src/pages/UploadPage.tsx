@@ -68,8 +68,11 @@ export const UploadPage: React.FC = () => {
   const [playerClipSelectionLocked, setPlayerClipSelectionLocked] =
     useState<boolean>(false)
   const compositionCompleteHandledRef = useRef<string | null>(null)
+  const autoScrollCompletedRef = useRef<boolean>(false)
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
   const [videoTypeSelectorVisible, setVideoTypeSelectorVisible] = useState(true)
+  const [hideCharacterConsistency, setHideCharacterConsistency] = useState(false)
+  const [showNoCharacterConfirm, setShowNoCharacterConfirm] = useState(false)
 
   // Use custom hooks for video type and audio selection
   const videoTypeSelection = useVideoTypeSelection({
@@ -230,7 +233,6 @@ export const UploadPage: React.FC = () => {
     }
 
     try {
-      console.log('[compose] Starting composition for song:', result.songId)
       setIsComposing(true)
       clipPolling.setError(null)
       // Reset the completion handler ref for the new job
@@ -238,7 +240,6 @@ export const UploadPage: React.FC = () => {
       const { data } = await apiClient.post<ComposeVideoResponse>(
         `/songs/${result.songId}/clips/compose/async`,
       )
-      console.log('[compose] Composition job started:', data.jobId)
       setComposeJobId(data.jobId)
     } catch (err) {
       console.error('[compose] Failed to start composition:', err)
@@ -251,8 +252,20 @@ export const UploadPage: React.FC = () => {
 
   const handleGenerateClips = useCallback(async () => {
     if (!result?.songId) return
+
+    // Check if character image is set
+    const hasCharacterImage =
+      songDetails?.character_consistency_enabled &&
+      (songDetails.character_reference_image_s3_key ||
+        songDetails.character_pose_b_s3_key)
+
+    // If no character image, show confirmation dialog
+    if (!hasCharacterImage && !hideCharacterConsistency) {
+      setShowNoCharacterConfirm(true)
+      return
+    }
+
     try {
-      console.log('[generate-clips] Starting clip generation for song:', result.songId)
       clipPolling.setError(null)
       const durationEstimate =
         analysisData?.durationSec ??
@@ -278,47 +291,38 @@ export const UploadPage: React.FC = () => {
         clipSummary.completedClips === clipSummary.totalClips ||
         clipSummary.clips.some((clip) => clip.durationSec > maxClipSeconds + 0.1)
 
-      console.log('[generate-clips] Planning check:', {
-        needsReplan,
-        hasSummary: !!clipSummary,
-        totalClips: clipSummary?.totalClips ?? null,
-        completedClips: clipSummary?.completedClips ?? null,
-        computedClipCount,
-        note: clipSummary
-          ? 'Using existing clip summary'
-          : 'No clip summary yet (new song or not fetched)',
-      })
-
       if (needsReplan) {
-        console.log('[generate-clips] Planning clips...')
         await apiClient.post(`/songs/${result.songId}/clips/plan`, null, {
           params: {
             clip_count: computedClipCount,
             max_clip_sec: maxClipSeconds,
           },
         })
-        console.log('[generate-clips] Clips planned, fetching updated summary...')
         await clipPolling.fetchClipSummary(result.songId)
       }
 
-      console.log('[generate-clips] Starting clip generation job...')
       const { data } = await apiClient.post<{
         jobId: string
         songId: string
         status: string
       }>(`/songs/${result.songId}/clips/generate`)
 
-      console.log('[generate-clips] Job started:', data.jobId, 'status:', data.status)
       clipPolling.setJobId(data.jobId)
       clipPolling.setStatus(data.status === 'processing' ? 'processing' : 'queued')
-      console.log('[generate-clips] State updated, UI should show progress now')
     } catch (err) {
       console.error('[generate-clips] Error:', err)
       clipPolling.setError(
         extractErrorMessage(err, 'Unable to start clip generation for this track.'),
       )
     }
-  }, [result, clipSummary, analysisData, songDetails, clipPolling])
+  }, [
+    result,
+    clipSummary,
+    analysisData,
+    songDetails,
+    clipPolling,
+    hideCharacterConsistency,
+  ])
 
   const handlePreviewClip = useCallback(
     (clip: SongClipStatus) => {
@@ -422,6 +426,7 @@ export const UploadPage: React.FC = () => {
     setPlayerActiveClipId(null)
     setPlayerClipSelectionLocked(false)
     setVideoTypeSelectorVisible(true)
+    autoScrollCompletedRef.current = false // Reset scroll flag for new upload
     videoTypeSelection.reset()
     audioSelection.reset()
     // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
@@ -531,15 +536,41 @@ export const UploadPage: React.FC = () => {
   }, [analysisState, result?.songId, fetchSongDetails])
 
   // Scroll to top when transitioning from analysis to character selection
+  // Only for short-form videos, only once, only if character image hasn't been chosen
   useEffect(() => {
-    if (analysisState === 'completed' && analysisData && songDetails) {
-      // Small delay to ensure the character selection UI has rendered
-      const timer = setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-      }, 100)
-      return () => clearTimeout(timer)
+    // Only scroll for short-form videos
+    if (videoType !== 'short_form') {
+      return
     }
-  }, [analysisState, analysisData, songDetails])
+
+    // Only scroll once
+    if (autoScrollCompletedRef.current) {
+      return
+    }
+
+    // Only scroll when analysis completes and we have the data
+    if (analysisState !== 'completed' || !analysisData || !songDetails) {
+      return
+    }
+
+    // Only scroll if character image hasn't been chosen yet
+    const hasCharacterImage =
+      songDetails.character_reference_image_s3_key || songDetails.character_pose_b_s3_key
+
+    if (hasCharacterImage) {
+      return
+    }
+
+    // Mark as completed before scrolling to prevent double-trigger
+    autoScrollCompletedRef.current = true
+
+    // Small delay to ensure the character selection UI has rendered
+    const timer = setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }, 100)
+
+    return () => clearTimeout(timer)
+  }, [analysisState, analysisData, songDetails, videoType])
 
   // Handler for selection changes - just updates local state, doesn't save yet
   const handleSelectionChange = useCallback(
@@ -807,25 +838,6 @@ export const UploadPage: React.FC = () => {
             // The reset logic was causing the button to disappear immediately
             // Only reset if we're switching songs or starting fresh
 
-            // Debug logging
-            console.log('[AudioSelection] Debug:', {
-              shouldShowAudioSelection,
-              stage,
-              videoType,
-              audioSelectionValue,
-              analysisState,
-              hasExistingSelection,
-              selectedStartSec: songDetails?.selected_start_sec,
-              selectedEndSec: songDetails?.selected_end_sec,
-              hasResult: !!result,
-              hasAudioUrl: !!result?.audioUrl,
-              hasMetadata: !!metadata,
-              durationFromMetadata: metadata?.durationSeconds,
-              hasSongDetails: !!songDetails,
-              durationFromSongDetails: songDetails?.duration_sec,
-              analysisData: !!analysisPolling.data,
-            })
-
             return shouldShowAudioSelection ? (
               // Audio Selection UI - replaces video type selector for short-form
               <div className="w-full">
@@ -997,13 +1009,6 @@ export const UploadPage: React.FC = () => {
               showVideoTypeSelector ||
               (videoType && videoTypeSelectorVisible && videoType === 'full_length')
 
-            console.log('[VideoTypeSelector] Debug:', {
-              shouldShowVideoTypeSelector,
-              showVideoTypeSelector,
-              videoType,
-              videoTypeSelectorVisible,
-            })
-
             return shouldShowVideoTypeSelector ? (
               <div
                 className={clsx(
@@ -1104,7 +1109,7 @@ export const UploadPage: React.FC = () => {
             </div>
           )}
           {/* Character Image Upload Step - only for short-form videos */}
-          {videoType === 'short_form' && result?.songId && (
+          {videoType === 'short_form' && result?.songId && !hideCharacterConsistency && (
             <section className="mb-4 space-y-4">
               <div className="vc-label">Character Consistency (Optional)</div>
               {songDetails?.character_consistency_enabled &&
@@ -1162,27 +1167,16 @@ export const UploadPage: React.FC = () => {
                     isOpen={templateModalOpen}
                     onClose={() => setTemplateModalOpen(false)}
                     onSelect={async (characterId) => {
-                      console.log('[UploadPage] Template character selected:', characterId)
                       // Refresh song details to show character consistency is enabled
                       if (result?.songId) {
                         try {
                           const response = await apiClient.get(`/songs/${result.songId}`)
-                          console.log('[UploadPage] Refreshed song details:', response.data)
-                          console.log(
-                            '[UploadPage] character_consistency_enabled:',
-                            response.data.character_consistency_enabled,
-                          )
-                          console.log(
-                            '[UploadPage] character_reference_image_s3_key:',
-                            response.data.character_reference_image_s3_key,
-                          )
-                          console.log(
-                            '[UploadPage] character_pose_b_s3_key:',
-                            response.data.character_pose_b_s3_key,
-                          )
                           setSongDetails(response.data)
                         } catch (err) {
-                          console.error('[UploadPage] Failed to refresh song details:', err)
+                          console.error(
+                            '[UploadPage] Failed to refresh song details:',
+                            err,
+                          )
                         }
                       }
                     }}
@@ -1259,6 +1253,107 @@ export const UploadPage: React.FC = () => {
                 onSectionSelect={handleSectionSelect}
               />
             )}
+        </div>
+      )}
+      {/* Confirmation dialog for generating clips without character image */}
+      {showNoCharacterConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl bg-[rgba(20,20,32,0.95)] backdrop-blur-xl border border-vc-border/50 shadow-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-4">
+              Generate Clips Without Character Reference?
+            </h2>
+            <p className="text-sm text-vc-text-secondary mb-6">
+              You haven't selected a character image or template. We'll generate clips
+              without a character reference, which means characters may vary between
+              clips. This is fine and will still produce a video.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowNoCharacterConfirm(false)}
+                className="px-4 py-2 bg-vc-border/30 text-vc-text-secondary rounded-lg hover:bg-vc-border/50 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowNoCharacterConfirm(false)
+                  setHideCharacterConsistency(true)
+                  // Now proceed with clip generation
+                  if (!result?.songId) return
+                  try {
+                    console.log(
+                      '[generate-clips] Starting clip generation for song:',
+                      result.songId,
+                    )
+                    clipPolling.setError(null)
+                    const durationEstimate =
+                      analysisData?.durationSec ??
+                      songDetails?.duration_sec ??
+                      clipSummary?.songDurationSec ??
+                      clipSummary?.clips.reduce(
+                        (total, clip) => total + clip.durationSec,
+                        0,
+                      ) ??
+                      null
+
+                    const maxClipSeconds = 6
+                    const minClips = 3
+                    const maxClips = 64
+                    const computedClipCount =
+                      durationEstimate && durationEstimate > 0
+                        ? Math.min(
+                            maxClips,
+                            Math.max(
+                              minClips,
+                              Math.ceil(durationEstimate / maxClipSeconds),
+                            ),
+                          )
+                        : minClips
+
+                    const needsReplan =
+                      !clipSummary ||
+                      clipSummary.totalClips === 0 ||
+                      clipSummary.completedClips === clipSummary.totalClips ||
+                      clipSummary.clips.some(
+                        (clip) => clip.durationSec > maxClipSeconds + 0.1,
+                      )
+
+                    if (needsReplan) {
+                      await apiClient.post(`/songs/${result.songId}/clips/plan`, null, {
+                        params: {
+                          clip_count: computedClipCount,
+                          max_clip_sec: maxClipSeconds,
+                        },
+                      })
+                      await clipPolling.fetchClipSummary(result.songId)
+                    }
+
+                    const { data } = await apiClient.post<{
+                      jobId: string
+                      songId: string
+                      status: string
+                    }>(`/songs/${result.songId}/clips/generate`)
+
+                    clipPolling.setJobId(data.jobId)
+                    clipPolling.setStatus(
+                      data.status === 'processing' ? 'processing' : 'queued',
+                    )
+                  } catch (err) {
+                    console.error('[generate-clips] Error:', err)
+                    clipPolling.setError(
+                      extractErrorMessage(
+                        err,
+                        'Unable to start clip generation for this track.',
+                      ),
+                    )
+                  }
+                }}
+                className="px-4 py-2 bg-vc-accent-primary text-white rounded-lg hover:bg-vc-accent-primary/90 transition-colors"
+              >
+                OK, Generate Clips
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {analysisState === 'completed' && (!analysisData || !songDetails) && (

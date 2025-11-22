@@ -53,6 +53,8 @@ consistent, the Image-to-Video model may still introduce visual drift across the
 6 separate generations. The implementation includes graceful fallback to
 text-to-video if image-to-video generation fails.
 
+**Known Issue:** Currently, most clips do not show a dancing figure/character, and when a character does appear, it's not based on the provided reference image. Prior to refactors and adding the character consistency option, we actually did get a dancing character almost all the time. This suggests the prompt generation logic may need investigation. See `Temp-Troubleshooting-Log.md` for details.
+
 ---
 
 ## 3. Beat Synchronization: Programmatic Quick Wins

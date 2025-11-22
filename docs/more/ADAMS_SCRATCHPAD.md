@@ -4,6 +4,13 @@
 
 - I like what I did in v2/ testing-wise: have it write a test shell-script, and give UI tips
 
+## Tiny fixes noticed late Friday night
+
+- Cache character templates on Cloudfront
+- dev/start script shouldn't say "No backend unit tests found"
+- 'Compose when done' button, I just remembered that's silly wording unless you can actually click it before clips are done
+- ?
+
 ## New Future Work For Sure
 
 - User must select max 30 seconds, UI should let them drag start/end like you can on freebeat.ai

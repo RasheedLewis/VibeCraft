@@ -15,6 +15,7 @@ from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import SongAnalysis
 from app.services.clip_generation import (
+    _build_scene_spec_for_clip,
     _get_character_image_urls,
     enqueue_clip_generation_batch,
     get_clip_generation_job_status,
@@ -37,8 +38,9 @@ class DummyJob:
 
 
 class DummyQueue:
-    def __init__(self) -> None:
+    def __init__(self, name: str = "test-queue") -> None:
         self.jobs: list[DummyJob] = []
+        self.name = name
 
     def enqueue(
         self,
@@ -695,4 +697,65 @@ def test_get_character_image_urls_disabled():
     
     assert urls == []
     assert fallback is None
+
+
+def test_build_scene_spec_for_clip_without_sections():
+    """Test _build_scene_spec_for_clip handles short-form (no sections) correctly."""
+    song_id, analysis = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=1)
+    
+    with session_scope() as session:
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+        assert clip is not None
+        
+        # Create analysis without sections (short-form)
+        analysis = SongAnalysis(
+            durationSec=clip.duration_sec or 10.0,
+            bpm=128.0,
+            beatTimes=[i * 0.5 for i in range(12)],
+            sections=[],  # No sections for short-form
+            moodPrimary="energetic",
+            moodTags=["energetic", "upbeat"],
+            moodVector={"energy": 0.8, "valence": 0.7, "danceability": 0.6, "tension": 0.5},
+            primaryGenre="Electronic",
+            subGenres=["EDM"],
+            lyricsAvailable=False,
+            sectionLyrics=[],
+        )
+        
+        # Should not raise error, should use build_clip_scene_spec
+        scene_spec = _build_scene_spec_for_clip(clip.id, analysis)
+        
+        assert scene_spec is not None
+        assert scene_spec.section_id is None  # No section ID in clip mode
+        assert scene_spec.duration_sec == clip.duration_sec
+        assert scene_spec.prompt is not None
+        assert scene_spec.template == "abstract"
+    
+    _cleanup_song(song_id)
+
+
+def test_build_scene_spec_for_clip_with_sections():
+    """Test _build_scene_spec_for_clip handles long-form (with sections) correctly."""
+    song_id, analysis = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=3)
+    
+    with session_scope() as session:
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+        assert clip is not None
+        
+        # Create analysis with sections (long-form)
+        analysis = make_analysis(beat_times=[i * 0.5 for i in range(24)])
+        
+        # Should use build_scene_spec with section
+        scene_spec = _build_scene_spec_for_clip(clip.id, analysis)
+        
+        assert scene_spec is not None
+        assert scene_spec.section_id is not None  # Has section ID in long-form mode
+        assert scene_spec.duration_sec == clip.duration_sec
+        assert scene_spec.prompt is not None
+    
+    _cleanup_song(song_id)
 

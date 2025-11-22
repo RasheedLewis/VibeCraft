@@ -14,30 +14,25 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
   const [poseBUrl, setPoseBUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [debugInfo, setDebugInfo] = useState<string>('')
 
   useEffect(() => {
     const fetchImageUrls = async () => {
       try {
         setLoading(true)
         setError(null)
-        setDebugInfo(`Fetching URLs for songId: ${songId}`)
-        console.log('[SelectedTemplateDisplay] Fetching character image URLs for songId:', songId)
         const response = await apiClient.get(`/songs/${songId}/character-image/url`)
-        console.log('[SelectedTemplateDisplay] Response:', response.data)
         setPoseAUrl(response.data.pose_a_url)
         setPoseBUrl(response.data.pose_b_url)
-        setDebugInfo(
-          `pose_a_url: ${response.data.pose_a_url ? '✓' : '✗'}, pose_b_url: ${response.data.pose_b_url ? '✓' : '✗'}`,
-        )
       } catch (err: unknown) {
         const errorMessage =
           (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
           (err as { message?: string }).message ||
           'Failed to load character images'
         setError(errorMessage)
-        setDebugInfo(`Error: ${errorMessage}`)
-        console.error('[SelectedTemplateDisplay] Failed to fetch character image URLs:', err)
+        console.error(
+          '[SelectedTemplateDisplay] Failed to fetch character image URLs:',
+          err,
+        )
       } finally {
         setLoading(false)
       }
@@ -53,7 +48,9 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
       <div className={`flex items-center justify-center p-8 ${className || ''}`}>
         <div className="text-center">
           <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-solid border-vc-accent-primary border-r-transparent"></div>
-          <p className="mt-2 text-sm text-vc-text-secondary">Loading character images...</p>
+          <p className="mt-2 text-sm text-vc-text-secondary">
+            Loading character images...
+          </p>
         </div>
       </div>
     )
@@ -61,7 +58,9 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
 
   if (error) {
     return (
-      <div className={`rounded-lg border border-red-500/30 bg-red-500/10 p-4 ${className || ''}`}>
+      <div
+        className={`rounded-lg border border-red-500/30 bg-red-500/10 p-4 ${className || ''}`}
+      >
         <p className="text-sm text-red-400">{error}</p>
       </div>
     )
@@ -124,4 +123,3 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
     </div>
   )
 }
-

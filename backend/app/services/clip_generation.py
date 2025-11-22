@@ -31,7 +31,7 @@ from app.schemas.analysis import SongAnalysis, SongSection
 from app.schemas.clip import ClipGenerationSummary, SongClipStatus
 from app.schemas.job import ClipGenerationJobResponse, JobStatusResponse
 from app.schemas.scene import SceneSpec
-from app.services.scene_planner import build_scene_spec
+from app.services.scene_planner import build_scene_spec, build_clip_scene_spec
 from app.services.song_analysis import get_latest_analysis
 from app.services.video_generation import generate_section_video
 from app.services.storage import (
@@ -63,8 +63,13 @@ def enqueue_clip_generation_batch(
 
     settings = get_settings()
     queue = get_queue(
-        queue_name=f"{settings.rq_worker_queue}:clip-generation",
+        queue_name=settings.rq_worker_queue,  # Use main queue so worker picks up jobs
         timeout=QUEUE_TIMEOUT_SEC
+    )
+
+    logger.info(
+        f"[CLIP-GEN] Enqueueing clip generation batch for song {song_id}, "
+        f"batch_job_id={batch_job_id}, max_parallel={max_parallel}, queue={queue.name}"
     )
 
     # Get clips using repository
@@ -81,6 +86,8 @@ def enqueue_clip_generation_batch(
     if not clips:
         raise ValueError("No clips found to enqueue")
 
+    logger.info(f"[CLIP-GEN] Found {len(clips)} clips to enqueue for song {song_id}")
+
     jobs: list[Job] = []
     with session_scope() as session:
         for idx, clip in enumerate(clips):
@@ -90,6 +97,10 @@ def enqueue_clip_generation_batch(
             if batch_job_id:
                 meta["batch_job_id"] = batch_job_id
 
+            logger.info(
+                f"[CLIP-GEN] Enqueueing clip {clip.id} (index {clip.clip_index}) "
+                f"as job {job_id}, depends_on={depends_on.id if depends_on else None}"
+            )
             job = queue.enqueue(
                 run_clip_generation_job,
                 clip.id,
@@ -104,8 +115,15 @@ def enqueue_clip_generation_batch(
             clip.rq_job_id = job.id
             session.add(clip)
             jobs.append(job)
+            logger.info(f"[CLIP-GEN] Successfully enqueued job {job.id} for clip {clip.id}")
 
         session.commit()
+
+    job_ids = [job.id for job in jobs]
+    logger.info(
+        f"[CLIP-GEN] Enqueued {len(job_ids)} clip generation jobs for song {song_id}, "
+        f"batch_job_id={batch_job_id}, job_ids={job_ids[:5]}{'...' if len(job_ids) > 5 else ''}"
+    )
 
     if batch_job_id:
         _update_clip_generation_job(
@@ -120,7 +138,7 @@ def retry_clip_generation(clip_id: UUID) -> SongClipStatus:
     """Reset clip state and enqueue a new generation job."""
     settings = get_settings()
     queue = get_queue(
-        queue_name=f"{settings.rq_worker_queue}:clip-generation",
+        queue_name=settings.rq_worker_queue,  # Use main queue so worker picks up jobs
         timeout=QUEUE_TIMEOUT_SEC
     )
 
@@ -166,9 +184,11 @@ def retry_clip_generation(clip_id: UUID) -> SongClipStatus:
 
 def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     """RQ job that generates a video for a single clip via Replicate."""
+    logger.info(f"[CLIP-GEN] ===== Starting run_clip_generation_job for clip {clip_id} =====")
     job = get_current_job()
     job_id = job.id if job else None
     batch_job_id = job.meta.get("batch_job_id") if job and isinstance(job.meta, dict) else None
+    logger.info(f"[CLIP-GEN] Job ID: {job_id}, Batch Job ID: {batch_job_id}")
 
     song_id: UUID | None = None
     clip_fps: int = 8
@@ -221,11 +241,23 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
         song = SongRepository.get_by_id(song_id)
         if song:
             character_image_urls, character_image_url = _get_character_image_urls(song)
+            logger.info(
+                f"[CLIP-GEN] Clip {clip_id}: character_consistency_enabled={song.character_consistency_enabled}, "
+                f"character_image_urls count={len(character_image_urls)}, "
+                f"character_image_url={'set' if character_image_url else 'none'}"
+            )
+        else:
+            logger.info(f"[CLIP-GEN] Clip {clip_id}: Song {song_id} not found, no character images")
     except SongNotFoundError:
         logger.warning(f"Song {song_id} not found when checking character consistency")
     except Exception as e:
         logger.warning(f"Error checking character consistency: {e}")
 
+    logger.info(
+        f"[CLIP-GEN] Clip {clip_id}: Calling generate_section_video with "
+        f"character_image_url={'set' if character_image_url else 'none'}, "
+        f"character_image_urls count={len(character_image_urls)}"
+    )
     success, video_url, metadata = generate_section_video(
         scene_spec,
         seed=seed,
@@ -372,13 +404,31 @@ def _mark_clip_failed(clip_id: UUID, message: str, *, batch_job_id: Optional[str
 
 
 def _build_scene_spec_for_clip(clip_id: UUID, analysis: SongAnalysis) -> SceneSpec:
+    """
+    Build scene spec for a clip.
+    
+    For short-form videos (no sections), uses song-level analysis.
+    For long-form videos (with sections), uses section-specific analysis.
+    """
     clip = ClipRepository.get_by_id(clip_id)
     start_sec = clip.start_sec
+    end_sec = clip.end_sec or (clip.start_sec + clip.duration_sec)
     duration_sec = clip.duration_sec
 
+    # For short-form videos, analysis may not have sections
+    # Use build_clip_scene_spec which works with song-level analysis
     if not analysis.sections:
-        raise ClipGenerationError("Song analysis has no sections to build scene spec.")
+        logger.info(
+            f"[CLIP-GEN] Clip {clip_id}: No sections in analysis, using clip scene spec "
+            f"(short-form mode) for {start_sec}s-{end_sec}s"
+        )
+        return build_clip_scene_spec(
+            start_sec=start_sec,
+            end_sec=end_sec,
+            analysis=analysis,
+        )
 
+    # For long-form videos with sections, use section-specific scene spec
     target_section = _find_section_for_clip(start_sec, analysis.sections)
     scene_spec = build_scene_spec(target_section.id, analysis)
     return scene_spec.model_copy(update={"duration_sec": duration_sec})

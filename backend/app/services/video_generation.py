@@ -77,7 +77,10 @@ def _generate_image_to_video(
         if seed is not None:
             input_params["seed"] = seed
 
-        logger.info(f"Starting image-to-video generation for section {scene_spec.section_id}")
+        logger.info(
+            f"[VIDEO-GEN] Starting image-to-video generation for section {scene_spec.section_id}, "
+            f"reference_image_url={'set' if reference_image_url else 'none'}"
+        )
         logger.debug(f"Using reference image: {reference_image_url[:100]}...")
         logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
 
@@ -85,13 +88,14 @@ def _generate_image_to_video(
         model = client.models.get(IMAGE_TO_VIDEO_MODEL)
         version = model.latest_version
 
+        logger.info(f"[VIDEO-GEN] Calling Replicate API: model={IMAGE_TO_VIDEO_MODEL}, has_image={'image' in input_params}")
         prediction = client.predictions.create(
             version=version,
             input=input_params,
         )
 
         job_id = prediction.id
-        logger.info(f"Image-to-video job started: {job_id}")
+        logger.info(f"[VIDEO-GEN] Replicate job started: {job_id}, type=image-to-video")
 
         # Poll for completion
         video_url = None
@@ -295,7 +299,10 @@ def generate_section_video(
             input_params["seed"] = seed
 
         generation_type = "image-to-video" if is_image_to_video else "text-to-video"
-        logger.info(f"Starting {generation_type} generation for section {scene_spec.section_id}")
+        logger.info(
+            f"[VIDEO-GEN] Starting {generation_type} generation for section {scene_spec.section_id}, "
+            f"has_image_urls={is_image_to_video}, image_count={len(image_urls) if image_urls else 0}"
+        )
         logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
 
         # Start the prediction (async - use predictions.create for long-running jobs)
@@ -303,13 +310,17 @@ def generate_section_video(
         model = client.models.get(VIDEO_MODEL)
         version = model.latest_version
         
+        logger.info(
+            f"[VIDEO-GEN] Calling Replicate API: model={VIDEO_MODEL}, "
+            f"generation_type={generation_type}, has_image={'image' in input_params or 'images' in input_params}"
+        )
         prediction = client.predictions.create(
             version=version,
             input=input_params,
         )
 
         job_id = prediction.id
-        logger.info(f"Replicate job started: {job_id}")
+        logger.info(f"[VIDEO-GEN] Replicate job started: {job_id}, type={generation_type}")
 
         # Poll for completion
         video_url = None

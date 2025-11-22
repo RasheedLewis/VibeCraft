@@ -1,5 +1,22 @@
 # Saturday Plan
 
+## 🎯 What's Left
+
+**Completed:**
+- ✅ Phase 3: Verification & Testing (beat-sync effects, image upload, rapid iteration)
+- ✅ Phase 4: Product Polish (state persistence, auth + project listing, cost tracking)
+- ✅ Phase 5.1: Rate Limiting
+- ✅ Phase 5.3: Documentation updates
+
+**Remaining:**
+- ⏳ Phase 5.2: Deploy to Prod (manual deployment step)
+- ⏳ Phase 6: Demo & User Testing Prep (manual tasks - demo video, user testing)
+- ⏳ Phase 7: Future Spikes (lower priority - transitions, advanced dancing sync, Veo testing, etc.)
+
+**Status:** Core features complete. Ready for deployment and user testing.
+
+---
+
 Here's what's on my mind, I don't have an organized plan yet.
 If I say (TTL) refer to Temp-Troubleshooting-Log.md, if I say (BSIP) refer to BEAT-SYNC-IMPLEMENTATION-PLAN.md, if I say (MTG) refer to MANUAL_TESTING_GUIDE.md
 - Beat-synced visual effects, (TTL) line 132 - I'd like to verify it's happening - maybe temporarily exaggerating its effect and duration for manual inspection

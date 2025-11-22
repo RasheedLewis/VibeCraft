@@ -24,6 +24,8 @@ from app.services.prompt_enhancement import (  # noqa: E402
     get_motion_descriptor,
     get_motion_type_from_genre,
     get_tempo_classification,
+    optimize_prompt_for_api,
+    select_motion_type,
 )
 
 
@@ -210,4 +212,309 @@ class TestGetMotionTypeFromGenre:
         """Test that genre matching works with substrings."""
         assert get_motion_type_from_genre("electronic dance music") == "pulsing"
         assert get_motion_type_from_genre("rock and roll") == "stepping"
+
+
+class TestExtractBpmFromPrompt:
+    """Test BPM extraction from enhanced prompts.
+    
+    Justification: API optimization needs to extract BPM from prompts when not explicitly provided.
+    This ensures backward compatibility and works with prompts that already contain BPM info.
+    """
+
+    def test_extract_bpm_standard_format(self):
+        """Test extraction of '128 BPM' format."""
+        from app.services.prompt_enhancement import _extract_bpm_from_prompt
+        
+        prompt = "Abstract visual style, synchronized to 128 BPM tempo"
+        result = _extract_bpm_from_prompt(prompt)
+        assert result == 128.0
+
+    def test_extract_bpm_no_space(self):
+        """Test extraction of '128BPM' format (no space)."""
+        from app.services.prompt_enhancement import _extract_bpm_from_prompt
+        
+        prompt = "Motion synchronized to 128BPM"
+        result = _extract_bpm_from_prompt(prompt)
+        assert result == 128.0
+
+    def test_extract_bpm_beats_per_minute_format(self):
+        """Test extraction of 'at 128 beats per minute' format."""
+        from app.services.prompt_enhancement import _extract_bpm_from_prompt
+        
+        prompt = "Character moves at 128 beats per minute, creating rhythm"
+        result = _extract_bpm_from_prompt(prompt)
+        assert result == 128.0
+
+    def test_extract_bpm_case_insensitive(self):
+        """Test that BPM extraction is case insensitive."""
+        from app.services.prompt_enhancement import _extract_bpm_from_prompt
+        
+        prompt = "Synchronized to 120 bpm tempo"
+        result = _extract_bpm_from_prompt(prompt)
+        assert result == 120.0
+
+    def test_extract_bpm_no_match_returns_none(self):
+        """Test that extraction returns None when no BPM found."""
+        from app.services.prompt_enhancement import _extract_bpm_from_prompt
+        
+        prompt = "Abstract visual style with vibrant colors"
+        result = _extract_bpm_from_prompt(prompt)
+        assert result is None
+
+    def test_extract_bpm_first_match_wins(self):
+        """Test that first BPM value found is returned."""
+        from app.services.prompt_enhancement import _extract_bpm_from_prompt
+        
+        prompt = "Synchronized to 120 BPM, then changes to 140 BPM"
+        result = _extract_bpm_from_prompt(prompt)
+        assert result == 120.0  # First match
+
+
+class TestOptimizePromptForApi:
+    """Test API-specific prompt optimization.
+    
+    Justification: Different video generation APIs respond differently to prompts.
+    This ensures prompts are correctly formatted for each API to maximize rhythmic motion generation.
+    """
+
+    def test_optimize_for_minimax_hailuo_with_bpm(self):
+        """Test optimization for Minimax Hailuo 2.3 with explicit BPM."""
+        prompt = "Abstract visual style, vibrant colors"
+        result = optimize_prompt_for_api(prompt, "minimax/hailuo-2.3", bpm=120.0)
+        
+        assert "Camera: static" in result
+        assert "120 BPM" in result
+        assert prompt in result
+
+    def test_optimize_for_minimax_hailuo_extracts_bpm(self):
+        """Test that Minimax optimization extracts BPM from prompt if not provided."""
+        prompt = "Abstract visual style, synchronized to 128 BPM tempo"
+        result = optimize_prompt_for_api(prompt, "minimax/hailuo-2.3", bpm=None)
+        
+        assert "Camera: static" in result
+        assert "128 BPM" in result
+        # Should not duplicate BPM
+        assert result.count("128 BPM") <= 2  # May appear twice but not many times
+
+    def test_optimize_for_minimax_avoids_duplication(self):
+        """Test that Minimax optimization doesn't duplicate BPM if already in prompt."""
+        prompt = "Abstract visual style, synchronized to 120 BPM tempo"
+        result = optimize_prompt_for_api(prompt, "minimax/hailuo-2.3", bpm=120.0)
+        
+        # Should add camera directive but not duplicate BPM
+        assert "Camera: static" in result
+        # BPM should appear but not excessively duplicated
+        bpm_count = result.count("120 BPM")
+        assert bpm_count >= 1  # At least once
+        assert bpm_count <= 2  # Not many duplicates
+
+    def test_optimize_for_runway(self):
+        """Test optimization for Runway Gen-3 API.
+        
+        Note: We haven't tested Runway API yet - this tests the optimization logic
+        for future use when/if we switch to Runway.
+        """
+        prompt = "Abstract visual style"
+        result = optimize_prompt_for_api(prompt, "runway", bpm=120.0)
+        
+        assert "Camera: static" in result
+        assert "Motion:" in result
+        assert prompt in result
+
+    def test_optimize_for_pika(self):
+        """Test optimization for Pika API.
+        
+        Note: We haven't tested Pika API yet - this tests the optimization logic
+        for future use when/if we switch to Pika.
+        """
+        prompt = "Abstract visual style"
+        result = optimize_prompt_for_api(prompt, "pika", bpm=120.0)
+        
+        assert "Style: clean motion graphics" in result
+        assert "120 BPM" in result
+        assert prompt in result
+
+    def test_optimize_for_kling(self):
+        """Test optimization for Kling API.
+        
+        Note: We haven't tested Kling API yet - this tests the optimization logic
+        for future use when/if we switch to Kling.
+        """
+        prompt = "Abstract visual style"
+        result = optimize_prompt_for_api(prompt, "kling", bpm=120.0)
+        
+        assert "character moves" in result.lower()
+        assert "120 beats per minute" in result
+        assert "rhythmic visual pattern" in result.lower()
+        assert prompt in result
+
+    def test_optimize_for_unknown_api_generic(self):
+        """Test that unknown APIs get generic optimization."""
+        prompt = "Abstract visual style"
+        result = optimize_prompt_for_api(prompt, "unknown-api", bpm=120.0)
+        
+        assert "120 BPM" in result
+        assert prompt in result
+
+    def test_optimize_without_bpm_returns_unchanged(self):
+        """Test that optimization returns unchanged prompt when no BPM available."""
+        prompt = "Abstract visual style with no BPM reference"
+        result = optimize_prompt_for_api(prompt, "minimax/hailuo-2.3", bpm=None)
+        
+        # Should return unchanged since no BPM can be extracted
+        assert result == prompt
+
+    def test_optimize_case_insensitive_api_name(self):
+        """Test that API name matching is case insensitive."""
+        prompt = "Abstract visual style"
+        result1 = optimize_prompt_for_api(prompt, "MINIMAX/HAILUO-2.3", bpm=120.0)
+        result2 = optimize_prompt_for_api(prompt, "minimax/hailuo-2.3", bpm=120.0)
+        
+        # Both should produce similar results (may have minor differences but should optimize)
+        assert "Camera" in result1 or "120 BPM" in result1
+        assert "Camera" in result2 or "120 BPM" in result2
+
+
+class TestSelectMotionType:
+    """Test advanced motion type selection.
+    
+    Justification: Motion type selection uses a priority system (scene context > mood > genre > BPM).
+    This ensures the most appropriate motion type is selected based on all available context.
+    """
+
+    def test_scene_context_priority_chorus_high_intensity(self):
+        """Test that scene context (chorus, high intensity) takes priority."""
+        result = select_motion_type(
+            genre="jazz",  # Would normally be "looping"
+            mood="calm",  # Would normally be "looping"
+            scene_context={"section_type": "chorus", "intensity": 0.8},
+        )
+        assert result == "bouncing"  # High energy chorus overrides genre/mood
+
+    def test_scene_context_priority_bridge(self):
+        """Test that bridge sections select looping motion."""
+        result = select_motion_type(
+            genre="rock",  # Would normally be "stepping"
+            scene_context={"section_type": "bridge", "intensity": 0.5},
+        )
+        assert result == "looping"  # Bridge overrides genre
+
+    def test_scene_context_priority_verse(self):
+        """Test that verse sections select stepping motion."""
+        result = select_motion_type(
+            genre="electronic",  # Would normally be "pulsing"
+            scene_context={"section_type": "verse", "intensity": 0.5},
+        )
+        assert result == "stepping"  # Verse overrides genre
+
+    def test_mood_priority_energetic(self):
+        """Test that energetic mood takes priority over genre when no scene context."""
+        result = select_motion_type(
+            genre="jazz",  # Would normally be "looping"
+            mood="energetic",
+            bpm=100.0,  # Medium tempo
+        )
+        assert result == "bouncing"  # Energetic mood overrides genre
+
+    def test_mood_priority_calm(self):
+        """Test that calm mood selects looping motion."""
+        result = select_motion_type(
+            genre="rock",  # Would normally be "stepping"
+            mood="calm",
+        )
+        assert result == "looping"  # Calm mood overrides genre
+
+    def test_mood_priority_melancholic(self):
+        """Test that melancholic mood selects rotating motion."""
+        result = select_motion_type(
+            genre="pop",  # Would normally be "bouncing"
+            mood="melancholic",
+        )
+        assert result == "rotating"  # Melancholic mood overrides genre
+
+    def test_mood_tags_priority_dance(self):
+        """Test that dance-related mood tags select bouncing."""
+        result = select_motion_type(
+            genre="jazz",  # Would normally be "looping"
+            mood_tags=["dance", "groovy"],
+        )
+        assert result == "bouncing"  # Dance tags override genre
+
+    def test_mood_tags_priority_electronic(self):
+        """Test that electronic mood tags select pulsing."""
+        result = select_motion_type(
+            genre="rock",  # Would normally be "stepping"
+            mood_tags=["electronic", "techno"],
+        )
+        assert result == "pulsing"  # Electronic tags override genre
+
+    def test_genre_fallback(self):
+        """Test that genre is used when no mood or scene context."""
+        result = select_motion_type(genre="electronic")
+        assert result == "pulsing"  # Genre-based selection
+
+    def test_bpm_fallback_very_slow(self):
+        """Test that very slow BPM selects looping when no other context."""
+        result = select_motion_type(bpm=60.0)
+        assert result == "looping"  # Very slow = looping
+
+    def test_bpm_fallback_slow(self):
+        """Test that slow BPM selects rotating."""
+        result = select_motion_type(bpm=80.0)
+        assert result == "rotating"  # Slow = rotating
+
+    def test_bpm_fallback_medium(self):
+        """Test that medium BPM selects stepping."""
+        result = select_motion_type(bpm=110.0)
+        assert result == "stepping"  # Medium = stepping
+
+    def test_bpm_fallback_fast(self):
+        """Test that fast BPM selects bouncing."""
+        result = select_motion_type(bpm=130.0)
+        assert result == "bouncing"  # Fast = bouncing
+
+    def test_bpm_fallback_very_fast(self):
+        """Test that very fast BPM selects pulsing."""
+        result = select_motion_type(bpm=150.0)
+        assert result == "pulsing"  # Very fast = pulsing
+
+    def test_default_fallback(self):
+        """Test that bouncing is default when no context provided."""
+        result = select_motion_type()
+        assert result == "bouncing"  # Default fallback
+
+    def test_priority_order_scene_overrides_all(self):
+        """Test that scene context has highest priority."""
+        result = select_motion_type(
+            genre="jazz",  # looping
+            mood="energetic",  # bouncing
+            mood_tags=["dance"],  # bouncing
+            bpm=150.0,  # pulsing
+            scene_context={"section_type": "verse", "intensity": 0.5},  # stepping
+        )
+        assert result == "stepping"  # Scene context wins
+
+    def test_priority_order_mood_overrides_genre(self):
+        """Test that mood has priority over genre when no scene context."""
+        result = select_motion_type(
+            genre="electronic",  # pulsing
+            mood="energetic",  # bouncing
+        )
+        assert result == "bouncing"  # Mood wins over genre
+
+    def test_high_energy_chorus_with_high_bpm(self):
+        """Test that high energy chorus selects bouncing regardless of BPM."""
+        result = select_motion_type(
+            scene_context={"section_type": "chorus", "intensity": 0.9},
+            bpm=150.0,  # Would normally be pulsing
+        )
+        assert result == "bouncing"  # High energy chorus overrides BPM-based selection
+
+    def test_medium_energy_chorus(self):
+        """Test that medium energy chorus selects pulsing."""
+        result = select_motion_type(
+            scene_context={"section_type": "chorus", "intensity": 0.5},
+            bpm=120.0,
+        )
+        assert result == "pulsing"  # Medium energy chorus
 

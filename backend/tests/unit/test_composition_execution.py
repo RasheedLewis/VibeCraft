@@ -1,5 +1,6 @@
 """Unit tests for composition execution service."""
 
+import os
 from unittest.mock import MagicMock, Mock, patch
 from uuid import uuid4
 
@@ -152,11 +153,13 @@ class TestCompositionExecutionModelSelection:
         # Verify it tried to get SongClip (get() is called in the SongClip branch)
         assert mock_session_obj.get.called, "get() should have been called when video_type is short_form"
 
+    @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="Database not configured")
+    @patch("app.repositories.song_repository.session_scope")
     @patch("app.services.composition_execution.session_scope")
     @patch("app.services.composition_execution.SongRepository")
     @patch("app.services.composition_execution.update_job_progress")
     def test_execute_composition_sections_disabled_validation(
-        self, mock_update, mock_repo, mock_session
+        self, mock_update, mock_repo_class, mock_session, mock_repo_session
     ):
         """Test that SongClip validation works correctly when video_type is short_form."""
         from app.services.composition_execution import execute_composition_pipeline
@@ -170,7 +173,8 @@ class TestCompositionExecutionModelSelection:
         mock_song.duration_sec = 30.0
         mock_song.processed_s3_key = "audio/test.mp3"
         mock_song.video_type = "short_form"
-        mock_repo.get_by_id.return_value = mock_song
+        # Configure the mock class to return the song when get_by_id is called
+        mock_repo_class.get_by_id = Mock(return_value=mock_song)
 
         mock_song_clip = Mock(spec=SongClip)
         mock_song_clip.video_url = "http://example.com/video.mp4"
@@ -185,6 +189,8 @@ class TestCompositionExecutionModelSelection:
         # First call: CompositionJob, Second call: SongClip
         mock_session_obj.get.side_effect = [mock_job, mock_song_clip]
         mock_session.return_value.__enter__.return_value = mock_session_obj
+        # Also mock the database session_scope used by SongRepository.get_by_id
+        mock_repo_session.return_value.__enter__.return_value = mock_session_obj
 
         # Should not raise ClipNotFoundError when clip exists and is valid
         # Will fail later in pipeline (download, etc.) but clip validation should pass
@@ -199,11 +205,13 @@ class TestCompositionExecutionModelSelection:
         # Verify it validated the clip exists (get() called at least twice: job + clip)
         assert mock_session_obj.get.call_count >= 2
 
+    @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="Database not configured")
+    @patch("app.repositories.song_repository.session_scope")
     @patch("app.services.composition_execution.session_scope")
     @patch("app.services.composition_execution.SongRepository")
     @patch("app.services.composition_execution.update_job_progress")
     def test_execute_composition_sections_disabled_error_handling(
-        self, mock_update, mock_repo, mock_session
+        self, mock_update, mock_repo_class, mock_session, mock_repo_session
     ):
         """Test that proper errors are raised for missing SongClip when video_type is short_form."""
         from app.models.composition import CompositionJob
@@ -218,7 +226,8 @@ class TestCompositionExecutionModelSelection:
         mock_song.duration_sec = 30.0
         mock_song.processed_s3_key = "audio/test.mp3"
         mock_song.video_type = "short_form"
-        mock_repo.get_by_id.return_value = mock_song
+        # Configure the mock class to return the song when get_by_id is called
+        mock_repo_class.get_by_id = Mock(return_value=mock_song)
 
         mock_session_obj = MagicMock()
         # First call returns the job (for job lookup), subsequent calls return None (clip not found)
@@ -227,6 +236,8 @@ class TestCompositionExecutionModelSelection:
         # get() is called for: 1) CompositionJob, 2) SongClip (returns None)
         mock_session_obj.get.side_effect = [mock_job, None]  # Job found, clip not found
         mock_session.return_value.__enter__.return_value = mock_session_obj
+        # Also mock the database session_scope used by SongRepository.get_by_id
+        mock_repo_session.return_value.__enter__.return_value = mock_session_obj
 
         # Should raise ClipNotFoundError for missing clip (now using centralized validation)
         from app.exceptions import ClipNotFoundError

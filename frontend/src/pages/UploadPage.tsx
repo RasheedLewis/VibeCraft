@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
+import axios from 'axios'
 import { apiClient } from '../lib/apiClient'
 import { VCButton } from '../components/vibecraft'
 import type { MoodKind } from '../components/vibecraft/SectionMoodTag'
@@ -69,6 +70,7 @@ export const UploadPage: React.FC = () => {
     useState<boolean>(false)
   const compositionCompleteHandledRef = useRef<string | null>(null)
   const autoScrollCompletedRef = useRef<boolean>(false)
+  const uploadAbortControllerRef = useRef<AbortController | null>(null)
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
   const [videoTypeSelectorVisible, setVideoTypeSelectorVisible] = useState(true)
   const [hideCharacterConsistency, setHideCharacterConsistency] = useState(false)
@@ -267,7 +269,13 @@ export const UploadPage: React.FC = () => {
 
     try {
       clipPolling.setError(null)
+      // Use selected duration if available, otherwise fall back to full duration
+      const selectedDuration =
+        songDetails?.selected_start_sec != null && songDetails?.selected_end_sec != null
+          ? songDetails.selected_end_sec - songDetails.selected_start_sec
+          : null
       const durationEstimate =
+        selectedDuration ??
         analysisData?.durationSec ??
         songDetails?.duration_sec ??
         clipSummary?.songDurationSec ??
@@ -415,6 +423,11 @@ export const UploadPage: React.FC = () => {
   )
 
   const resetState = useCallback(() => {
+    // Cancel any ongoing upload
+    if (uploadAbortControllerRef.current) {
+      uploadAbortControllerRef.current.abort()
+      uploadAbortControllerRef.current = null
+    }
     setStage('idle')
     setError(null)
     setProgress(0)
@@ -690,11 +703,16 @@ export const UploadPage: React.FC = () => {
       const formData = new FormData()
       formData.append('file', file)
 
+      // Create AbortController for this upload
+      const abortController = new AbortController()
+      uploadAbortControllerRef.current = abortController
+
       try {
         const response = await apiClient.post<SongUploadResponse>('/songs/', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
+          signal: abortController.signal,
           onUploadProgress: (event) => {
             if (!event.total) return
             const percentage = Math.min(
@@ -705,6 +723,9 @@ export const UploadPage: React.FC = () => {
           },
         })
 
+        // Clear abort controller on success
+        uploadAbortControllerRef.current = null
+
         setResult(response.data)
         setProgress(100)
         setStage('uploaded')
@@ -713,6 +734,18 @@ export const UploadPage: React.FC = () => {
         // Initialize clip summary (will be empty for new songs)
         await clipPolling.fetchClipSummary(response.data.songId)
       } catch (err) {
+        // Clear abort controller on error
+        uploadAbortControllerRef.current = null
+
+        // Check if upload was cancelled
+        if (axios.isCancel(err) || (err as { name?: string })?.name === 'AbortError' || (err as { code?: string })?.code === 'ERR_CANCELED') {
+          console.log('Upload cancelled by user')
+          setStage('idle')
+          setProgress(0)
+          setError(null)
+          return
+        }
+
         console.error('Upload failed', err)
         const message =
           (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ??
@@ -800,9 +833,9 @@ export const UploadPage: React.FC = () => {
       {analysisState !== 'completed' && (
         <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
           <div className="space-y-3">
-            <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
+            {/* <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
               Upload
-            </div>
+            </div> */}
             <h1 className="font-display text-4xl md:text-5xl">
               Turn your sound into visuals.
             </h1>
@@ -817,11 +850,6 @@ export const UploadPage: React.FC = () => {
           {(() => {
             // Show audio selection when short_form is selected
             // IMPORTANT: Even if analysis already exists, we should show audio selection
-            // Check if song already has a selection saved in the database
-            const hasExistingSelection =
-              songDetails?.selected_start_sec != null &&
-              songDetails?.selected_end_sec != null
-
             // Show the UI if short_form is selected, regardless of existing analysis or selection state
             // This allows users to make or change their selection even if analysis exists
             const shouldShowAudioSelection =
@@ -935,72 +963,71 @@ export const UploadPage: React.FC = () => {
                   })()}
                 </div>
               </div>
-            ) : (
-              // Debug: Show why audio selection isn't showing
-              <div className="w-full rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-4 text-xs">
-                <p className="font-semibold text-vc-accent-primary mb-2">
-                  Debug: Audio selection not showing
-                </p>
-                <div className="space-y-1 text-vc-text-secondary">
-                  <p>Conditions check:</p>
-                  <ul className="list-disc list-inside ml-2 space-y-0.5">
-                    <li
-                      className={stage === 'uploaded' ? 'text-green-400' : 'text-red-400'}
-                    >
-                      stage === 'uploaded': {String(stage === 'uploaded')} (current:{' '}
-                      {stage})
-                    </li>
-                    <li
-                      className={
-                        videoType === 'short_form' ? 'text-green-400' : 'text-red-400'
-                      }
-                    >
-                      videoType === 'short_form': {String(videoType === 'short_form')}{' '}
-                      (current: {videoType ?? 'null'})
-                    </li>
-                    <li
-                      className={!audioSelectionValue ? 'text-green-400' : 'text-red-400'}
-                    >
-                      !audioSelectionValue: {String(!audioSelectionValue)} (current:{' '}
-                      {audioSelectionValue ? 'exists' : 'null'})
-                    </li>
-                    <li
-                      className={
-                        !hasExistingSelection ? 'text-green-400' : 'text-red-400'
-                      }
-                    >
-                      !hasExistingSelection: {String(!hasExistingSelection)} (selected:{' '}
-                      {songDetails?.selected_start_sec ?? 'null'}-
-                      {songDetails?.selected_end_sec ?? 'null'})
-                    </li>
-                    <li
-                      className={
-                        analysisState === 'idle' ||
-                        analysisState === 'queued' ||
-                        analysisState === 'processing' ||
-                        analysisState === 'failed' ||
-                        analysisState === 'completed'
-                          ? 'text-green-400'
-                          : 'text-red-400'
-                      }
-                    >
-                      analysisState allowed:{' '}
-                      {String(
-                        analysisState === 'idle' ||
-                          analysisState === 'queued' ||
-                          analysisState === 'processing' ||
-                          analysisState === 'failed' ||
-                          analysisState === 'completed',
-                      )}{' '}
-                      (current: {analysisState})
-                    </li>
-                  </ul>
-                  <p className="mt-2 text-vc-text-muted">
-                    Check browser console for detailed logs with prefix [AudioSelection]
-                  </p>
-                </div>
-              </div>
-            )
+            ) : // Debug: Show why audio selection isn't showing
+            // <div className="w-full rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-4 text-xs">
+            //   <p className="font-semibold text-vc-accent-primary mb-2">
+            //     Debug: Audio selection not showing
+            //   </p>
+            //   <div className="space-y-1 text-vc-text-secondary">
+            //     <p>Conditions check:</p>
+            //     <ul className="list-disc list-inside ml-2 space-y-0.5">
+            //       <li
+            //         className={stage === 'uploaded' ? 'text-green-400' : 'text-red-400'}
+            //       >
+            //         stage === 'uploaded': {String(stage === 'uploaded')} (current:{' '}
+            //         {stage})
+            //       </li>
+            //       <li
+            //         className={
+            //           videoType === 'short_form' ? 'text-green-400' : 'text-red-400'
+            //         }
+            //       >
+            //         videoType === 'short_form': {String(videoType === 'short_form')}{' '}
+            //         (current: {videoType ?? 'null'})
+            //       </li>
+            //       <li
+            //         className={!audioSelectionValue ? 'text-green-400' : 'text-red-400'}
+            //       >
+            //         !audioSelectionValue: {String(!audioSelectionValue)} (current:{' '}
+            //         {audioSelectionValue ? 'exists' : 'null'})
+            //       </li>
+            //       <li
+            //         className={
+            //           !hasExistingSelection ? 'text-green-400' : 'text-red-400'
+            //         }
+            //       >
+            //         !hasExistingSelection: {String(!hasExistingSelection)} (selected:{' '}
+            //         {songDetails?.selected_start_sec ?? 'null'}-
+            //         {songDetails?.selected_end_sec ?? 'null'})
+            //       </li>
+            //       <li
+            //         className={
+            //           analysisState === 'idle' ||
+            //           analysisState === 'queued' ||
+            //           analysisState === 'processing' ||
+            //           analysisState === 'failed' ||
+            //           analysisState === 'completed'
+            //             ? 'text-green-400'
+            //             : 'text-red-400'
+            //         }
+            //       >
+            //         analysisState allowed:{' '}
+            //         {String(
+            //           analysisState === 'idle' ||
+            //             analysisState === 'queued' ||
+            //             analysisState === 'processing' ||
+            //             analysisState === 'failed' ||
+            //             analysisState === 'completed',
+            //         )}{' '}
+            //         (current: {analysisState})
+            //       </li>
+            //     </ul>
+            //     <p className="mt-2 text-vc-text-muted">
+            //       Check browser console for detailed logs with prefix [AudioSelection]
+            //     </p>
+            //   </div>
+            // </div>
+            null
           })()}
 
           {/* Video Type Selection - shown when no video type selected or for full-length */}
@@ -1110,8 +1137,8 @@ export const UploadPage: React.FC = () => {
           )}
           {/* Character Image Upload Step - only for short-form videos */}
           {videoType === 'short_form' && result?.songId && !hideCharacterConsistency && (
-            <section className="mb-4 space-y-4">
-              <div className="vc-label">Character Consistency (Optional)</div>
+            <section className="mb-2 space-y-4 -mt-8">
+              <div className="vc-label text-center">Character Consistency (Optional)</div>
               {songDetails?.character_consistency_enabled &&
               (songDetails.character_reference_image_s3_key ||
                 songDetails.character_pose_b_s3_key) ? (
@@ -1139,7 +1166,7 @@ export const UploadPage: React.FC = () => {
               ) : (
                 // Show upload/template selection UI
                 <>
-                  <p className="text-sm text-vc-text-secondary">
+                  <p className="text-sm text-vc-text-secondary text-center">
                     Upload a character reference image to maintain consistent character
                     appearance across all clips.
                   </p>
@@ -1287,7 +1314,14 @@ export const UploadPage: React.FC = () => {
                       result.songId,
                     )
                     clipPolling.setError(null)
+                    // Use selected duration if available, otherwise fall back to full duration
+                    const selectedDuration =
+                      songDetails?.selected_start_sec != null &&
+                      songDetails?.selected_end_sec != null
+                        ? songDetails.selected_end_sec - songDetails.selected_start_sec
+                        : null
                     const durationEstimate =
+                      selectedDuration ??
                       analysisData?.durationSec ??
                       songDetails?.duration_sec ??
                       clipSummary?.songDurationSec ??

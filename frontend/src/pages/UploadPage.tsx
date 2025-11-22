@@ -738,7 +738,11 @@ export const UploadPage: React.FC = () => {
         uploadAbortControllerRef.current = null
 
         // Check if upload was cancelled
-        if (axios.isCancel(err) || (err as { name?: string })?.name === 'AbortError' || (err as { code?: string })?.code === 'ERR_CANCELED') {
+        if (
+          axios.isCancel(err) ||
+          (err as { name?: string })?.name === 'AbortError' ||
+          (err as { code?: string })?.code === 'ERR_CANCELED'
+        ) {
           console.log('Upload cancelled by user')
           setStage('idle')
           setProgress(0)

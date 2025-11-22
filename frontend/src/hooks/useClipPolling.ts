@@ -114,11 +114,6 @@ export function useClipPolling(songId: string | null) {
       return
     }
 
-    // CRITICAL: Don't poll at all if there's an active job - useJobPolling handles that
-    if (jobId && (status === 'queued' || status === 'processing')) {
-      return
-    }
-
     // CRITICAL: Don't poll if we don't have clips yet - wait until clips are generated
     // Only poll if summary exists and has clips, or if we're checking for the first time
     // But we should only do an initial check, not continuous polling

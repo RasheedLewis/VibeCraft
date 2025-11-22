@@ -1,149 +1,297 @@
 # Troubleshooting Log
 
-## Current Testing Status
+## Debug Overlays for UI Testing
 
-**Ready for Testing:**
-- Video type selection modal overlay flow has been fixed and is ready for testing
-- All known issues have been addressed:
-  1. ✅ Modal visibility state management fixed
-  2. ✅ Modal appears only after upload (not immediately)
-  3. ✅ Analysis starts automatically after video type selection
-  4. ✅ Modal stays visible for 1 second after selection
-  5. ✅ Job polling starts properly without 404 errors
-  6. ✅ Debug code removed
-  7. ✅ Redundant UI elements removed
+**Note:** Debug overlays are available but commented out for character consistency UI testing:
+- **UploadPage.tsx** (line ~1116): Blue debug box showing `character_consistency_enabled`, `character_reference_image_s3_key`, and `character_pose_b_s3_key` from `songDetails`
+- **SelectedTemplateDisplay.tsx** (line ~77): Yellow debug box showing pose URL fetch status, loading state, and URL availability
 
-**Next: Test the complete flow:**
-  1. Upload audio file
-  2. Verify modal overlay appears and blocks interaction
-  3. Select "30-Second Video" or "Full-Length Video"
-  4. Verify modal stays visible for ~1 second
-  5. Verify analysis starts automatically (check for job polling)
-  6. Verify no 404 errors in console
-  7. Verify `videoType` is correctly set and persisted
-  8. Verify analysis completes and UI progresses to next step
+To enable for testing, uncomment the debug overlay sections in both files. These can be modified as needed for further UI debugging.
 
-## Fixes Applied So Far
+---
 
-### 1. 409 Conflict Error on Video Type Selection
-**Problem:** User got 409 error immediately after clicking "30-Second Video" option.
+## Critical Issue: Character Consistency Not Working
 
-**Root Cause:** Analysis already existed for the song, and backend prevents changing video type after analysis completes.
+**Problem:** 
+- (a) Most clips do not show a dancing figure/character
+- (b) When a character does appear, it's not based on the provided reference image
 
-**Fixes:**
-- Updated `UploadPage.tsx` to conditionally render `VideoTypeSelector` only when:
-  - `!analysisPolling.data` (no analysis exists)
-  - `analysisState === 'idle'` (analysis not running)
-- Enhanced error handling in `useVideoTypeSelection.ts` to provide user-friendly 409 error messages
-- Added backend unit tests for `ensure_no_analysis` function in `test_api_utils.py`
+**Historical Context:**
+Prior to all refactors and adding the character consistency option, we actually did get a dancing character almost all the time. This suggests that the character consistency feature implementation may have broken or changed the prompt generation logic in a way that prevents characters from appearing.
 
-### 2. Analysis Starting Automatically Without Video Type Selection
-**Problem:** Analysis was starting immediately after file upload, before user could select video type.
+**Status:** Needs investigation - will examine prompts in a new chat session.
 
-**Root Cause:** `analysisPolling.startAnalysis()` was being called directly in `handleFileUpload` in `UploadPage.tsx`.
+**Related Files:**
+- `backend/app/services/scene_planner.py` - Prompt generation
+- `backend/app/services/video_generation.py` - Video generation with character images
+- `backend/app/services/clip_generation.py` - Clip generation flow
 
-**Fix:**
-- Removed automatic `analysisPolling.startAnalysis()` call from `handleFileUpload`
-- Analysis now only starts after video type is selected via `useVideoTypeSelection` hook
+**See also:** [Prompt Building Flow](./Prompt-Building-Flow.md) for detailed documentation on how prompts are constructed.
 
-### 3. Frontend Blank Page After Analysis Completed
-**Problem:** Frontend showed blank page after analysis completed, with debug showing `videoType=null` even though analysis existed.
+---
 
-**Root Cause:** `videoType` state wasn't being properly synced from `songDetails.video_type` after analysis completed.
+## Image Parameter Verification
 
-**Fixes:**
-- Modified `UploadPage.tsx` to always call `fetchSongDetails` after analysis completes
-- Updated `useVideoTypeSelection.ts` to consistently sync `videoType` from `songDetails.video_type` when available
-- Changed `useEffect` dependency array from `[songDetails?.video_type]` to `[songDetails]` to prevent React hook warnings
+### Code Flow Analysis
 
-### 4. 404 Error When Selecting Video Type
-**Problem:** User got 404 error immediately after selecting video type.
+**Image Retrieval (`clip_generation.py`):**
+1. `_get_character_image_urls()` checks `song.character_consistency_enabled` (line 457)
+2. If enabled, generates presigned S3 URLs for character images
+3. Returns `(character_image_urls, character_image_url)` tuple
 
-**Root Cause:** `onAnalysisTriggered` callback was calling `fetchAnalysis()` immediately after starting analysis, but analysis result wasn't ready yet (returns 404).
+**Image Passing (`clip_generation.py` → `video_generation.py`):**
+1. Images passed to `generate_section_video()` as:
+   - `reference_image_url` (single, fallback)
+   - `reference_image_urls` (list, prioritized)
 
-**Fixes:**
-- Modified `useVideoTypeSelection.ts` to capture `jobId` from analyze endpoint response
-- Updated `useAnalysisPolling.ts` to expose `setJobId` method for external jobId setting
-- Changed `onAnalysisTriggered` callback to accept `jobId` parameter and set it in polling hook
-- This allows job polling to start automatically without trying to fetch analysis immediately
+**Image-to-Video Path (`video_generation.py`):**
 
-### 5. Video Type Selector Not Prominent Enough
-**Problem:** User couldn't easily see the "Choose Your Video Format" section - it appeared too low on the page.
+**Path 1: Single Image (lines 232-242)**
+- If single image exists, calls `_generate_image_to_video()`
+- In `_generate_image_to_video()` (line 69): `input_params["image"] = reference_image_url`
+- ✅ **Image IS added to input_params**
 
-**Fix:**
-- Converted `VideoTypeSelector` to a modal overlay that:
-  - Blocks entire screen with dark backdrop (`bg-black/80 backdrop-blur-sm`)
-  - Centers selector in modal card
-  - Uses high z-index (`z-50`) to appear above all content
-  - Is un-exitable (no close button) - user must select video type to proceed
+**Path 2: Multiple Images or Fallback (lines 272-296)**
+- If multiple images or fallback path: `input_params["image"] = image_urls[0]` (line 295)
+- ✅ **Image IS added to input_params**
 
-### 6. Modal Disappearing Too Quickly
-**Problem:** Modal overlay disappeared immediately after video type selection, making it hard to see the selection was registered.
-
-**Fix:**
-- Added `videoTypeModalVisible` state to control modal visibility
-- Added `useEffect` that keeps modal visible for 1 second after `videoType` is set
-- Modal only hides after the 1-second delay
-
-### 7. React Hook Lint Warning - Synchronous setState in Effect
-**Problem:** ESLint error: "Calling setState synchronously within an effect can trigger cascading renders"
-
-**Location:** `UploadPage.tsx` line 105 - `setVideoTypeModalVisible(true)` called directly in `useEffect`
-
-**Fix Applied:**
-- Wrapped `setVideoTypeModalVisible(true)` in `setTimeout(..., 0)` to defer the state update
-- This avoids synchronous setState in effect, satisfying the linter
-
-**⚠️ Potential Issue:** Wrapping setState in setTimeout(0) is a workaround that may have timing implications. The effect now has:
-```typescript
-if (!videoType) {
-  const timer = setTimeout(() => {
-    setVideoTypeModalVisible(true)
-  }, 0)
-  return () => clearTimeout(timer)
-}
+**API Call (line 317-320):**
+```python
+prediction = client.predictions.create(
+    version=version,
+    input=input_params,  # Contains "image" key if images provided
+)
 ```
 
-**Note:** This might cause the modal to appear slightly delayed, or there may be edge cases where the visibility state doesn't sync properly with `videoType` changes. Consider if this is the right approach or if we should derive `videoTypeModalVisible` from `videoType` directly instead of managing it as separate state.
+### Potential Issues Found
 
-### 8. Modal Visibility State Management Issues
-**Problem:** 
-- `videoTypeModalVisible` was initialized to `true`, causing modal to show immediately even when no file was uploaded
-- Modal visibility logic was convoluted and didn't properly handle all edge cases
-- Debug div was left in production code
-- Redundant "Start Analysis" button section existed (analysis should start automatically)
+1. **❌ CRITICAL: Wrong Parameter Name (CONFIRMED):**
+   - Code uses `"image"` (singular) parameter
+   - **Actual API parameter name is `"first_frame_image"`** (verified via `check_replicate_models.py`)
+   - This explains why character images are not being used - they're being passed with the wrong parameter name
+   - **Fix needed:** Change `input_params["image"]` to `input_params["first_frame_image"]` in:
+     - `video_generation.py::_generate_image_to_video()` (line 69)
+     - `video_generation.py::generate_section_video()` (line 295)
 
-**Fixes:**
-- Changed `videoTypeModalVisible` initial state from `true` to `false`
-- Improved `useEffect` logic to properly show/hide modal based on:
-  - `stage === 'uploaded'` (file has been uploaded)
-  - `!videoType` (no video type selected yet)
-  - `!analysisPolling.data` (no analysis exists)
-  - `analysisState === 'idle'` (analysis not running)
-- Modal now shows when file is uploaded and no video type is set
-- Modal hides with 1-second delay after video type is selected
-- Removed debug div from production code
-- Removed redundant "Start Analysis" button section (analysis starts automatically via `useVideoTypeSelection` hook)
-- Added `videoTypeModalVisible` reset to `resetState` function for clean state management
+2. **Exception Handling Bug (lines 243-246):**
+   - If `_generate_image_to_video()` throws exception, `is_image_to_video` is set to `False`
+   - Code continues and may add image to `input_params` at line 295
+   - But `generation_type` will be "text-to-video" even though image is in params
+   - This could cause confusion in logging but shouldn't prevent image from being sent
 
-## Files Modified
+3. **URL Validation:**
+   - Presigned URLs might expire or be invalid
+   - URLs might be empty strings that pass validation but fail at API
+   - Need to verify URLs are actually accessible before passing to API
 
-- `frontend/src/pages/UploadPage.tsx` - Modal overlay, conditional rendering, state management
-- `frontend/src/hooks/useVideoTypeSelection.ts` - Error handling, jobId passing
-- `frontend/src/hooks/useAnalysisPolling.ts` - Added `setJobId` method
-- `frontend/src/components/VideoTypeSelector.tsx` - (No changes, but used in modal)
-- `backend/app/api/v1/utils.py` - `ensure_no_analysis` function (409 logic)
-- `backend/tests/unit/test_api_utils.py` - Unit tests for 409 logic
-- `backend/tests/test_video_type_api.py` - Integration tests for video type API
+4. **Model Support:**
+   - Code assumes `minimax/hailuo-2.3` supports image input
+   - May need to verify model version actually supports image-to-video
+   - Different model versions may have different parameter names
 
-## Next Steps for Testing
+### Verification Steps Needed
 
-1. Upload audio file
-2. Verify modal overlay appears and blocks interaction
-3. Select "30-Second Video" or "Full-Length Video"
-4. Verify modal stays visible for ~1 second
-5. Verify analysis starts automatically (check for job polling)
-6. Verify no 404 errors in console
-7. Verify `videoType` is correctly set and persisted
-8. Verify analysis completes and UI progresses to next step
+1. **Check actual API calls in logs:**
+   - Look for `[VIDEO-GEN] Calling Replicate API` log entries
+   - Verify `has_image={'image' in input_params or 'images' in input_params}` shows `True`
+   - Check if `input_params` actually contains image URL when logged
 
+2. **✅ Verify parameter name: COMPLETED**
+   - Verified via `scripts/check_replicate_models.py` and direct API schema inspection
+   - **Confirmed:** Parameter name is `"first_frame_image"` (not `"image"`)
+   - All input parameters for `minimax/hailuo-2.3`:
+     - `prompt` (required, string)
+     - `duration` (unknown)
+     - `resolution` (unknown)
+     - `prompt_optimizer` (boolean)
+     - `first_frame_image` (string) - "First frame image for video generation. The output video will have the same aspect ratio as this image."
+
+3. **Check URL accessibility:**
+   - Verify presigned URLs are valid and accessible
+   - Check if URLs expire before API call
+   - Verify S3 bucket permissions allow Replicate to access images
+
+4. **Add debug logging:**
+   - Log the actual `input_params` dict before API call (redact sensitive data)
+   - Log whether image URL is in the params
+   - Log the full API response/error messages
+
+---
+
+## Beat Synchronization: Expected Effects and Verification
+
+### What You Should See in the Final Composed Video
+
+According to the implementation plan, the following beat-sync features should be active:
+
+1. **Beat-Aligned Clip Transitions (Phase 3.3):**
+   - Clip boundaries should align to beats within ±50ms
+   - Transitions between clips should occur on or very close to beat timestamps
+   - **Visual Effect:** Cuts between clips should feel rhythmically correct, not random
+
+2. **Beat-Synced Visual Effects (Phase 3.2):**
+   - **Flash Effect:** Brightness pulses/flashes on beats (currently the only implemented effect)
+   - **Effect Duration:** 50ms flash window (±50ms tolerance around each beat)
+   - **Visual Effect:** Subtle brightness increase (RGB +30) when beats occur
+   - **Note:** Only first 50 beats are processed (line 445 in `video_composition.py`)
+
+### Current Implementation Status
+
+**Beat Alignment (Clip Boundaries):**
+- ✅ **Implemented:** `composition_execution.py` lines 198-273
+- ✅ **Feature Flag:** `beat_aligned = True` (hardcoded, line 199)
+- ✅ **Process:**
+  1. Retrieves `beat_times` from song analysis (line 194)
+  2. Calculates beat-aligned boundaries using `calculate_beat_aligned_clip_boundaries()` (line 210)
+  3. Trims or extends clips to match beat boundaries (lines 219-269)
+  4. Logs: `"Calculating beat-aligned clip boundaries"` and `"Completed beat-aligned clip adjustment"`
+
+**Beat Filters (Visual Effects):**
+- ✅ **Implemented:** `video_composition.py` lines 416-482
+- ⚠️ **Only Flash Effect:** Currently only `filter_type="flash"` is implemented (line 336, 432)
+- ⚠️ **Limited to 50 Beats:** Only processes first 50 beats (line 445: `beat_times[:50]`)
+- ✅ **Process:**
+  1. Beat times passed to `concatenate_clips()` (line 335)
+  2. If `beat_times` exist, applies flash filter (line 417)
+  3. Uses FFmpeg `geq` filter to increase RGB by 30 on beats (lines 457-462)
+  4. 50ms tolerance window around each beat (line 439)
+  5. Logs: `"Applying flash beat filters for {len(beat_times)} beats"` and `"Beat filters applied successfully"`
+
+### How to Verify Beat Sync is Working
+
+**1. Check Logs During Composition:**
+
+Look for these log messages in the worker logs:
+```
+Found {N} beat times for beat alignment and filters
+Calculating beat-aligned clip boundaries
+Calculated {N} beat-aligned boundaries
+Completed beat-aligned clip adjustment
+Applying flash beat filters for {N} beats
+Beat filters applied successfully
+```
+
+**2. Verify Beat Alignment:**
+
+- **Expected:** Clip transitions should align to beats
+- **Check:** Look at clip boundary timestamps vs beat times
+- **Code Location:** `composition_execution.py` lines 210-217 logs boundary count
+- **Verification:** Compare `boundary.start_time` and `boundary.end_time` to nearest beat times (should be within ±50ms)
+
+**3. Verify Beat Filters:**
+
+- **Expected:** Subtle brightness flashes on beats
+- **Visual Check:** Watch final video - should see brief brightness increases synchronized to music beats
+- **Code Location:** `video_composition.py` line 420 logs filter application
+- **Potential Issue:** If filter application fails, logs: `"Failed to apply beat filters, continuing without filters"` (line 481)
+- **Note:** Effect is subtle (RGB +30) and may be hard to notice depending on video content
+
+### Potential Issues
+
+1. **Beat Filters May Not Be Visible:**
+   - Effect is subtle (RGB +30 increase)
+   - Only applies to first 50 beats (for 30-second videos, this should cover most/all beats)
+   - If video is already very bright, effect may not be noticeable
+   - **Fix:** Could increase intensity or add more visible effects (color_burst, zoom_pulse)
+
+2. **Beat Alignment May Not Be Perfect:**
+   - Clips are trimmed/extended, but if original clips are far from beat boundaries, adjustment may be noticeable
+   - **Check:** Look for log messages about trimming/extending clips
+
+3. **Beat Times May Be Missing:**
+   - If `analysis.beat_times` is empty or None, no beat sync will occur
+   - **Check:** Log message `"Found {N} beat times"` should show non-zero count
+
+4. **Filter Application May Fail Silently:**
+   - If FFmpeg filter fails, it logs a warning but continues without filters (line 481)
+   - **Check:** Look for `"Failed to apply beat filters"` warnings in logs
+
+### Code Locations
+
+- **Beat Alignment: `backend/app/services/composition_execution.py` lines 191-273**
+- **Beat Filters: `backend/app/services/video_composition.py` lines 416-482**
+- **Beat Alignment Logic: `backend/app/services/beat_alignment.py`**
+- **Beat Filter Generation: `backend/app/services/beat_filters.py`**
+
+### Testing Recommendations
+
+1. **Check composition logs** for beat sync messages
+2. **Compare clip boundaries** to beat times (should align within ±50ms)
+3. **Watch final video** for brightness flashes on beats (may be subtle)
+4. **Verify beat_times** are present in song analysis (should be non-empty array)
+5. **Check for filter errors** in logs (should not see "Failed to apply beat filters")
+
+---
+
+## Clip Generation Concurrency Issue
+
+### Problem
+
+Only 1 clip appears to be generating even though `DEFAULT_MAX_CONCURRENCY = 2` should allow 2 clips to run in parallel.
+
+### Current Behavior
+
+**Expected:** With `max_parallel=2`, 2 clips should run concurrently:
+- Clip 0 (index 0): No dependency, runs immediately
+- Clip 1 (index 1): No dependency, runs immediately
+- Clip 2 (index 2): Depends on Clip 0, waits for Clip 0 to finish
+- Clip 3 (index 3): Depends on Clip 1, waits for Clip 1 to finish
+
+**Actual:** Only 1 clip appears to be generating at a time.
+
+### Root Cause Analysis
+
+**RQ Dependency System:**
+- Jobs with dependencies are stored in RQ's "deferred" registry
+- When a dependency finishes, RQ should automatically move the dependent job to the main queue
+- However, there can be delays in RQ's dependency resolution
+
+**Current Status Check:**
+- Clip #1 (index 0): RQ job finished, but database may show "processing" (status mismatch)
+- Clip #2 (index 1): Currently started/processing
+- Clip #3 (index 2): Queued in main queue, dependency (Clip #1) is finished, but not starting
+
+**Issue:** Clip #3's dependency is finished, but RQ hasn't moved it to "started" status yet. This suggests:
+1. RQ dependency resolution may have a delay
+2. Worker may need to poll for ready jobs
+3. There may be a bug in RQ's dependency handling
+
+### How to Verify
+
+**Check RQ Job States:**
+```python
+from app.core.queue import get_queue
+from rq.job import Job
+from rq.registry import DeferredJobRegistry, StartedJobRegistry
+
+queue = get_queue()
+deferred = DeferredJobRegistry(queue=queue)
+started = StartedJobRegistry(queue=queue)
+
+print(f"Main queue: {len(queue)} jobs")
+print(f"Deferred: {len(list(deferred.get_job_ids()))} jobs")
+print(f"Started: {len(list(started.get_job_ids()))} jobs")
+```
+
+**Check Clip Statuses:**
+- Look for clips with `status="queued"` but their dependency jobs are finished
+- These should automatically move to "started" when the worker picks them up
+
+### Potential Solutions
+
+1. **Worker Polling:** RQ workers should automatically check for ready jobs when dependencies complete, but there may be a delay
+2. **Manual Dependency Resolution:** Could manually move jobs from deferred to main queue when dependencies finish
+3. **Reduce Dependency Chain:** Could use a different concurrency model that doesn't rely on RQ dependencies
+4. **Check Worker Configuration:** Ensure worker is configured to process multiple jobs (though RQ typically handles this automatically)
+
+### Code Locations
+
+- **Concurrency Control:** `backend/app/services/clip_generation.py` line 94: `depends_on = jobs[idx - max_parallel] if idx >= max_parallel else None`
+- **Default Concurrency:** `backend/app/core/constants.py` line 6: `DEFAULT_MAX_CONCURRENCY = 2`
+- **Job Enqueueing:** `backend/app/services/clip_generation.py` lines 104-111
+
+### Notes
+
+- RQ's deferred job registry can accumulate jobs from previous runs (found 83 deferred jobs from old runs)
+- Jobs with finished dependencies should automatically move to main queue, but there may be timing issues
+- The worker should pick up ready jobs automatically, but there can be delays in dependency resolution

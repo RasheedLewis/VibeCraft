@@ -18,6 +18,7 @@ import { AnalysisSectionRow } from '../song/AnalysisSectionRow'
 import type { SongAnalysis, SongUploadResponse } from '../../types/song'
 import type { MoodKind } from '../vibecraft/SectionMoodTag'
 import { getSectionTitle } from '../../utils/sections'
+import { useFeatureFlags } from '../../hooks/useFeatureFlags'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
 
@@ -61,6 +62,10 @@ export const UploadCard: React.FC<UploadCardProps> = ({
   onReset,
   onGenerateClips,
 }) => {
+  const { data: featureFlags } = useFeatureFlags()
+  const sectionsEnabled = featureFlags?.sections ?? true // Default to true for backward compatibility
+  const hasSections = analysisData?.sections && analysisData.sections.length > 0
+  const showSections = sectionsEnabled && hasSections
   if (stage === 'idle' || stage === 'dragging') {
     return (
       <div
@@ -218,22 +223,24 @@ export const UploadCard: React.FC<UploadCardProps> = ({
                 </div>
               </div>
 
-              <div>
-                <h4 className="text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">
-                  Sections
-                </h4>
-                <div className="mt-3 space-y-3">
-                  {analysisData.sections.map((section, index) => (
-                    <AnalysisSectionRow
-                      key={section.id}
-                      section={section}
-                      title={getSectionTitle(section, index)}
-                      mood={summaryMoodKind}
-                      lyric={lyricsBySection?.get(section.id) ?? undefined}
-                    />
-                  ))}
+              {showSections && (
+                <div>
+                  <h4 className="text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">
+                    Sections
+                  </h4>
+                  <div className="mt-3 space-y-3">
+                    {analysisData.sections.map((section, index) => (
+                      <AnalysisSectionRow
+                        key={section.id}
+                        section={section}
+                        title={getSectionTitle(section, index)}
+                        mood={summaryMoodKind}
+                        lyric={lyricsBySection?.get(section.id) ?? undefined}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -258,11 +265,12 @@ export const UploadCard: React.FC<UploadCardProps> = ({
                 >
                   Generate clips
                 </VCButton>
-              ) : (
+              ) : analysisState === 'queued' || analysisState === 'processing' ? (
                 <VCButton variant="primary" iconRight={<ArrowRightIcon />} disabled>
                   Analyzing…
                 </VCButton>
-              )}
+              ) : // Don't show button if analysis hasn't started yet
+              null}
             </div>
           </div>
         </div>

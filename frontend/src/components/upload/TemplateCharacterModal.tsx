@@ -167,6 +167,23 @@ export const TemplateCharacterModal: React.FC<TemplateCharacterModalProps> = ({
                             src={poseA.thumbnail_url}
                             alt={`${template.name} - Pose A`}
                             className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // If S3 image fails, try to load from local public directory
+                              const img = e.currentTarget
+                              const characterNum = template.id.split('-')[1]
+                              const localPath = `/img/characters/character${characterNum}-pose1.png`
+                              if (img.src !== localPath) {
+                                img.src = localPath
+                              } else {
+                                // If local also fails, show placeholder
+                                img.style.display = 'none'
+                                img.parentElement!.innerHTML = `
+                                  <div class="w-full h-full flex items-center justify-center text-vc-text-muted text-xs">
+                                    Image not available
+                                  </div>
+                                `
+                              }
+                            }}
                           />
                         </div>
                       )}
@@ -176,6 +193,23 @@ export const TemplateCharacterModal: React.FC<TemplateCharacterModalProps> = ({
                             src={poseB.thumbnail_url}
                             alt={`${template.name} - Pose B`}
                             className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // If S3 image fails, try to load from local public directory
+                              const img = e.currentTarget
+                              const characterNum = template.id.split('-')[1]
+                              const localPath = `/img/characters/character${characterNum}-pose2.png`
+                              if (img.src !== localPath) {
+                                img.src = localPath
+                              } else {
+                                // If local also fails, show placeholder
+                                img.style.display = 'none'
+                                img.parentElement!.innerHTML = `
+                                  <div class="w-full h-full flex items-center justify-center text-vc-text-muted text-xs">
+                                    Image not available
+                                  </div>
+                                `
+                              }
+                            }}
                           />
                         </div>
                       )}

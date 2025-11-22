@@ -42,13 +42,17 @@ export function useVideoTypeSelection({
         await apiClient.patch(`/songs/${songId}/video-type`, {
           video_type: type,
         })
-        // Trigger analysis automatically after setting video type
-        const response = await apiClient.post<{ jobId: string; status: string }>(
-          `/songs/${songId}/analyze`,
-        )
-        // Pass jobId to callback so polling can start
-        if (onAnalysisTriggered && response.data.jobId) {
-          await onAnalysisTriggered(response.data.jobId)
+        // For short_form videos, don't trigger analysis automatically
+        // User needs to select audio segment first, then analysis will start
+        // For full_length videos, trigger analysis immediately
+        if (type === 'full_length') {
+          const response = await apiClient.post<{ jobId: string; status: string }>(
+            `/songs/${songId}/analyze`,
+          )
+          // Pass jobId to callback so polling can start
+          if (onAnalysisTriggered && response.data.jobId) {
+            await onAnalysisTriggered(response.data.jobId)
+          }
         }
       } catch (err) {
         console.error('Failed to set video type or start analysis:', err)

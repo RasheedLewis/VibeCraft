@@ -15,6 +15,51 @@ quick character options.
 
 ---
 
+## Character Image Flow to Video Generation API
+
+**Note:** This section was added after implementation to document how character images (template or custom) are passed to the video generation API.
+
+### Overview
+
+When a character is selected (template or custom upload), the system collects presigned S3 URLs for the character images and passes them to the Replicate video generation API. The flow prioritizes generated images, then reference images, with support for multiple poses. This works the same way for both section-based (full-length) and clip-based (short-form) video generation.
+
+### Important Note on Function Names
+
+The function `generate_section_video()` is a general video generation function despite its name. It accepts a `SceneSpec` object which can have `section_id=None` for clip-based generation (short-form videos). The character image passing mechanism is identical regardless of whether sections are used.
+
+### Step-by-Step Flow
+
+1. **Image URL Collection** (`backend/app/services/clip_generation.py`)
+   - Function `_get_character_image_urls()` retrieves presigned URLs from S3
+   - Priority order: generated image → pose-a (reference) → pose-b
+   - Returns tuple: `(urls_list, fallback_url)` where `urls_list` contains all available URLs and `fallback_url` is the primary single image
+
+2. **Passing to Video Generation** (`backend/app/services/clip_generation.py`)
+   - In `run_clip_generation_job()`, character URLs are fetched and passed to `generate_section_video()`
+   - Both `reference_image_url` (single) and `reference_image_urls` (list) parameters are provided
+   - Falls back gracefully if character consistency is not enabled or URLs are unavailable
+   - Note: This happens for both section-based and clip-based generation
+
+3. **Video Generation Processing** (`backend/app/services/video_generation.py`)
+   - Function `generate_section_video()` handles the image-to-video logic (works for both sections and clips)
+   - For single images: uses dedicated `_generate_image_to_video()` function
+   - For multiple images: attempts to pass array, with fallback to single image if model doesn't support multiple
+   - Falls back to text-to-video if image URLs are invalid or unavailable
+
+4. **API Call to Replicate** (`backend/app/services/video_generation.py`)
+   - Image URL(s) are included in `input_params` dictionary with key `"image"` (or `"images"` for multiple)
+   - For Minimax Hailuo 2.3 model, single image is passed as `input_params["image"] = image_url`
+   - Multiple images are attempted with `input_params["images"]` or `input_params["image"]` as array, with fallback to first image only
+
+### Current Behavior
+
+- Template characters: Both pose-a and pose-b URLs are collected, but the model typically uses only pose-a (first image) since multiple image support may not be available
+- Custom uploads: Single reference image URL is used
+- Generated images: If a consistent character image was generated from the reference, it takes priority over the original reference image
+- Works identically for: Section-based generation (full-length videos) and clip-based generation (short-form videos)
+
+---
+
 ## Goals
 
 1. Provide 4 high-quality template character options (each with 2 poses)

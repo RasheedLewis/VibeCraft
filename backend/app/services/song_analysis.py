@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -188,9 +189,54 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
 
     logger.info("🔵 [ANALYSIS] Writing audio to temp file - song_id=%s", song_id)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        audio_path = Path(tmp.name)
+        full_audio_path = Path(tmp.name)
         tmp.write(audio_bytes)
-    logger.info("✅ [ANALYSIS] Temp file created - song_id=%s, path=%s", song_id, audio_path)
+    logger.info("✅ [ANALYSIS] Temp file created - song_id=%s, path=%s", song_id, full_audio_path)
+
+    # Check if we should use a selected segment
+    selection_start_sec = song.selected_start_sec
+    selection_end_sec = song.selected_end_sec
+    time_offset = 0.0
+    
+    if selection_start_sec is not None and selection_end_sec is not None:
+        logger.info(
+            "🔵 [ANALYSIS] Using selected audio segment - song_id=%s, start=%.2fs, end=%.2fs",
+            song_id, selection_start_sec, selection_end_sec
+        )
+        # Extract the selected segment
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            audio_path = Path(tmp.name)
+        
+        try:
+            settings = get_settings()
+            ffmpeg_bin = settings.ffmpeg_bin
+            segment_duration = selection_end_sec - selection_start_sec
+            cmd = [
+                ffmpeg_bin,
+                "-i", str(full_audio_path),
+                "-ss", str(selection_start_sec),
+                "-t", str(segment_duration),
+                "-acodec", "copy",
+                "-y",
+                str(audio_path),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60.0)
+            logger.info(
+                "✅ [ANALYSIS] Extracted audio segment - song_id=%s, segment=%.2fs-%.2fs (%.2fs)",
+                song_id, selection_start_sec, selection_end_sec, segment_duration
+            )
+            time_offset = selection_start_sec
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            logger.warning(
+                "⚠️ [ANALYSIS] Failed to extract audio segment, using full audio - song_id=%s, error=%s",
+                song_id, str(e)
+            )
+            audio_path = full_audio_path
+            time_offset = 0.0
+    else:
+        logger.info("🔵 [ANALYSIS] No selection found, using full audio - song_id=%s", song_id)
+        audio_path = full_audio_path
+        time_offset = 0.0
 
     try:
         # Librosa audio load timing
@@ -206,9 +252,10 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
         beat_start = time.time()
         tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
         beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
-        beat_times = [round(t, 4) for t in beat_times]
+        # Adjust beat times to be absolute (relative to original song start)
+        beat_times = [round(t + time_offset, 4) for t in beat_times]
         beat_time = time.time() - beat_start
-        logger.info("✅ [ANALYSIS] Beat tracking completed - song_id=%s, tempo=%.2f, beats=%d, time=%.2fs", song_id, tempo if tempo else 0.0, len(beat_times), beat_time)
+        logger.info("✅ [ANALYSIS] Beat tracking completed - song_id=%s, tempo=%.2f, beats=%d, time=%.2fs, time_offset=%.2fs", song_id, tempo if tempo else 0.0, len(beat_times), beat_time, time_offset)
 
         logger.info("🔵 [ANALYSIS] Updating progress to 25%% - song_id=%s, job_id=%s", song_id, job_id)
         _update_job_progress(job_id, 25)
@@ -276,6 +323,20 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
             else:
                 sections = _detect_sections(y, sr, duration)
             
+            # Adjust section times to be absolute (relative to original song start)
+            if time_offset > 0:
+                sections = [
+                    SongSection(
+                        id=section.id,
+                        start_sec=round(section.start_sec + time_offset, 3),
+                        end_sec=round(section.end_sec + time_offset, 3),
+                        section_type=section.section_type,
+                        confidence=section.confidence,
+                    )
+                    for section in sections
+                ]
+                logger.info("✅ [ANALYSIS] Adjusted section times by %.2fs offset - song_id=%s", time_offset, song_id)
+            
             section_time = time.time() - section_start
             logger.info("✅ [ANALYSIS] Section detection completed - song_id=%s, sections=%d, time=%.2fs", song_id, len(sections), section_time)
         else:
@@ -320,8 +381,14 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
         _update_job_progress(job_id, 85)
         logger.info("✅ [ANALYSIS] Progress updated to 85%% - song_id=%s, job_id=%s", song_id, job_id)
 
+        # Use selected duration if available, otherwise use full duration
+        effective_duration = duration
+        if selection_start_sec is not None and selection_end_sec is not None:
+            effective_duration = selection_end_sec - selection_start_sec
+            logger.info("🔵 [ANALYSIS] Using selected duration - song_id=%s, effective_duration=%.2fs (full=%.2fs)", song_id, effective_duration, duration)
+        
         analysis = SongAnalysis(
-            durationSec=duration,
+            durationSec=effective_duration,
             bpm=float(tempo) if tempo else None,
             beatTimes=beat_times,
             sections=sections,
@@ -346,14 +413,14 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
             if record:
                 record.analysis_json = analysis_json
                 record.bpm = float(tempo) if tempo else None
-                record.duration_sec = duration
+                record.duration_sec = effective_duration
                 logger.info("🔵 [ANALYSIS] Updating existing analysis record - song_id=%s, record_id=%s", song_id, record.id)
             else:
                 record = SongAnalysisRecord(
                     song_id=song_id,
                     analysis_json=analysis_json,
                     bpm=float(tempo) if tempo else None,
-                    duration_sec=duration,
+                    duration_sec=effective_duration,
                 )
                 logger.info("🔵 [ANALYSIS] Creating new analysis record - song_id=%s", song_id)
             session.add(record)
@@ -368,11 +435,23 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
 
         return json.loads(analysis_json)
     finally:
+        # Clean up temp files
         try:
             if audio_path.exists():
                 audio_path.unlink()
+                logger.debug("✅ [ANALYSIS] Cleaned up temp audio file - song_id=%s, path=%s", song_id, audio_path)
         except FileNotFoundError:
             pass
+        except Exception as e:
+            logger.warning("⚠️ [ANALYSIS] Failed to clean up temp audio file - song_id=%s, path=%s, error=%s", song_id, audio_path, e)
+        try:
+            if 'full_audio_path' in locals() and full_audio_path.exists() and full_audio_path != audio_path:
+                full_audio_path.unlink()
+                logger.debug("✅ [ANALYSIS] Cleaned up temp full audio file - song_id=%s, path=%s", song_id, full_audio_path)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning("⚠️ [ANALYSIS] Failed to clean up temp full audio file - song_id=%s, error=%s", song_id, e)
 
 
 def _normalize_list(values: list[float]) -> list[float]:

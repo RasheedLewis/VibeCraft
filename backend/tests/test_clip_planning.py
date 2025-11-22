@@ -276,6 +276,8 @@ def test_plan_clips_with_selection_uses_effective_duration():
         min_clip_sec=3.0,
         max_clip_sec=12.0,
         generator_fps=8,
+        selection_start_sec=selected_start,
+        selection_end_sec=selected_end,
     )
 
     assert len(plans) == 4
@@ -295,7 +297,8 @@ def test_plan_clips_with_selection_applies_time_offset():
     effective_duration = selected_end - selected_start  # 30s
     time_offset = selected_start  # 20s
 
-    # Plan clips for effective duration (as if selection starts at 0)
+    # Plan clips for effective duration with selection parameters
+    # (beats will be filtered to selection range and adjusted to be relative)
     plans = plan_beat_aligned_clips(
         duration_sec=effective_duration,
         analysis=analysis,
@@ -303,6 +306,8 @@ def test_plan_clips_with_selection_applies_time_offset():
         min_clip_sec=3.0,
         max_clip_sec=12.0,
         generator_fps=8,
+        selection_start_sec=selected_start,
+        selection_end_sec=selected_end,
     )
 
     # Apply time offset (this is what the API endpoint does)

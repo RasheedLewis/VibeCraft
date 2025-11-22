@@ -10,7 +10,7 @@ branch. Each step includes exact actions, expected results, verification methods
 1. [Quick Smoke Test](#quick-smoke-test) ⚡
 2. [Prerequisites & Setup](#prerequisites--setup)
 3. [Primary UX Features](#primary-ux-features)
-4. [Character Consistency Foundation](#character-consistency-foundation)
+4. [Character Consistency (Phases 1-7)](#character-consistency-phases-1-7--complete)
 5. [Beat Sync Foundation](#beat-sync-foundation)
 6. [End-to-End Flows](#end-to-end-flows)
 7. [Edge Cases](#edge-cases)
@@ -20,7 +20,8 @@ branch. Each step includes exact actions, expected results, verification methods
 
 ## Quick Smoke Test
 
-**Purpose**: Quickly verify all major features work end-to-end, including Character Consistency (Phases 2-7) and Beat Sync (Phases 3.1-3.3).
+**Purpose**: Quickly verify all major features work end-to-end, including
+Character Consistency (Phases 2-7) and Beat Sync (Phases 3.1-3.3).
 
 **Time**: 20-25 minutes | **Prerequisites**: Backend and frontend running
 
@@ -80,7 +81,8 @@ branch. Each step includes exact actions, expected results, verification methods
    - **Verify**: Profile loads, CharacterPreview component shows character image
    - **Verify**: No section errors, character consistency status visible
 
-**All Steps Pass**: System working on happy path with full Character Consistency (Phases 2-7) and Beat Sync (Phases 3.1-3.3) integration
+**All Steps Pass**: System working on happy path with full Character
+Consistency (Phases 2-7) and Beat Sync (Phases 3.1-3.3) integration
 
 **If Any Step Fails**: Note which step, check Console/Network tabs, see [How to Report Issues](#how-to-report-issues)
 
@@ -97,7 +99,7 @@ cd backend && source venv/bin/activate
 python -m uvicorn app.main:app --reload
 ```
 
-**Verify**: `Uvicorn running on http://127.0.0.1:8000`, can access `/docs`
+**Verify**: `Uvicorn running on <http://127.0.0.1:8000>`, can access `/docs`
 
 **Frontend**:
 
@@ -133,29 +135,29 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 #### Checkpoints
 
-**1.1 Navigate & Upload**
+##### 1.1 Navigate & Upload
 
 - Open `http://localhost:5173`
 - Upload `medium_audio.mp3`
 - Verify: Page loads, upload completes, `POST /api/v1/songs/` returns 200/201
 
-**1.2 Video Type Selector Appears**
+##### 1.2 Video Type Selector Appears
 
 - Wait for upload completion
 - Verify: Selector visible with "Full Length" and "Short Form" options
 
-**1.3 Select "Short Form"**
+##### 1.3 Select "Short Form"
 
 - Click "Short Form"
 - Verify: Selected state shown, loading indicator,
   `PATCH /api/v1/songs/{id}/video-type` returns 200
 
-**1.4 Select "Full Length"**
+##### 1.4 Select "Full Length"
 
 - Click "Full Length"
 - Verify: Selection changes, saves successfully
 
-**1.5 Verify Persistence**
+##### 1.5 Verify Persistence
 
 - Refresh page (F5)
 - Verify: Selection remembered, `GET /api/v1/songs/{id}` returns correct
@@ -175,24 +177,24 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 #### Checkpoints
 
-**2.1 Start Analysis**
+##### 2.1 Start Analysis
 
 - Click "Start Analysis"
 - Verify: Analysis completes, backend logs show skip message:
   `⏭️ [ANALYSIS] Skipping section detection (short-form video)`
 
-**2.2 Timeline Appears**
+##### 2.2 Timeline Appears
 
 - Wait for analysis completion
 - Verify: Timeline visible with waveform, start/end markers, play button, time
   display
 
-**2.3 Default Selection**
+##### 2.3 Default Selection
 
 - Observe default selection
 - Verify: Defaults to last 30s (if track > 30s) or full track (if < 30s)
 
-**2.4 Drag Markers**
+##### 2.4 Drag Markers
 
 - Drag start marker right, drag end marker left/right
 - Verify: Markers move smoothly, duration updates, constraints enforced:
@@ -200,30 +202,30 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - Cannot go below 1s min
   - Cannot drag past boundaries
 
-**2.5 Test Constraints**
+##### 2.5 Test Constraints
 
 - Try creating > 30s selection
 - Try dragging markers very close
 - Verify: 30s max enforced, 1s min enforced
 
-**2.6 Audio Preview**
+##### 2.6 Audio Preview
 
 - Click Play button
 - Verify: Audio plays from start marker, playhead moves, stops at end
   marker, can pause/resume
 
-**2.7 Timeline Click**
+##### 2.7 Timeline Click
 
 - Click within selected region
 - Verify: Playhead jumps to clicked position
 
-**2.8 Save Selection**
+##### 2.8 Save Selection
 
 - Click "Continue with Selection"
 - Verify: `PATCH /api/v1/songs/{id}/selection` returns 200, song profile
   appears
 
-**2.9 Verify Persistence**
+##### 2.9 Verify Persistence
 
 - Refresh page
 - Verify: Selection remembered, `GET /api/v1/songs/{id}` returns
@@ -241,18 +243,18 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 #### Checkpoints
 
-**3.1 Backend Skips Sections**
+##### 3.1 Backend Skips Sections
 
 - Complete analysis for short-form video
 - Verify: Backend logs show skip message, no section detection runs
 
-**3.2 Frontend Sections UI**
+##### 3.2 Frontend Sections UI
 
 - Navigate to song profile view
 - Verify: Sections timeline either hidden or shows placeholder (depends on
   feature flag), no errors
 
-**3.3 Compare with Full-Length**
+##### 3.3 Compare with Full-Length
 
 - Upload same audio, select "Full Length", complete analysis
 - Verify: Sections detected and displayed for full-length
@@ -265,20 +267,21 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ## Character Consistency (Phases 1-7) ✅ COMPLETE
 
-**Goal**: Verify complete Character Consistency workflow from image upload through consistent character image generation and video clip generation.
+**Goal**: Verify complete Character Consistency workflow from image upload
+through consistent character image generation and video clip generation.
 
 **Time**: 30-40 min | **Prerequisites**: Backend with OpenAI API key or Replicate API token configured
 
 ### Phase 1: Foundation (Database & Storage) ✅ COMPLETE
 
-**4.1 Upload Section Appears**
+#### 4.1 Upload Section Appears
 
 - Complete analysis for short-form video
 - Verify: Character upload section visible (short-form only), appears after analysis
 - Verify: "Choose Template" button visible next to upload area
 - Verify: CharacterPreview component appears after image upload (Phase 6)
 
-**4.2 Template Character Selection**
+#### 4.2 Template Character Selection
 
 - Click "Choose Template" button
 - **Verify**: Modal opens, displays 4 characters in grid (4 columns)
@@ -294,28 +297,29 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - `songs/{song_id}/character_reference.jpg` (pose-a)
   - `songs/{song_id}/character_pose_b.jpg` (pose-b)
 
-**4.3 Template Character Error Handling**
+#### 4.3 Template Character Error Handling
 
 - Try selecting template when song doesn't exist (404)
 - Try selecting template for full_length video (400 error)
 - Try selecting invalid character ID (404 error)
 - **Verify**: Clear error messages displayed in modal
 
-**4.4 Upload Custom Image**
+#### 4.4 Upload Custom Image
 
 - Upload valid image (JPEG/PNG/WEBP)
-- **Verify**: Preview appears, `POST /api/v1/songs/{id}/character-image` returns 200, image saved to S3
+- **Verify**: Preview appears, `POST /api/v1/songs/{id}/character-image`
+  returns 200, image saved to S3
 - **Verify**: CharacterPreview component displays uploaded image (Phase 6)
 - **Verify**: Can switch between template and custom upload
 
-**4.5 Test Validation**
+#### 4.5 Test Validation
 
 - Try uploading invalid files (.txt, > 10MB, invalid dimensions)
 - **Verify**: Clear error messages, upload rejected, can retry
 
 ### Phase 2: Image Interrogation Service ✅ COMPLETE
 
-**4.6 Image Interrogation Workflow**
+#### 4.6 Image Interrogation Workflow
 
 - Upload custom character image (not template)
 - **Verify**: Backend logs show character image generation job enqueued
@@ -325,7 +329,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 - **Verify**: Interrogation result stored in `character_interrogation_prompt` field (JSON)
 - **Verify**: Prompt contains: `prompt`, `character_description`, `style_notes`
 
-**4.7 Interrogation Error Handling**
+#### 4.7 Interrogation Error Handling
 
 - Test with invalid image URL or corrupted image
 - **Verify**: Error logged, job fails gracefully, `character_consistency_enabled` set to false
@@ -333,7 +337,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ### Phase 3: Character Image Generation Service ✅ COMPLETE
 
-**4.8 Consistent Character Image Generation**
+#### 4.8 Consistent Character Image Generation
 
 - After image interrogation completes
 - **Verify**: Backend logs show `generate_consistent_character_image()` called
@@ -344,7 +348,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - `songs/{song_id}/character_generated.jpg`
 - **Verify**: `character_generated_image_s3_key` field populated in database
 
-**4.9 Generation Error Handling**
+#### 4.9 Generation Error Handling
 
 - Test with invalid Replicate API token or model failure
 - **Verify**: Error logged, job fails gracefully, `character_consistency_enabled` set to false
@@ -352,7 +356,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ### Phase 4: Video Generation Service Updates ✅ COMPLETE
 
-**4.10 Image-to-Video Generation**
+#### 4.10 Image-to-Video Generation
 
 - Generate clips with character image uploaded
 - **Verify**: Backend logs show `_generate_image_to_video()` called
@@ -360,14 +364,14 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 - **Verify**: Image-to-video generation succeeds for all 6 clips
 - **Verify**: Clips maintain character consistency across all clips
 
-**4.11 Enhanced Fallback Logic**
+#### 4.11 Enhanced Fallback Logic
 
 - Test with missing or invalid character image
 - **Verify**: Backend logs show fallback to text-to-video generation
 - **Verify**: Clips still generate successfully (graceful degradation)
 - **Verify**: No errors thrown, workflow continues
 
-**4.12 Multiple Reference Images Support**
+#### 4.12 Multiple Reference Images Support
 
 - Use template character (both poses)
 - **Verify**: Backend logs show `reference_image_urls` array with 2 URLs
@@ -376,7 +380,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ### Phase 5: Orchestration Workflow ✅ COMPLETE
 
-**4.13 Full Workflow Integration**
+#### 4.13 Full Workflow Integration
 
 - Upload character image → Generate clips
 - **Verify**: Backend logs show complete workflow:
@@ -389,7 +393,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 - **Verify**: Background job (`generate_character_image_job`) executes successfully
 - **Verify**: Job status tracked in RQ queue
 
-**4.14 Storage Helpers**
+#### 4.14 Storage Helpers
 
 - Check S3 bucket after character image generation
 - **Verify**: Both reference and generated images stored correctly:
@@ -399,7 +403,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ### Phase 6: Frontend Integration ✅ COMPLETE
 
-**4.15 CharacterPreview Component**
+#### 4.15 CharacterPreview Component
 
 - After character image uploaded
 - **Verify**: CharacterPreview component displays image
@@ -407,7 +411,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 - **Verify**: Error state shown if image fails to load
 - **Verify**: Component handles missing image gracefully
 
-**4.16 Character Image Upload UI**
+#### 4.16 Character Image Upload UI
 
 - Upload custom character image
 - **Verify**: Drag-and-drop works in CharacterImageUpload component
@@ -417,7 +421,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ### Phase 7: Testing & Documentation ✅ COMPLETE
 
-**4.17 Test Scripts**
+#### 4.17 Test Scripts
 
 - Run test scripts in `scripts/checkpoints-advanced-features/`:
   - `test-character-interrogation-1.sh` (Phase 2)
@@ -429,7 +433,8 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 **Character Consistency Summary**: All phases (1-7) complete and working
 
-**Known**: Full workflow implemented - image interrogation → character generation → image-to-video → consistent clips across all 6 clips.
+**Known**: Full workflow implemented - image interrogation → character
+generation → image-to-video → consistent clips across all 6 clips.
 
 ---
 
@@ -441,13 +446,13 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ### Phase 3.1: Prompt Engineering ✅ COMPLETE
 
-**5.1 Beat Detection & BPM Calculation**
+#### 5.1 Beat Detection & BPM Calculation
 
 - Complete analysis
 - Verify: `beat_times` array populated in database, `bpm` calculated and stored
 - Verify: Backend logs show beat detection completion
 
-**5.2 API-Specific Prompt Optimization**
+#### 5.2 API-Specific Prompt Optimization
 
 - Generate clips for short-form video
 - Verify: Backend logs show prompt optimization for Minimax Hailuo 2.3:
@@ -456,7 +461,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - API-specific formatting applied
 - Check logs for: `optimize_prompt_for_api` calls
 
-**5.3 Motion Type Selection**
+#### 5.3 Motion Type Selection
 
 - Generate clips with different genres/moods
 - Verify: Backend logs show motion type selection based on:
@@ -466,7 +471,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - BPM (slow, medium, fast, very fast)
 - Verify: Appropriate motion types selected (bouncing, pulsing, rotating, stepping, looping)
 
-**5.4 BPM Extraction from Prompts**
+#### 5.4 BPM Extraction from Prompts
 
 - Generate clips with prompts containing BPM references
 - Verify: BPM extracted correctly from prompts like "128 BPM", "120BPM"
@@ -474,13 +479,13 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ### Phase 3.2: Audio-Reactive FFmpeg Filters ✅ COMPLETE
 
-**5.5 Frame-Accurate Beat Time Conversion**
+#### 5.5 Frame-Accurate Beat Time Conversion
 
 - Compose final video
 - Verify: Backend logs show `convert_beat_times_to_frames()` called
 - Verify: Beat times converted to frame indices with correct FPS
 
-**5.6 Beat Filter Generation**
+#### 5.6 Beat Filter Generation
 
 - Compose final video
 - Verify: Backend logs show beat filter expressions generated:
@@ -488,14 +493,14 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - Filter type selected (flash, color_burst, zoom_pulse, brightness_pulse, glitch)
 - Verify: Beat times passed to `concatenate_clips()` function
 
-**5.7 Glitch Effect Filter**
+#### 5.7 Glitch Effect Filter
 
 - Compose final video with glitch effect enabled
 - Verify: Backend logs show glitch filter generation
 - Verify: RGB channel shift filter applied (check FFmpeg filter string)
 - Verify: Visual glitch effect appears on beats in final video
 
-**5.8 Effect Parameter Customization**
+#### 5.8 Effect Parameter Customization
 
 - Check `backend/app/core/config.py` for `BeatEffectConfig`
 - Verify: Environment variables available for effect customization:
@@ -506,7 +511,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - `BEAT_COLOR_BURST_SATURATION`, `BEAT_COLOR_BURST_BRIGHTNESS`
 - Verify: Default values used if not set
 
-**5.9 Visual Beat Effects in Final Video**
+#### 5.9 Visual Beat Effects in Final Video
 
 - Compose final video
 - Verify: Visual effects trigger on beats (flash, color burst, zoom pulse, etc.)
@@ -515,7 +520,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ### Phase 3.3: Structural Sync ✅ COMPLETE
 
-**5.10 Beat-Aligned Boundary Calculation**
+#### 5.10 Beat-Aligned Boundary Calculation
 
 - Generate clips and compose final video
 - Verify: Backend logs show `calculate_beat_aligned_clip_boundaries()` called
@@ -524,7 +529,7 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - Beat alignment for start/end times
   - Frame-accurate alignment
 
-**5.11 User Selection Support (30-Second Clips)**
+#### 5.11 User Selection Support (30-Second Clips)
 
 - Upload audio, select "Short Form", make 30-second selection
 - Generate clips and compose
@@ -534,28 +539,28 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
   - Boundaries calculated within selection range
 - Verify: Clips aligned to beats within selected segment
 
-**5.12 Clip Trimming to Beat Boundaries**
+#### 5.12 Clip Trimming to Beat Boundaries
 
 - Compose final video
 - Verify: Backend logs show `trim_clip_to_beat_boundary()` called when needed
 - Verify: Clips trimmed to align with beat-aligned start/end times
 - Verify: FFmpeg trim filter applied correctly
 
-**5.13 Clip Extension to Beat Boundaries**
+#### 5.13 Clip Extension to Beat Boundaries
 
 - Compose final video with clips shorter than beat boundaries
 - Verify: Backend logs show `extend_clip_to_beat_boundary()` called
 - Verify: Clips extended using frame freeze (tpad) and fadeout
 - Verify: Extended clips align with beat boundaries
 
-**5.14 Transition Verification**
+#### 5.14 Transition Verification
 
 - Compose final video
 - Verify: Backend logs show `verify_beat_aligned_transitions()` called
 - Verify: All transitions verified to be within ±50ms of beat boundaries
 - Verify: Transition errors logged if any exceed tolerance
 
-**5.15 Beat-Aligned Clip Transitions**
+#### 5.15 Beat-Aligned Clip Transitions
 
 - Compose final video
 - Verify: All clip transitions occur on beat boundaries

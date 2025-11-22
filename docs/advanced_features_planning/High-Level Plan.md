@@ -1,6 +1,9 @@
 # BeatDrop Feature Enhancement: Quick-Win Implementation Plan
 
-This document outlines a simplified, high-impact plan for enhancing the BeatDrop AI video generation app, focusing on the quickest wins for **Character Consistency** and **Beat Synchronization**. The plan adheres to the constraint of using only models available via the **Replicate API** for video generation.
+This document outlines a simplified, high-impact plan for enhancing the
+BeatDrop AI video generation app, focusing on the quickest wins for **Character
+Consistency** and **Beat Synchronization**. The plan adheres to the constraint
+of using only models available via the **Replicate API** for video generation.
 
 ---
 
@@ -19,7 +22,9 @@ The plan prioritizes the lowest-effort, highest-impact solutions for early valid
 
 ## 2. Character Consistency: Multi-Step Workflow (Replicate Constraint)
 
-The constraint to use Replicate models necessitates a shift from a single, high-fidelity API call to a multi-step process to achieve character consistency.
+The constraint to use Replicate models necessitates a shift from a single,
+high-fidelity API call to a multi-step process to achieve character
+consistency.
 
 ### 2.1. Implementation Steps ✅ COMPLETE
 
@@ -32,14 +37,21 @@ The `generate_video_clip` job has been modified to execute the following sequenc
 | **3. Video Generation (6 Clips)** | Replicate API Call | ✅ Phase 4 | Use the **Consistent Image** from Step 2 as the Image Input for the Image-to-Video model, along with the Final Constructed Prompt. This step is repeated for all 6 clips. Enhanced fallback to text-to-video if image fails. | `minimax/hailuo-2.3` (supports image input) |
 
 **Implementation Notes:**
+
 - ✅ Phase 2: Image interrogation service with OpenAI + Replicate fallback
 - ✅ Phase 3: Character image generation with Replicate SDXL
-- ✅ Phase 4: Dedicated `_generate_image_to_video()` function with enhanced fallback logic
-- ✅ Phase 5: Full orchestration workflow (download → interrogate → generate → upload → store)
+- ✅ Phase 4: Dedicated `_generate_image_to_video()` function with enhanced
+  fallback logic
+- ✅ Phase 5: Full orchestration workflow (download → interrogate → generate →
+  upload → store)
 - ✅ Phase 6: Frontend components (CharacterImageUpload + CharacterPreview)
-- ✅ Phase 7: Comprehensive testing (31 unit tests + 5 integration tests + 4 test scripts)
+- ✅ Phase 7: Comprehensive testing (31 unit tests + 5 integration tests + 4
+  test scripts)
 
-**Crucial Caveat:** This approach is a **compromise**. While the input image is consistent, the Image-to-Video model may still introduce visual drift across the 6 separate generations. The implementation includes graceful fallback to text-to-video if image-to-video generation fails.
+**Crucial Caveat:** This approach is a **compromise**. While the input image is
+consistent, the Image-to-Video model may still introduce visual drift across the
+6 separate generations. The implementation includes graceful fallback to
+text-to-video if image-to-video generation fails.
 
 ---
 
@@ -53,13 +65,14 @@ These post-processing steps are independent of the video generation API and rely
 
 The base prompt template has been enhanced to bias the AI model toward rhythmic motion.
 
-*   **Implementation:** Enhanced `prompt_enhancement.py` with:
-    - API-specific prompt optimization for Minimax Hailuo 2.3, Runway, Pika, Kling
-    - Advanced motion type selection with priority system (scene context > mood > genre > BPM)
-    - BPM extraction from prompts
-    - Enhanced motion templates with detailed rhythmic descriptors
-*   **Integration:** Integrated into `video_generation.py` and `scene_planner.py`
-*   **Testing:** 61 comprehensive unit tests (all passing)
+- **Implementation:** Enhanced `prompt_enhancement.py` with:
+  - API-specific prompt optimization for Minimax Hailuo 2.3, Runway, Pika, Kling
+  - Advanced motion type selection with priority system (scene context > mood >
+    genre > BPM)
+  - BPM extraction from prompts
+  - Enhanced motion templates with detailed rhythmic descriptors
+- **Integration:** Integrated into `video_generation.py` and `scene_planner.py`
+- **Testing:** 61 comprehensive unit tests (all passing)
 
 ### 3.2. Audio-Reactive FFmpeg Filters (Technical Exploration Option 6) ✅ COMPLETE
 
@@ -67,20 +80,26 @@ The base prompt template has been enhanced to bias the AI model toward rhythmic 
 
 This occurs in the `compose_final_video` job after all clips are downloaded and concatenated.
 
-*   **Implementation:** Enhanced `beat_filters.py` with:
-    - Frame-accurate beat time to frame conversion (`convert_beat_times_to_frames()`)
-    - Enhanced filter generation with customizable effect parameters
-    - Glitch effect filter (RGB channel shift)
-    - Improved zoom_pulse filter implementation
-    - Effect parameter customization system (intensity, color, saturation, brightness, zoom)
-    - BeatEffectConfig in `config.py` with environment variable support
-*   **Filter Types:** flash, color_burst, zoom_pulse, brightness_pulse, glitch
-*   **Integration:** Integrated into `video_composition.py` and `composition_execution.py`
-*   **Testing:** Comprehensive unit tests for all filter types and effect parameters
+- **Implementation:** Enhanced `beat_filters.py` with:
+  - Frame-accurate beat time to frame conversion
+    (`convert_beat_times_to_frames()`)
+  - Enhanced filter generation with customizable effect parameters
+  - Glitch effect filter (RGB channel shift)
+  - Improved zoom_pulse filter implementation
+  - Effect parameter customization system (intensity, color, saturation,
+    brightness, zoom)
+  - BeatEffectConfig in `config.py` with environment variable support
+- **Filter Types:** flash, color_burst, zoom_pulse, brightness_pulse, glitch
+- **Integration:** Integrated into `video_composition.py` and
+  `composition_execution.py`
+- **Testing:** Comprehensive unit tests for all filter types and effect
+  parameters
 
 **Example FFmpeg Filter Logic:**
 
-The logic involves creating a boolean expression based on the `beat_times` array to trigger a filter (like `geq` for a flash) only when the current frame's timestamp is within a small window of a beat.
+The logic involves creating a boolean expression based on the `beat_times` array
+to trigger a filter (like `geq` for a flash) only when the current frame's
+timestamp is within a small window of a beat.
 
 ### 3.3. Structural Sync (Technical Exploration Option 2) ✅ COMPLETE
 
@@ -88,15 +107,20 @@ The logic involves creating a boolean expression based on the `beat_times` array
 
 The cut points between clips are now aligned to the nearest major beat in the `beat_times` array.
 
-*   **Implementation:** Enhanced `beat_alignment.py` and `video_composition.py` with:
-    - Beat-aligned clip boundary calculation with user selection support (30-second clips)
-    - Transition verification (`verify_beat_aligned_transitions()`)
-    - Clip trimming to beat boundaries (`trim_clip_to_beat_boundary()`)
-    - Clip extension to beat boundaries (`extend_clip_to_beat_boundary()`)
-    - Integration into `composition_execution.py` pipeline
-*   **Success Criteria:** 100% of clip transitions occur within ±50ms of beat boundaries
-*   **Integration:** Clips are trimmed/extended to match beat-aligned boundaries before concatenation
-*   **Testing:** Comprehensive unit tests for boundary calculation, user selection, transition verification, and trim/extend functions
+- **Implementation:** Enhanced `beat_alignment.py` and `video_composition.py`
+  with:
+  - Beat-aligned clip boundary calculation with user selection support
+    (30-second clips)
+  - Transition verification (`verify_beat_aligned_transitions()`)
+  - Clip trimming to beat boundaries (`trim_clip_to_beat_boundary()`)
+  - Clip extension to beat boundaries (`extend_clip_to_beat_boundary()`)
+  - Integration into `composition_execution.py` pipeline
+- **Success Criteria:** 100% of clip transitions occur within ±50ms of beat
+  boundaries
+- **Integration:** Clips are trimmed/extended to match beat-aligned boundaries
+  before concatenation
+- **Testing:** Comprehensive unit tests for boundary calculation, user
+  selection, transition verification, and trim/extend functions
 
 ---
 
@@ -104,28 +128,41 @@ The cut points between clips are now aligned to the nearest major beat in the `b
 
 ### 4.1. Feasibility Assessment
 
-**Assessment**: Two developers (AI agents) can work simultaneously on Character Consistency and Beat Synchronization features with minimal conflicts, provided proper coordination and use of Git worktrees.
+**Assessment**: Two developers (AI agents) can work simultaneously on Character
+Consistency and Beat Synchronization features with minimal conflicts, provided
+proper coordination and use of Git worktrees.
 
 **Rationale**:
-- **Character Consistency** primarily creates **new services** (`image_interrogation.py`, `character_image_generation.py`, `character_consistency.py`) and enhances existing services that Beat Sync doesn't modify
-- **Beat Synchronization** primarily **enhances existing services** (`prompt_enhancement.py`, `beat_filters.py`, `beat_alignment.py`) and modifies composition pipeline components that Character Consistency doesn't touch
+
+- **Character Consistency** primarily creates **new services**
+  (`image_interrogation.py`, `character_image_generation.py`,
+  `character_consistency.py`) and enhances existing services that Beat Sync
+  doesn't modify
+- **Beat Synchronization** primarily **enhances existing services**
+  (`prompt_enhancement.py`, `beat_filters.py`, `beat_alignment.py`) and
+  modifies composition pipeline components that Character Consistency doesn't
+  touch
 - Most foundation work is already complete, reducing overlap
-- The features operate at different stages of the pipeline (Character Consistency: clip generation; Beat Sync: prompt enhancement + composition)
+- The features operate at different stages of the pipeline (Character
+  Consistency: clip generation; Beat Sync: prompt enhancement + composition)
 
 ### 4.2. File Conflict Analysis
 
 #### Character Consistency Status ✅ COMPLETE
+
 **New Files** (All Implemented):
 - `backend/app/services/image_interrogation.py` ✅ (Phase 2: Image Interrogation Service)
 - `backend/app/services/character_image_generation.py` ✅ (Phase 3: Character Image Generation Service)
-- `backend/app/services/character_consistency.py` ✅ (Phase 5: Orchestration Workflow)
+- `backend/app/services/character_consistency.py` ✅ (Phase 5: Orchestration
+  Workflow)
 
 **Enhanced Files** (All Complete):
 - `backend/app/services/video_generation.py` ✅ (Phase 4: Image-to-Video Support with Enhanced Fallback)
 - `backend/app/services/clip_generation.py` ✅ (Phase 5: Integration with Character Images)
 - `backend/app/services/storage.py` ✅ (Phase 1: Character Image Storage Helpers)
 - `backend/app/api/v1/routes_songs.py` ✅ (Phase 5: Character Image Upload Endpoint)
-- Frontend components ✅ (Phase 6: CharacterImageUpload + CharacterPreview components)
+- Frontend components ✅ (Phase 6: CharacterImageUpload + CharacterPreview
+  components)
 
 **Testing & Documentation** (Phase 7: Complete):
 - Comprehensive unit tests: 31 tests (all passing)
@@ -134,8 +171,10 @@ The cut points between clips are now aligned to the nearest major beat in the `b
 - Zero linting issues
 
 #### Beat Synchronization Status ✅ COMPLETE
+
 **Enhanced Files** (All Complete):
-- `backend/app/services/prompt_enhancement.py` ✅ (Phase 3.1: API-specific optimization, motion selection, BPM extraction)
+- `backend/app/services/prompt_enhancement.py` ✅ (Phase 3.1: API-specific
+  optimization, motion selection, BPM extraction)
 - `backend/app/services/beat_filters.py` ✅ (Phase 3.2: Glitch effect, effect params, frame-accurate timing)
 - `backend/app/services/beat_alignment.py` ✅ (Phase 3.3: User selection support, transition verification)
 - `backend/app/services/video_composition.py` ✅ (Phase 3.2: Beat filters; Phase 3.3: trim/extend functions)
@@ -153,6 +192,7 @@ The cut points between clips are now aligned to the nearest major beat in the `b
 - Zero linting issues
 
 #### Conflict Points
+
 **Low Risk**:
 - No shared new files
 - Different service layers (Character Consistency: image/video generation; Beat Sync: prompt/composition)
@@ -164,7 +204,8 @@ The cut points between clips are now aligned to the nearest major beat in the `b
 
 **No Conflicts**:
 - Character Consistency doesn't modify `composition_execution.py` (Beat Sync's main modification target)
-- Beat Sync doesn't modify `video_generation.py` or `clip_generation.py` (Character Consistency's main modification targets)
+- Beat Sync doesn't modify `video_generation.py` or `clip_generation.py`
+  (Character Consistency's main modification targets)
 
 ### 4.3. Implementation Strategy: Git Worktrees
 
@@ -192,14 +233,18 @@ git worktree add ../VibeCraft-beat-sync feature/beat-sync-completion
 ```
 
 #### Worktree Benefits
-- **Isolated Working Directories**: Each developer has a complete, independent copy of the repository
-- **Shared Git History**: All worktrees share the same `.git` directory, so branches and commits are synchronized
+
+- **Isolated Working Directories**: Each developer has a complete, independent
+  copy of the repository
+- **Shared Git History**: All worktrees share the same `.git` directory, so
+  branches and commits are synchronized
 - **No Stash Conflicts**: Developers can work without interfering with each other's uncommitted changes
 - **Easy Merging**: When ready, merge branches back to `advancedFeatures` branch
 
 #### Daily Workflow
 
 **Agent 1 (Character Consistency)**:
+
 ```bash
 cd ../VibeCraft-character-consistency
 git pull origin advancedFeatures  # Sync with base branch
@@ -210,6 +255,7 @@ git push origin feature/character-consistency-phase2-3
 ```
 
 **Agent 2 (Beat Sync)**:
+
 ```bash
 cd ../VibeCraft-beat-sync
 git pull origin advancedFeatures  # Sync with base branch
@@ -222,23 +268,33 @@ git push origin feature/beat-sync-completion
 #### Coordination Points
 
 **Before Starting**:
-1. **Coordinate Migration Numbers**: If both need migrations, agree on numbering (e.g., Character Consistency uses `005_`, Beat Sync uses `006_`)
-2. **Coordinate Config Changes**: If both need `config.py` changes, agree on structure or use separate config classes
-3. **Share Base Branch**: Both should start from the same commit on `advancedFeatures`
+
+1. **Coordinate Migration Numbers**: If both need migrations, agree on
+   numbering (e.g., Character Consistency uses `005_`, Beat Sync uses `006_`)
+2. **Coordinate Config Changes**: If both need `config.py` changes, agree on
+   structure or use separate config classes
+3. **Share Base Branch**: Both should start from the same commit on
+   `advancedFeatures`
 
 **During Development**:
+
 1. **Daily Sync**: Pull from `advancedFeatures` daily to stay current
-2. **Communication**: Notify if modifying shared files (though unlikely based on analysis)
-3. **Feature Flags**: Use consistent naming for feature flags (e.g., `CHARACTER_CONSISTENCY_ENABLED`, `BEAT_SYNC_ENABLED`)
+2. **Communication**: Notify if modifying shared files (though unlikely based
+   on analysis)
+3. **Feature Flags**: Use consistent naming for feature flags (e.g.,
+   `CHARACTER_CONSISTENCY_ENABLED`, `BEAT_SYNC_ENABLED`)
 
 **Before Merging**:
+
 1. **Test Independently**: Each feature should be tested in isolation
-2. **Merge Order**: Merge one feature branch first, test, then merge the second
+2. **Merge Order**: Merge one feature branch first, test, then merge the
+   second
 3. **Integration Testing**: After both merged, run full integration tests
 
 ### 4.4. Work Division
 
 #### Agent 1: Character Consistency ✅ COMPLETE (Phases 2, 3, 4, 5, 6, 7)
+
 **Status**: All phases implemented and merged into `advancedFeatures` branch
 
 **Completed Tasks**:
@@ -266,14 +322,18 @@ git push origin feature/beat-sync-completion
 - `backend/tests/unit/test_storage_character.py` ✅ (NEW - 5 tests)
 - `backend/tests/unit/test_video_generation.py` ✅ (ENHANCED - 10 new tests)
 - `backend/tests/test_character_consistency_integration.py` ✅ (NEW - 5 tests)
-- `scripts/checkpoints-advanced-features/test-character-*.sh` ✅ (NEW - 4 test scripts)
+- `scripts/checkpoints-advanced-features/test-character-*.sh` ✅ (NEW - 4 test
+  scripts)
 
 #### Agent 2: Beat Sync Completion ✅ COMPLETE (Phases 3.1, 3.2, 3.3)
+
 **Status**: All phases implemented and merged into `advancedFeatures` branch
 
 **Completed Tasks**:
-1. ✅ Enhanced `prompt_enhancement.py` with API-specific optimization (Phase 3.1)
-2. ✅ Enhanced `beat_filters.py` with improved effects (glitch, better zoom_pulse, effect params) (Phase 3.2)
+1. ✅ Enhanced `prompt_enhancement.py` with API-specific optimization (Phase
+   3.1)
+2. ✅ Enhanced `beat_filters.py` with improved effects (glitch, better zoom_pulse,
+   effect params) (Phase 3.2)
 3. ✅ Implemented Phase 3.3: Beat-aligned clip boundaries in `beat_alignment.py`
 4. ✅ Implemented clip trimming/extension in `video_composition.py` (Phase 3.3)
 5. ✅ Integrated beat alignment into `composition_execution.py` (Phase 3.3)
@@ -282,11 +342,16 @@ git push origin feature/beat-sync-completion
 8. ✅ Created 3 comprehensive test scripts for each phase
 
 **Files Created/Modified**:
-- `backend/app/services/prompt_enhancement.py` ✅ (ENHANCED - Phase 3.1: API optimization, motion selection)
-- `backend/app/services/beat_filters.py` ✅ (ENHANCED - Phase 3.2: Glitch effect, effect params, frame conversion)
-- `backend/app/services/beat_alignment.py` ✅ (ENHANCED - Phase 3.3: User selection, transition verification)
-- `backend/app/services/video_composition.py` ✅ (ENHANCED - Phase 3.2: Beat filters; Phase 3.3: trim/extend functions)
-- `backend/app/services/composition_execution.py` ✅ (ENHANCED - Phase 3.3: Beat alignment integration)
+- `backend/app/services/prompt_enhancement.py` ✅ (ENHANCED - Phase 3.1: API
+  optimization, motion selection)
+- `backend/app/services/beat_filters.py` ✅ (ENHANCED - Phase 3.2: Glitch
+  effect, effect params, frame conversion)
+- `backend/app/services/beat_alignment.py` ✅ (ENHANCED - Phase 3.3: User
+  selection, transition verification)
+- `backend/app/services/video_composition.py` ✅ (ENHANCED - Phase 3.2: Beat
+  filters; Phase 3.3: trim/extend functions)
+- `backend/app/services/composition_execution.py` ✅ (ENHANCED - Phase 3.3: Beat
+  alignment integration)
 - `backend/app/core/config.py` ✅ (ENHANCED - Phase 3.2: BeatEffectConfig)
 - `backend/tests/unit/test_prompt_enhancement.py` ✅ (ENHANCED - 61 tests for Phase 3.1)
 - `backend/tests/unit/test_beat_filters.py` ✅ (ENHANCED - Tests for Phase 3.2)
@@ -309,7 +374,8 @@ git push origin feature/beat-sync-completion
    - **Mitigation**: Merge completed feature first, continue work on second feature in new branch
 
 4. **Database Migration Conflicts**: Both may need migrations
-   - **Mitigation**: Coordinate migration numbering, test migrations independently
+   - **Mitigation**: Coordinate migration numbering, test migrations
+     independently
 
 ### 4.6. Success Criteria
 
@@ -318,10 +384,13 @@ git push origin feature/beat-sync-completion
 - ✅ Merge conflicts: 0 conflicts (clean merge)
 - ✅ Integration tests pass for both features independently
 - ✅ Combined features work together without conflicts
-- ✅ Character Consistency completed: Phases 2, 3, 4, 5, 6, 7 (all merged to `advancedFeatures`)
+- ✅ Character Consistency completed: Phases 2, 3, 4, 5, 6, 7 (all merged to
+  `advancedFeatures`)
 - ✅ Beat Sync completed: Phases 3.1, 3.2, 3.3 (all merged to `advancedFeatures`)
 
-**Actual Outcome**: Parallel development was successful with zero merge conflicts. Both features merged cleanly into `advancedFeatures` branch using Git worktrees as planned.
+**Actual Outcome**: Parallel development was successful with zero merge
+conflicts. Both features merged cleanly into `advancedFeatures` branch using
+Git worktrees as planned.
 
 ---
 

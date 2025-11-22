@@ -90,16 +90,38 @@ def get_rate_limiter() -> RateLimiter:
     return _rate_limiter
 
 
+def extract_user_id_from_token(token: str) -> Optional[str]:
+    """Extract user ID from JWT token.
+    
+    Args:
+        token: JWT token string
+        
+    Returns:
+        User ID if token is valid, None otherwise
+    """
+    from app.core.auth import decode_access_token
+    return decode_access_token(token)
+
+
 def get_client_identifier(request: Request) -> str:
-    """Get a unique identifier for rate limiting (user ID or IP address)."""
-    # Try to get user ID from auth token
+    """Get a unique identifier for rate limiting (user ID or IP address).
+    
+    Prioritizes user ID from JWT token for more accurate per-user rate limiting.
+    Falls back to IP address if no valid token is present.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        Identifier string in format "user:{user_id}" or "ip:{ip_address}"
+    """
+    # Try to get user ID from auth token (more accurate than IP)
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        # In a real implementation, decode the JWT to get user_id
-        # For now, use the token itself as identifier
         token = auth_header.replace("Bearer ", "")
-        # Use first 16 chars as identifier (in production, decode JWT)
-        return f"user:{token[:16]}"
+        user_id = extract_user_id_from_token(token)
+        if user_id:
+            return f"user:{user_id}"
     
     # Fall back to IP address
     client_ip = request.client.host if request.client else "unknown"

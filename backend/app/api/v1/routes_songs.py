@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlmodel import Session, select
 
 from app.api.deps import get_db
-from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_field
+from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_field, verify_song_ownership
 from app.core.auth import get_current_user
 from app.core.config import get_settings
 from app.models.clip import SongClip
@@ -314,18 +314,8 @@ def get_song(
     db: Session = Depends(get_db),
 ) -> Song:
     """Get a song by ID. Only returns songs owned by the current user."""
-    song = db.get(Song, song_id)
-    if not song:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
-        )
-    
-    # Verify ownership
-    if song.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
-        )
-    
+    song = get_song_or_404(song_id, db)
+    verify_song_ownership(song, current_user)
     return song
 
 

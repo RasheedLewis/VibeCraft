@@ -137,6 +137,16 @@ class BeatEffectConfig(BaseSettings):
     glitch_intensity: float = Field(default=0.3, alias="BEAT_GLITCH_INTENSITY")  # 0.0-1.0
     brightness_pulse_amount: float = Field(default=0.15, alias="BEAT_BRIGHTNESS_PULSE_AMOUNT")  # 0.0-1.0
     tolerance_ms: float = Field(default=20.0, alias="BEAT_EFFECT_TOLERANCE_MS")  # Tolerance window in milliseconds
+    
+    # Test mode configuration
+    test_mode_enabled: bool = Field(default=False, alias="BEAT_EFFECT_TEST_MODE")  # Enable test mode for exaggerated effects
+    test_mode_tolerance_multiplier: float = 3.0  # Test mode tolerance multiplier (150ms vs 50ms)
+    test_mode_flash_intensity_multiplier: float = 3.0  # Test mode flash intensity multiplier
+    test_mode_glitch_intensity: float = 0.8  # Test mode glitch intensity
+    test_mode_color_burst_saturation: float = 2.0  # Test mode color burst saturation
+    test_mode_color_burst_brightness: float = 0.2  # Test mode color burst brightness
+    test_mode_brightness_pulse: float = 0.3  # Test mode brightness pulse
+    test_mode_zoom_pulse: float = 1.15  # Test mode zoom pulse
 
 
 @lru_cache

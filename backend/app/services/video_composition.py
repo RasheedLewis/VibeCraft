@@ -441,21 +441,15 @@ def concatenate_clips(
                     )
                     
                     if beat_filters:
-                        # Apply beat-synced visual effects (supports all effect types)
-                        # Get effect config for intensity and test mode
-                        from app.core.config import get_beat_effect_config
-                        effect_config = get_beat_effect_config()
+                        # Apply beat-synced visual effects using centralized applicator
+                        from app.services.beat_filter_applicator import BeatFilterApplicator
                         
-                        # Use config intensity, or exaggerate for testing if BEAT_EFFECT_TEST_MODE is enabled
-                        import os
-                        test_mode = os.getenv("BEAT_EFFECT_TEST_MODE", "false").lower() == "true"
-                        if test_mode:
-                            # Exaggerate effects for easier manual inspection
-                            tolerance_sec = 0.15  # 150ms tolerance (3x normal)
-                            logger.info(f"[TEST MODE] Exaggerating {filter_type} effect, tolerance={tolerance_sec*1000:.0f}ms")
-                        else:
-                            tolerance_sec = effect_config.tolerance_ms / 1000.0
+                        applicator = BeatFilterApplicator()
                         
+                        if applicator.test_mode:
+                            logger.info(f"[TEST MODE] Exaggerating {filter_type} effect, tolerance={applicator.get_tolerance_sec()*1000:.0f}ms")
+                        
+                        tolerance_sec = applicator.get_tolerance_sec()
                         filtered_video_path = temp_video_path.parent / "temp_filtered.mp4"
                         filtered_input = ffmpeg.input(str(temp_video_path))
                         
@@ -472,58 +466,9 @@ def concatenate_clips(
                             condition_expr = "+".join(beat_conditions)
                             beat_condition = f"min(1,{condition_expr})"
                             
-                            if filter_type == "flash":
-                                # Flash effect: RGB brightness increase
-                                intensity = int(effect_config.flash_intensity * (3 if test_mode else 1))
-                                filtered_video = filtered_input["v"].filter(
-                                    "geq",
-                                    r=f"r+if({beat_condition},{intensity},0)",
-                                    g=f"g+if({beat_condition},{intensity},0)",
-                                    b=f"b+if({beat_condition},{intensity},0)",
-                                )
-                            elif filter_type == "glitch":
-                                # Glitch effect: RGB channel shift
-                                glitch_intensity = 0.8 if test_mode else 0.3
-                                shift_pixels = int(glitch_intensity * 10)
-                                filtered_video = filtered_input["v"].filter(
-                                    "geq",
-                                    r=f"if({beat_condition},p(X+{shift_pixels},Y),p(X,Y))",
-                                    g="p(X,Y)",
-                                    b=f"if({beat_condition},p(X-{shift_pixels},Y),p(X,Y))",
-                                )
-                            elif filter_type == "color_burst":
-                                # Color burst: saturation and brightness increase
-                                saturation = 2.0 if test_mode else 1.5
-                                brightness = 0.2 if test_mode else 0.1
-                                filtered_video = filtered_input["v"].filter(
-                                    "eq",
-                                    saturation=f"if({beat_condition},{saturation},1)",
-                                    brightness=f"if({beat_condition},{brightness},0)",
-                                )
-                            elif filter_type == "brightness_pulse":
-                                # Brightness pulse: brightness increase
-                                brightness = 0.3 if test_mode else 0.15
-                                filtered_video = filtered_input["v"].filter(
-                                    "eq",
-                                    brightness=f"if({beat_condition},{brightness},0)",
-                                )
-                            elif filter_type == "zoom_pulse":
-                                # Zoom pulse: scale increase
-                                zoom = 1.15 if test_mode else 1.05
-                                filtered_video = filtered_input["v"].filter(
-                                    "scale",
-                                    w=f"iw*if({beat_condition},{zoom},1)",
-                                    h=f"ih*if({beat_condition},{zoom},1)",
-                                )
-                            else:
-                                # Unknown filter type, skip effect
-                                logger.warning(f"Unknown filter type: {filter_type}, skipping beat effects")
-                                filtered_video = filtered_input["v"]
-                            
-                            # For very long expressions, chunk them to avoid FFmpeg command line limits
-                            # Note: Some effects may need chunking for large beat counts
+                            # Use centralized applicator for filter application
                             CHUNK_SIZE = 200
-                            if len(beat_conditions) > CHUNK_SIZE and filter_type in ["flash", "glitch"]:
+                            if applicator.should_chunk(filter_type, len(beat_conditions), CHUNK_SIZE):
                                 # Re-apply with chunking for flash and glitch
                                 logger.info(f"Chunking {len(beat_conditions)} beat conditions into {CHUNK_SIZE}-beat chunks")
                                 current_video = filtered_input["v"]
@@ -532,26 +477,12 @@ def concatenate_clips(
                                     chunk = beat_conditions[chunk_start:chunk_start + CHUNK_SIZE]
                                     chunk_expr = "+".join(chunk)
                                     chunk_condition = f"min(1,{chunk_expr})"
-                                    
-                                    if filter_type == "flash":
-                                        intensity = int(effect_config.flash_intensity * (3 if test_mode else 1))
-                                        current_video = current_video.filter(
-                                            "geq",
-                                            r=f"r+if({chunk_condition},{intensity},0)",
-                                            g=f"g+if({chunk_condition},{intensity},0)",
-                                            b=f"b+if({chunk_condition},{intensity},0)",
-                                        )
-                                    elif filter_type == "glitch":
-                                        glitch_intensity = 0.8 if test_mode else 0.3
-                                        shift_pixels = int(glitch_intensity * 10)
-                                        current_video = current_video.filter(
-                                            "geq",
-                                            r=f"if({chunk_condition},p(X+{shift_pixels},Y),p(X,Y))",
-                                            g="p(X,Y)",
-                                            b=f"if({chunk_condition},p(X-{shift_pixels},Y),p(X,Y))",
-                                        )
+                                    current_video = applicator.apply_filter(current_video, chunk_condition, filter_type)
                                 
                                 filtered_video = current_video
+                            else:
+                                # Apply filter directly (no chunking needed)
+                                filtered_video = applicator.apply_filter(filtered_input["v"], beat_condition, filter_type)
                         else:
                             filtered_video = filtered_input["v"]
                         

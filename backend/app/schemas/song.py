@@ -34,6 +34,9 @@ class SongRead(BaseModel):
     selected_start_sec: Optional[float] = None
     selected_end_sec: Optional[float] = None
     video_type: Optional[str] = None
+    character_reference_image_s3_key: Optional[str] = None
+    character_pose_b_s3_key: Optional[str] = None
+    character_consistency_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 

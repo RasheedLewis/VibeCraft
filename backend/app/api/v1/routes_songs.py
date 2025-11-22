@@ -479,6 +479,56 @@ async def upload_character_image(
 
 
 @router.get(
+    "/{song_id}/character-image/url",
+    summary="Get presigned URLs for character images",
+)
+async def get_character_image_urls(
+    song_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Get presigned URLs for character reference image and pose-b image.
+    
+    Returns URLs for both poses if available.
+    """
+    settings = get_settings()
+    song = get_song_or_404(song_id, db)
+    
+    result: dict = {
+        "pose_a_url": None,
+        "pose_b_url": None,
+    }
+    
+    # Get pose-a (reference image) URL
+    if song.character_reference_image_s3_key:
+        try:
+            pose_a_url = await asyncio.to_thread(
+                generate_presigned_get_url,
+                bucket_name=settings.s3_bucket_name,
+                key=song.character_reference_image_s3_key,
+                expires_in=3600,
+            )
+            result["pose_a_url"] = pose_a_url
+        except Exception as exc:
+            logger.warning(f"Failed to generate presigned URL for pose-a: {exc}")
+    
+    # Get pose-b URL
+    if song.character_pose_b_s3_key:
+        try:
+            pose_b_url = await asyncio.to_thread(
+                generate_presigned_get_url,
+                bucket_name=settings.s3_bucket_name,
+                key=song.character_pose_b_s3_key,
+                expires_in=3600,
+            )
+            result["pose_b_url"] = pose_b_url
+        except Exception as exc:
+            logger.warning(f"Failed to generate presigned URL for pose-b: {exc}")
+    
+    return result
+
+
+@router.get(
     "/{song_id}/beat-aligned-boundaries",
     response_model=BeatAlignedBoundariesResponse,
     summary="Get beat-aligned clip boundaries",

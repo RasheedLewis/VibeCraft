@@ -110,7 +110,7 @@ backend terminal for errors.
 **What to do:**
 
 - You'll see a section to upload a character image
-- Click "Choose Template" button
+- Click "Choose Template" button (or "Upload Image" to use your own)
 - A modal opens showing 4 characters
 - Click on one character to select it
 - OR upload your own image file (JPEG/PNG)
@@ -119,11 +119,13 @@ backend terminal for errors.
 
 - Template modal opens and shows 4 characters
 - When you click a character, it gets selected and modal closes
+- You'll see both poses (Pose A and Pose B) displayed side-by-side
+- Message appears: "We'll use your chosen template character for video generation"
 - OR if you upload your own image, you see a preview
-- Character image appears on the page
+- Character selection UI is replaced with the selected template display
 
 **If it doesn't work:** Make sure you're testing a "Short Form" video. Try
-uploading a different image file.
+uploading a different image file or selecting a different template.
 
 ---
 
@@ -131,7 +133,7 @@ uploading a different image file.
 
 **What to do:**
 
-- Click "Generate Clips" button
+- After selecting a character (template or custom), click "Generate Clips" button
 - Wait (this takes several minutes)
 
 **What should happen:**
@@ -139,6 +141,7 @@ uploading a different image file.
 - You see a loading indicator
 - After several minutes, clips are generated
 - You see 6 video clips appear
+- Character consistency is applied (same character appears in all clips if template/custom image was selected)
 
 **If it doesn't work:** This step takes the longest. Wait at least 5-10 minutes.
 Check backend terminal for progress.
@@ -175,8 +178,8 @@ If you want to test everything quickly:
 1. Upload audio → Select "Short Form" → Start Analysis
 2. Wait for analysis (3-5 min)
 3. Select 30 seconds → Continue
-4. Choose template character → Generate Clips
-5. Wait for clips (5-10 min)
+4. Choose template character (or upload custom image) → See both poses displayed
+5. Generate Clips → Wait (5-10 min)
 6. Compose Video → Wait (3-5 min)
 7. Watch final video → Check character consistency and beat sync
 
@@ -251,6 +254,7 @@ After testing, you should be able to say:
 - [ ] Analysis completed successfully
 - [ ] I selected 30 seconds of audio
 - [ ] I chose a character (template or custom)
+- [ ] I saw both character poses displayed (if template selected)
 - [ ] Clips generated successfully (6 clips)
 - [ ] Final video composed successfully
 - [ ] Character looks consistent in all clips

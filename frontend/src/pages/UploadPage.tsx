@@ -41,6 +41,7 @@ import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimel
 import { VideoTypeSelector } from '../components/upload/VideoTypeSelector'
 import { CharacterImageUpload } from '../components/upload/CharacterImageUpload'
 import { TemplateCharacterModal } from '../components/upload/TemplateCharacterModal'
+import { SelectedTemplateDisplay } from '../components/upload/SelectedTemplateDisplay'
 import { SongProfileView } from '../components/song/SongProfileView'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
@@ -528,6 +529,17 @@ export const UploadPage: React.FC = () => {
       }, 0)
     }
   }, [analysisState, result?.songId, fetchSongDetails])
+
+  // Scroll to top when transitioning from analysis to character selection
+  useEffect(() => {
+    if (analysisState === 'completed' && analysisData && songDetails) {
+      // Small delay to ensure the character selection UI has rendered
+      const timer = setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [analysisState, analysisData, songDetails])
 
   // Handler for selection changes - just updates local state, doesn't save yet
   const handleSelectionChange = useCallback(
@@ -1093,49 +1105,91 @@ export const UploadPage: React.FC = () => {
           )}
           {/* Character Image Upload Step - only for short-form videos */}
           {videoType === 'short_form' && result?.songId && (
-            <section className="mb-8 space-y-4">
+            <section className="mb-4 space-y-4">
               <div className="vc-label">Character Consistency (Optional)</div>
-              <p className="text-sm text-vc-text-secondary">
-                Upload a character reference image to maintain consistent character
-                appearance across all clips.
-              </p>
-              <CharacterImageUpload
-                songId={result.songId}
-                onUploadSuccess={(imageUrl) => {
-                  console.log('Character image uploaded:', imageUrl)
-                  // Optionally refresh song details to show character consistency is enabled
-                  if (result?.songId) {
-                    apiClient
-                      .get(`/songs/${result.songId}`)
-                      .then((response) => {
-                        setSongDetails(response.data)
-                      })
-                      .catch(console.error)
-                  }
-                }}
-                onUploadError={(error) => {
-                  console.error('Character image upload failed:', error)
-                  setError(error)
-                }}
-                onTemplateSelect={() => setTemplateModalOpen(true)}
-              />
-              <TemplateCharacterModal
-                isOpen={templateModalOpen}
-                onClose={() => setTemplateModalOpen(false)}
-                onSelect={(characterId) => {
-                  console.log('Template character selected:', characterId)
-                  // Refresh song details to show character consistency is enabled
-                  if (result?.songId) {
-                    apiClient
-                      .get(`/songs/${result.songId}`)
-                      .then((response) => {
-                        setSongDetails(response.data)
-                      })
-                      .catch(console.error)
-                  }
-                }}
-                songId={result.songId}
-              />
+              {songDetails?.character_consistency_enabled &&
+              (songDetails.character_reference_image_s3_key ||
+                songDetails.character_pose_b_s3_key) ? (
+                // Show selected template poses
+                <>
+                  {/* Debug overlay - uncomment for UI testing */}
+                  {/* {process.env.NODE_ENV === 'development' && (
+                    <div className="mb-2 rounded-lg border border-blue-500/30 bg-blue-500/10 p-2 text-xs text-blue-400">
+                      <div>
+                        character_consistency_enabled:{' '}
+                        {String(songDetails.character_consistency_enabled)}
+                      </div>
+                      <div>
+                        character_reference_image_s3_key:{' '}
+                        {songDetails.character_reference_image_s3_key || 'null'}
+                      </div>
+                      <div>
+                        character_pose_b_s3_key:{' '}
+                        {songDetails.character_pose_b_s3_key || 'null'}
+                      </div>
+                    </div>
+                  )} */}
+                  <SelectedTemplateDisplay songId={result.songId} />
+                </>
+              ) : (
+                // Show upload/template selection UI
+                <>
+                  <p className="text-sm text-vc-text-secondary">
+                    Upload a character reference image to maintain consistent character
+                    appearance across all clips.
+                  </p>
+                  <CharacterImageUpload
+                    songId={result.songId}
+                    onUploadSuccess={(imageUrl) => {
+                      console.log('Character image uploaded:', imageUrl)
+                      // Optionally refresh song details to show character consistency is enabled
+                      if (result?.songId) {
+                        apiClient
+                          .get(`/songs/${result.songId}`)
+                          .then((response) => {
+                            setSongDetails(response.data)
+                          })
+                          .catch(console.error)
+                      }
+                    }}
+                    onUploadError={(error) => {
+                      console.error('Character image upload failed:', error)
+                      setError(error)
+                    }}
+                    onTemplateSelect={() => setTemplateModalOpen(true)}
+                  />
+                  <TemplateCharacterModal
+                    isOpen={templateModalOpen}
+                    onClose={() => setTemplateModalOpen(false)}
+                    onSelect={async (characterId) => {
+                      console.log('[UploadPage] Template character selected:', characterId)
+                      // Refresh song details to show character consistency is enabled
+                      if (result?.songId) {
+                        try {
+                          const response = await apiClient.get(`/songs/${result.songId}`)
+                          console.log('[UploadPage] Refreshed song details:', response.data)
+                          console.log(
+                            '[UploadPage] character_consistency_enabled:',
+                            response.data.character_consistency_enabled,
+                          )
+                          console.log(
+                            '[UploadPage] character_reference_image_s3_key:',
+                            response.data.character_reference_image_s3_key,
+                          )
+                          console.log(
+                            '[UploadPage] character_pose_b_s3_key:',
+                            response.data.character_pose_b_s3_key,
+                          )
+                          setSongDetails(response.data)
+                        } catch (err) {
+                          console.error('[UploadPage] Failed to refresh song details:', err)
+                        }
+                      }
+                    }}
+                    songId={result.songId}
+                  />
+                </>
+              )}
             </section>
           )}
 

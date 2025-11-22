@@ -1,5 +1,15 @@
 # Troubleshooting Log
 
+## Debug Overlays for UI Testing
+
+**Note:** Debug overlays are available but commented out for character consistency UI testing:
+- **UploadPage.tsx** (line ~1116): Blue debug box showing `character_consistency_enabled`, `character_reference_image_s3_key`, and `character_pose_b_s3_key` from `songDetails`
+- **SelectedTemplateDisplay.tsx** (line ~77): Yellow debug box showing pose URL fetch status, loading state, and URL availability
+
+To enable for testing, uncomment the debug overlay sections in both files. These can be modified as needed for further UI debugging.
+
+---
+
 ## Current Testing Status - Gentle Testing Guide
 
 **Testing Guide Summary:**

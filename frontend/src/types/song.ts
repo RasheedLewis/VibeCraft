@@ -24,6 +24,8 @@ export interface SongClipStatus {
   numFrames: number
   fps: number
   videoUrl?: string
+  prompt?: string | null
+  styleSeed?: string | null
   rqJobId?: string
   replicateJobId?: string
   error?: string | null

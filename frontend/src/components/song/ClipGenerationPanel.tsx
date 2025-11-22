@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { VCCard, VCButton } from '../vibecraft'
 import { ArrowRightIcon } from '../upload/Icons'
 import { ClipStatusBadge } from './ClipStatusBadge'
+import { PromptViewer } from './PromptViewer'
 import type { ClipGenerationSummary, SongClipStatus } from '../../types/song'
 import { normalizeClipStatus } from '../../utils/status'
 import {
@@ -381,33 +382,65 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
             {sortedClips
               .filter((clip) => normalizeClipStatus(clip.status) === 'completed')
               .map((clip) => (
-                <button
-                  key={`thumb-${clip.id}`}
-                  type="button"
-                  onClick={() => onPreviewClip(clip)}
-                  className={clsx(
-                    'group relative overflow-hidden rounded-xl border border-vc-border/40 bg-[rgba(12,12,18,0.55)] transition',
-                    clip.videoUrl && 'hover:border-vc-accent-primary',
+                <div key={`thumb-${clip.id}`} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => onPreviewClip(clip)}
+                    className={clsx(
+                      'relative w-full overflow-hidden rounded-xl border border-vc-border/40 bg-[rgba(12,12,18,0.55)] transition',
+                      clip.videoUrl && 'hover:border-vc-accent-primary',
+                    )}
+                    disabled={!clip.videoUrl}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-80 transition-opacity group-hover:opacity-90" />
+                    <div className="relative z-10 flex h-24 flex-col justify-end p-3 text-left">
+                      <div className="text-xs font-medium text-white">
+                        #{clip.clipIndex + 1} •{' '}
+                        {formatTimeRange(clip.startSec, clip.endSec)}
+                      </div>
+                      <div className="text-[11px] text-vc-text-muted">
+                        {formatDurationShort(clip.durationSec)} • {clip.numFrames} frames
+                        • {clip.fps} fps
+                      </div>
+                    </div>
+                    {!clip.videoUrl && (
+                      <div className="absolute inset-0 flex items-center justify-center text-[11px] text-vc-text-muted">
+                        Preview coming soon
+                      </div>
+                    )}
+                  </button>
+                  {clip.prompt && (
+                    <PromptViewer
+                      prompt={clip.prompt}
+                      trigger={(onClick) => (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onClick()
+                          }}
+                          className="absolute top-2 right-2 z-20 rounded bg-black/60 p-1.5 text-vc-text-muted opacity-0 transition-opacity hover:text-white hover:bg-black/80 group-hover:opacity-100"
+                          title="View prompt"
+                          aria-label="View prompt details"
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </button>
+                      )}
+                    />
                   )}
-                  disabled={!clip.videoUrl}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-80 transition-opacity group-hover:opacity-90" />
-                  <div className="relative z-10 flex h-24 flex-col justify-end p-3 text-left">
-                    <div className="text-xs font-medium text-white">
-                      #{clip.clipIndex + 1} •{' '}
-                      {formatTimeRange(clip.startSec, clip.endSec)}
-                    </div>
-                    <div className="text-[11px] text-vc-text-muted">
-                      {formatDurationShort(clip.durationSec)} • {clip.numFrames} frames •{' '}
-                      {clip.fps} fps
-                    </div>
-                  </div>
-                  {!clip.videoUrl && (
-                    <div className="absolute inset-0 flex items-center justify-center text-[11px] text-vc-text-muted">
-                      Preview coming soon
-                    </div>
-                  )}
-                </button>
+                </div>
               ))}
           </div>
         )}

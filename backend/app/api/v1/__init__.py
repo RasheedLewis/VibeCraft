@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1 import (
+    routes_auth,
     routes_config,
     routes_health,
     routes_jobs,
@@ -11,6 +12,7 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 api_router.include_router(routes_health.router, prefix="/health", tags=["health"])
+api_router.include_router(routes_auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(routes_songs.router, prefix="/songs", tags=["songs"])
 api_router.include_router(routes_jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(routes_scenes.router, tags=["scenes"])

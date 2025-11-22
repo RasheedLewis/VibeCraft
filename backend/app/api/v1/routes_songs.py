@@ -14,9 +14,11 @@ from sqlmodel import Session, select
 
 from app.api.deps import get_db
 from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_field
+from app.core.auth import get_current_user
 from app.core.config import get_settings
 from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
+from app.models.user import User
 from app.schemas.analysis import (
     BeatAlignedBoundariesResponse,
     ClipBoundaryMetadata,
@@ -102,9 +104,18 @@ def _sanitize_filename(filename: str) -> str:
 router = APIRouter()
 
 
-@router.get("/", response_model=List[SongRead], summary="List songs")
-def list_songs(db: Session = Depends(get_db)) -> List[Song]:
-    statement = select(Song).order_by(Song.created_at.desc())
+@router.get("/", response_model=List[SongRead], summary="List songs (max 5 per user)")
+def list_songs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[Song]:
+    """List user's songs, limited to 5 most recent."""
+    statement = (
+        select(Song)
+        .where(Song.user_id == current_user.id)
+        .order_by(Song.created_at.desc())
+        .limit(5)
+    )
     return db.exec(statement).all()
 
 
@@ -116,6 +127,7 @@ def list_songs(db: Session = Depends(get_db)) -> List[Song]:
 )
 async def upload_song(
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> SongUploadResponse:
     if not file.filename:
@@ -168,7 +180,7 @@ async def upload_song(
     song_title = Path(sanitized_filename).stem or "Untitled Song"
 
     song = Song(
-        user_id=DEFAULT_USER_ID,
+        user_id=current_user.id,
         title=song_title,
         original_filename=sanitized_filename,
         original_file_size=len(contents),
@@ -296,12 +308,24 @@ def get_song_analysis(song_id: UUID, db: Session = Depends(get_db)) -> SongAnaly
 
 
 @router.get("/{song_id}", response_model=SongRead, summary="Get song")
-def get_song(song_id: UUID, db: Session = Depends(get_db)) -> Song:
+def get_song(
+    song_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Song:
+    """Get a song by ID. Only returns songs owned by the current user."""
     song = db.get(Song, song_id)
     if not song:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
         )
+    
+    # Verify ownership
+    if song.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+        )
+    
     return song
 
 

@@ -66,7 +66,7 @@ def _generate_image_to_video(
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
 
         input_params = {
-            "image": reference_image_url,  # Reference character image
+            "first_frame_image": reference_image_url,  # Reference character image
             "prompt": optimized_prompt,  # Scene prompt
             "num_frames": max(1, min(frame_count, 120)),
             "width": 576,
@@ -88,7 +88,7 @@ def _generate_image_to_video(
         model = client.models.get(IMAGE_TO_VIDEO_MODEL)
         version = model.latest_version
 
-        logger.info(f"[VIDEO-GEN] Calling Replicate API: model={IMAGE_TO_VIDEO_MODEL}, has_image={'image' in input_params}")
+        logger.info(f"[VIDEO-GEN] Calling Replicate API: model={IMAGE_TO_VIDEO_MODEL}, has_image={'first_frame_image' in input_params}")
         prediction = client.predictions.create(
             version=version,
             input=input_params,
@@ -268,31 +268,16 @@ def generate_section_video(
         }
 
         # Add image input if provided (for image-to-video)
-        # Try multiple images first, fallback to single image
+        # Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
         if image_urls:
+            # Use first image (model only supports single image)
+            input_params["first_frame_image"] = image_urls[0]
             if len(image_urls) > 1:
-                # Try to pass multiple images
-                # Attempt different parameter formats that might support multiple images
-                # Note: minimax/hailuo-2.3 may not support multiple images, so we'll try and fallback
-                try:
-                    # Try "images" parameter (array)
-                    input_params["images"] = image_urls
-                    logger.info(f"Attempting image-to-video with {len(image_urls)} reference images")
-                except (TypeError, ValueError):
-                    # Fallback: try "image" parameter with array
-                    try:
-                        input_params["image"] = image_urls
-                        logger.info(f"Attempting image-to-video with {len(image_urls)} reference images (array format)")
-                    except (TypeError, ValueError):
-                        # Final fallback: use first image only
-                        logger.warning(
-                            f"Model doesn't support multiple images, using first image only "
-                            f"(fallback from {len(image_urls)} images)"
-                        )
-                        input_params["image"] = image_urls[0]
+                logger.info(
+                    f"Using first image for image-to-video generation (model supports single image only, "
+                    f"ignoring {len(image_urls) - 1} additional image(s))"
+                )
             else:
-                # Single image
-                input_params["image"] = image_urls[0]
                 logger.info(f"Using image-to-video generation with reference image: {image_urls[0]}")
 
         if seed is not None:
@@ -312,7 +297,7 @@ def generate_section_video(
         
         logger.info(
             f"[VIDEO-GEN] Calling Replicate API: model={VIDEO_MODEL}, "
-            f"generation_type={generation_type}, has_image={'image' in input_params or 'images' in input_params}"
+            f"generation_type={generation_type}, has_image={'first_frame_image' in input_params}"
         )
         prediction = client.predictions.create(
             version=version,

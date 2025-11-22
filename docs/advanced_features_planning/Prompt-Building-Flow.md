@@ -22,6 +22,10 @@ Prompts are constructed through a multi-stage pipeline that transforms song anal
 **Components assembled in order:**
 
 1. **Visual Style:** Always starts with "Abstract visual style"
+   - **Note:** The `TemplateType` schema defines four options: `"abstract"`, `"environment"`, `"character"`, `"minimal"`
+   - However, the `build_prompt()` function currently hardcodes "Abstract visual style" regardless of the template parameter
+   - The template parameter is passed through `build_scene_spec()` and `build_clip_scene_spec()` but is not used in prompt construction
+   - This is a known limitation: template types exist in the schema but are not yet implemented in the prompt building logic
 2. **Color Palette:** `"{mood} color palette with {primary}, {secondary}, and {accent}"` (e.g., "vibrant color palette with #FF6B9D, #FFD93D, and #6BCF7F")
 3. **Mood Description:** Top 3 mood tags joined (e.g., "energetic, danceable, upbeat mood")
 4. **Genre Aesthetic:** If genre exists, adds `"{genre} aesthetic"` (e.g., "Electronic aesthetic")
@@ -72,9 +76,13 @@ The optimized prompt is sent to Replicate API along with:
 
 ---
 
-## Example Prompt
+## Example Prompts
 
-### Input Data (Song Analysis)
+### Example 1: Synthetic Example
+
+**Note:** This is a constructed example for demonstration purposes.
+
+#### Input Data (Song Analysis)
 
 ```python
 {
@@ -118,6 +126,27 @@ The optimized prompt is sent to Replicate API along with:
 ```
 "Abstract visual style, vibrant color palette with #FF6B9D, #FFD93D, and #6BCF7F, energetic, danceable, upbeat mood, Electronic aesthetic, medium with medium pacing, fast_zoom camera motion (fast speed), bouncing motion, rhythmic pulsing, steady vertical rhythm matching the beat synchronized to 128 BPM tempo, rhythmic motion matching the beat. Camera: static."
 ```
+
+---
+
+### Example 2: Real Database Example
+
+**Note:** This is an actual prompt from the database (Song ID: `dea00124-cfd6-49d1-8b29-f31f437c42db`, Clip Index: 7).
+
+#### Actual Prompt from Database
+
+```
+"Abstract visual style, calm color palette with #4A90E2, #7B68EE, and #87CEEB, calm, danceable mood, Electronic aesthetic, medium with medium pacing, fast_zoom camera motion (fast speed), rapid looping, energetic repetitive cycles, quick seamless loops synchronized to tempo synchronized to 129 BPM tempo, rhythmic motion matching the beat"
+```
+
+#### Observations from Real Example
+
+1. **Duplicate BPM reference:** Notice "synchronized to tempo synchronized to 129 BPM tempo" - this suggests a bug in the rhythm enhancement logic where BPM is appended twice
+2. **Calm mood with fast camera:** The prompt has "calm" mood but "fast_zoom camera motion (fast speed)" - this may be a mismatch between mood and camera motion mapping
+3. **Electronic genre:** Uses "Electronic aesthetic" which maps to fast camera motion regardless of mood
+4. **Motion type:** Uses "rapid looping" which was selected based on the genre/BPM combination
+
+---
 
 ### Key Observations
 

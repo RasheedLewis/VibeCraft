@@ -65,10 +65,13 @@ prediction = client.predictions.create(
 
 ### Potential Issues Found
 
-1. **Parameter Name Verification Needed:**
+1. **❌ CRITICAL: Wrong Parameter Name (CONFIRMED):**
    - Code uses `"image"` (singular) parameter
-   - Need to verify if Minimax Hailuo 2.3 expects `"image"`, `"images"`, `"reference_image"`, or another name
-   - Documentation/testing needed to confirm correct parameter name
+   - **Actual API parameter name is `"first_frame_image"`** (verified via `check_replicate_models.py`)
+   - This explains why character images are not being used - they're being passed with the wrong parameter name
+   - **Fix needed:** Change `input_params["image"]` to `input_params["first_frame_image"]` in:
+     - `video_generation.py::_generate_image_to_video()` (line 69)
+     - `video_generation.py::generate_section_video()` (line 295)
 
 2. **Exception Handling Bug (lines 243-246):**
    - If `_generate_image_to_video()` throws exception, `is_image_to_video` is set to `False`
@@ -93,10 +96,15 @@ prediction = client.predictions.create(
    - Verify `has_image={'image' in input_params or 'images' in input_params}` shows `True`
    - Check if `input_params` actually contains image URL when logged
 
-2. **Verify parameter name:**
-   - Check Replicate API documentation for `minimax/hailuo-2.3`
-   - Test with actual API call to confirm parameter name
-   - May need to check model version schema: `client.models.get("minimax/hailuo-2.3").latest_version.get_openapi_schema()`
+2. **✅ Verify parameter name: COMPLETED**
+   - Verified via `scripts/check_replicate_models.py` and direct API schema inspection
+   - **Confirmed:** Parameter name is `"first_frame_image"` (not `"image"`)
+   - All input parameters for `minimax/hailuo-2.3`:
+     - `prompt` (required, string)
+     - `duration` (unknown)
+     - `resolution` (unknown)
+     - `prompt_optimizer` (boolean)
+     - `first_frame_image` (string) - "First frame image for video generation. The output video will have the same aspect ratio as this image."
 
 3. **Check URL accessibility:**
    - Verify presigned URLs are valid and accessible

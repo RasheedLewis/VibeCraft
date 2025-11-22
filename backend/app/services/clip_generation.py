@@ -231,6 +231,7 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
         raise ClipGenerationError("Song analysis not found for clip generation.")
 
     scene_spec = _build_scene_spec_for_clip(clip_id, analysis)
+    logger.info(f"[CLIP-GEN] Clip {clip_id}: Generated prompt: {scene_spec.prompt}")
     seed = _determine_seed_for_clip(clip_id)
 
     # Get character image URLs if character consistency is enabled

@@ -1166,8 +1166,9 @@ export const UploadPage: React.FC = () => {
                   <TemplateCharacterModal
                     isOpen={templateModalOpen}
                     onClose={() => setTemplateModalOpen(false)}
-                    onSelect={async (characterId) => {
+                    onSelect={async () => {
                       // Refresh song details to show character consistency is enabled
+                      // Note: characterId parameter is provided by TemplateCharacterModal but not used here
                       if (result?.songId) {
                         try {
                           const response = await apiClient.get(`/songs/${result.songId}`)

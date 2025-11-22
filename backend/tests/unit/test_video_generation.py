@@ -215,7 +215,7 @@ class TestGenerateSectionVideo:
         assert video_url == "https://replicate.delivery/pbxt/video.mp4"
         # Verify image parameter was passed
         call_args = mock_client.predictions.create.call_args
-        assert call_args.kwargs["input"]["image"] == "https://example.com/image.jpg"
+        assert call_args.kwargs["input"]["first_frame_image"] == "https://example.com/image.jpg"
 
     @patch("app.services.video_generation.get_settings")
     @patch("app.services.video_generation.replicate.Client")
@@ -256,11 +256,12 @@ class TestGenerateSectionVideo:
         )
 
         assert success is True
-        # Verify multiple images were attempted (may fallback to single)
+        # Verify first image was used (model only supports single image)
         call_args = mock_client.predictions.create.call_args
         input_params = call_args.kwargs["input"]
-        # Should have either "images" or "image" parameter
-        assert "images" in input_params or "image" in input_params
+        # Should have "first_frame_image" parameter with first image
+        assert "first_frame_image" in input_params
+        assert input_params["first_frame_image"] == "https://example.com/pose-a.jpg"
 
     @patch("app.services.video_generation.get_settings")
     @patch("app.services.video_generation.replicate.Client")
@@ -303,15 +304,12 @@ class TestGenerateSectionVideo:
         )
 
         assert success is True
-        # Verify multiple images were used (not single)
+        # Verify first image from multiple images was used (model only supports single image)
         call_args = mock_client.predictions.create.call_args
         input_params = call_args.kwargs["input"]
-        # Should use multiple images, not single
-        if "images" in input_params:
-            assert len(input_params["images"]) == 2
-        elif "image" in input_params:
-            # If fallback occurred, should be first image from list
-            assert input_params["image"] in ["https://example.com/pose-a.jpg", "https://example.com/pose-b.jpg"]
+        # Should use first_frame_image with first image from list
+        assert "first_frame_image" in input_params
+        assert input_params["first_frame_image"] == "https://example.com/pose-a.jpg"
 
 
 class TestPollVideoGenerationStatus:
@@ -450,7 +448,7 @@ class TestGenerateImageToVideo:
 
         # Verify image parameter was passed
         call_args = mock_client.predictions.create.call_args
-        assert call_args.kwargs["input"]["image"] == "https://example.com/image.jpg"
+        assert call_args.kwargs["input"]["first_frame_image"] == "https://example.com/image.jpg"
 
     @patch("app.services.video_generation.get_settings")
     def test_image_to_video_no_token(self, mock_get_settings):
@@ -529,7 +527,7 @@ class TestEnhancedFallbackLogic:
         assert metadata["generation_type"] == "text-to-video"
         # Verify no image parameter was passed
         call_args = mock_client.predictions.create.call_args
-        assert "image" not in call_args.kwargs["input"]
+        assert "first_frame_image" not in call_args.kwargs["input"]
 
     @patch("app.services.video_generation.get_settings")
     @patch("app.services.video_generation.replicate.Client")

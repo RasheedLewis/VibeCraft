@@ -281,7 +281,8 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
 
         <div className="flex-1 text-sm text-vc-text-secondary">
           <span className="tabular-nums">
-            {formatTime(playheadSec)} / {formatTime(selectionDuration)}
+            {formatTime(Math.max(0, playheadSec - startSec))} /{' '}
+            {formatTime(selectionDuration)}
           </span>
           <span className="ml-2 text-vc-text-muted">
             ({formatTime(startSec)} - {formatTime(endSec)})

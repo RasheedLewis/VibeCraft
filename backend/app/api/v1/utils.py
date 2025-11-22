@@ -73,4 +73,3 @@ def update_song_field(
     db.commit()
     db.refresh(song)
     return song
-

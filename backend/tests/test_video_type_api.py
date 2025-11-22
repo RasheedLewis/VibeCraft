@@ -24,7 +24,9 @@ def _cleanup_song(song_id: uuid4) -> None:
     with session_scope() as session:
         from app.models.clip import SongClip
 
-        for clip in session.exec(select(SongClip).where(SongClip.song_id == song_id)).all():
+        for clip in session.exec(
+            select(SongClip).where(SongClip.song_id == song_id)
+        ).all():
             session.delete(clip)
         records = session.exec(
             select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
@@ -44,7 +46,7 @@ class TestVideoTypeEndpoint:
         """Set up test client and create a test song."""
         self.app = create_app()
         self.client = TestClient(self.app)
-        
+
         # Create a test song
         with session_scope() as session:
             song = Song(
@@ -71,11 +73,11 @@ class TestVideoTypeEndpoint:
             f"/api/v1/songs/{self.song_id}/video-type",
             json={"video_type": "full_length"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["video_type"] == "full_length"
-        
+
         # Verify it's persisted
         with session_scope() as session:
             song = session.get(Song, self.song_id)
@@ -87,11 +89,11 @@ class TestVideoTypeEndpoint:
             f"/api/v1/songs/{self.song_id}/video-type",
             json={"video_type": "short_form"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["video_type"] == "short_form"
-        
+
         # Verify it's persisted
         with session_scope() as session:
             song = session.get(Song, self.song_id)
@@ -103,7 +105,7 @@ class TestVideoTypeEndpoint:
             f"/api/v1/songs/{self.song_id}/video-type",
             json={"video_type": "invalid"},
         )
-        
+
         # FastAPI returns 422 for Pydantic validation errors
         assert response.status_code == 422
         # Check that the error detail mentions the validation issue
@@ -120,14 +122,14 @@ class TestVideoTypeEndpoint:
             f"/api/v1/songs/{fake_id}/video-type",
             json={"video_type": "full_length"},
         )
-        
+
         assert response.status_code == 404
 
     def test_set_video_type_after_analysis_fails(self):
-        """Test that changing video_type after analysis returns 409."""
+        """Test that changing video_type after analysis returns 409 with correct error message."""
         # Create a complete analysis record with all required fields
         from app.schemas.analysis import SongAnalysis
-        
+
         complete_analysis = SongAnalysis(
             durationSec=30.0,
             bpm=128.0,
@@ -135,13 +137,18 @@ class TestVideoTypeEndpoint:
             sections=[],
             moodPrimary="energetic",
             moodTags=["energetic"],
-            moodVector={"energy": 0.8, "valence": 0.7, "danceability": 0.6, "tension": 0.5},
+            moodVector={
+                "energy": 0.8,
+                "valence": 0.7,
+                "danceability": 0.6,
+                "tension": 0.5,
+            },
             primaryGenre="Electronic",
             subGenres=[],
             lyricsAvailable=False,
             sectionLyrics=[],
         )
-        
+
         # Create analysis record with complete JSON
         with session_scope() as session:
             analysis_record = SongAnalysisRecord(
@@ -152,15 +159,19 @@ class TestVideoTypeEndpoint:
             )
             session.add(analysis_record)
             session.commit()
-        
-        # Try to set video_type
+
+        # Try to set video_type - should fail with 409
         response = self.client.patch(
             f"/api/v1/songs/{self.song_id}/video-type",
             json={"video_type": "full_length"},
         )
-        
+
         assert response.status_code == 409
-        assert "analysis" in response.json()["detail"].lower()
+        error_detail = response.json()["detail"]
+        assert "analysis" in error_detail.lower()
+        # Verify the exact error message matches what ensure_no_analysis returns
+        assert "Cannot change after analysis has been completed" in error_detail
+        assert "Please upload a new song" in error_detail
 
     def test_update_video_type_before_analysis_succeeds(self):
         """Test that updating video_type before analysis succeeds."""
@@ -170,7 +181,7 @@ class TestVideoTypeEndpoint:
             json={"video_type": "full_length"},
         )
         assert response1.status_code == 200
-        
+
         # Update to different type (before analysis)
         response2 = self.client.patch(
             f"/api/v1/songs/{self.song_id}/video-type",
@@ -186,11 +197,10 @@ class TestVideoTypeEndpoint:
             f"/api/v1/songs/{self.song_id}/video-type",
             json={"video_type": "full_length"},
         )
-        
+
         # Get song
         response = self.client.get(f"/api/v1/songs/{self.song_id}")
         assert response.status_code == 200
         data = response.json()
         assert "video_type" in data
         assert data["video_type"] == "full_length"
-

@@ -97,3 +97,4 @@ def normalize_image_format(image_bytes: bytes, target_format: str = "JPEG") -> b
     image.save(output, format=target_format, quality=95)
     return output.getvalue()
 
+

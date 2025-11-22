@@ -94,6 +94,13 @@ export function useAnalysisPolling(songId: string | null) {
     }
   }, [])
 
+  const setJobIdExternal = useCallback((newJobId: string) => {
+    setJobId(newJobId)
+    setState('queued')
+    setProgress(0)
+    setError(null)
+  }, [])
+
   return {
     state,
     jobId,
@@ -103,5 +110,6 @@ export function useAnalysisPolling(songId: string | null) {
     isFetching,
     startAnalysis,
     fetchAnalysis,
+    setJobId: setJobIdExternal,
   }
 }

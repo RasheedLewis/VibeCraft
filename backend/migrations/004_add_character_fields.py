@@ -52,3 +52,4 @@ def migrate() -> None:
             else:
                 print(f"  Column {field_name} already exists")
 
+

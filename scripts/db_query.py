@@ -600,12 +600,17 @@ def cmd_kill_composition_jobs():
     print(f'\n✅ Total cancelled: {cancelled_count} composition jobs')
 
 
-def cmd_clear_all():
-    """Clear all data from database tables and RQ queue."""
-    confirm = input('⚠️  This will DELETE ALL DATA from your local database. Continue? (yes/no): ')
-    if confirm.lower() != 'yes':
-        print('Cancelled.')
-        return
+def cmd_clear_all(confirm: bool = False):
+    """Clear all data from database tables and RQ queue.
+    
+    Args:
+        confirm: If True, skip confirmation prompt. Defaults to False.
+    """
+    if not confirm:
+        response = input('⚠️  This will DELETE ALL DATA from your local database. Continue? (yes/no): ')
+        if response.lower() != 'yes':
+            print('Cancelled.')
+            return
     
     print('Clearing all database data and RQ jobs...\n')
     
@@ -765,7 +770,12 @@ Examples:
     subparsers.add_parser("kill-composition-jobs", help="Cancel all active composition jobs")
     
     # Clear all subcommand
-    subparsers.add_parser("clear-all", help="Clear all database data and RQ jobs (DESTRUCTIVE)")
+    clear_all_parser = subparsers.add_parser("clear-all", help="Clear all database data and RQ jobs (DESTRUCTIVE)")
+    clear_all_parser.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Skip confirmation prompt (use with caution!)",
+    )
     
     args = parser.parse_args()
     
@@ -792,7 +802,7 @@ Examples:
     elif args.command == "kill-composition-jobs":
         cmd_kill_composition_jobs()
     elif args.command == "clear-all":
-        cmd_clear_all()
+        cmd_clear_all(confirm=getattr(args, 'confirm', False))
     else:
         parser.print_help()
         sys.exit(1)

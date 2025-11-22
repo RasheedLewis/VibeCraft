@@ -341,7 +341,7 @@ def optimize_prompt_for_api(
             logger.debug(f"Extracted BPM {bpm} from prompt")
         else:
             # No BPM available, skip API-specific optimization
-            logger.info(f"[PROMPT-OPTIMIZE] No BPM available for API optimization, returning original prompt")
+            logger.info("[PROMPT-OPTIMIZE] No BPM available for API optimization, returning original prompt")
             logger.info(f"[PROMPT-OPTIMIZE] FULL PROMPT (no optimization): {prompt}")
             return prompt
     
@@ -355,13 +355,13 @@ def optimize_prompt_for_api(
         # It benefits from explicit tempo references, but avoid duplication if already in prompt
         if f"{bpm_int} BPM" not in prompt:
             optimized = f"{prompt}. Camera: static. Motion: synchronized to {bpm_int} BPM."
-            logger.info(f"[PROMPT-OPTIMIZE] Optimized prompt for Minimax Hailuo: added explicit BPM reference")
+            logger.info("[PROMPT-OPTIMIZE] Optimized prompt for Minimax Hailuo: added explicit BPM reference")
             logger.info(f"[PROMPT-OPTIMIZE] FULL OPTIMIZED PROMPT: {optimized}")
             return optimized
         else:
             # BPM already in prompt, just add camera/motion directive
             optimized = f"{prompt}. Camera: static."
-            logger.info(f"[PROMPT-OPTIMIZE] Optimized prompt for Minimax Hailuo: added camera directive")
+            logger.info("[PROMPT-OPTIMIZE] Optimized prompt for Minimax Hailuo: added camera directive")
             logger.info(f"[PROMPT-OPTIMIZE] FULL OPTIMIZED PROMPT: {optimized}")
             return optimized
     

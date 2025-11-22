@@ -178,9 +178,9 @@ class TestGetMotionTypeFromGenre:
         assert get_motion_type_from_genre("ELECTRONIC") == "pulsing"
 
     def test_dance_genre(self):
-        """Test dance genre maps to bouncing."""
-        assert get_motion_type_from_genre("dance") == "bouncing"
-        assert get_motion_type_from_genre("Dance Music") == "bouncing"
+        """Test dance genre maps to dancing."""
+        assert get_motion_type_from_genre("dance") == "dancing"
+        assert get_motion_type_from_genre("Dance Music") == "dancing"
 
     def test_rock_genre(self):
         """Test rock genre maps to stepping."""
@@ -193,14 +193,14 @@ class TestGetMotionTypeFromGenre:
         assert get_motion_type_from_genre("Jazz") == "looping"
 
     def test_hip_hop_genre(self):
-        """Test hip-hop genre maps to bouncing."""
-        assert get_motion_type_from_genre("hip-hop") == "bouncing"
-        assert get_motion_type_from_genre("Hip-Hop") == "bouncing"
+        """Test hip-hop genre maps to dancing."""
+        assert get_motion_type_from_genre("hip-hop") == "dancing"
+        assert get_motion_type_from_genre("Hip-Hop") == "dancing"
 
     def test_pop_genre(self):
-        """Test pop genre maps to bouncing."""
-        assert get_motion_type_from_genre("pop") == "bouncing"
-        assert get_motion_type_from_genre("Pop") == "bouncing"
+        """Test pop genre maps to dancing."""
+        assert get_motion_type_from_genre("pop") == "dancing"
+        assert get_motion_type_from_genre("Pop") == "dancing"
 
     def test_unknown_genre_defaults_to_bouncing(self):
         """Test that unknown genre defaults to bouncing."""
@@ -433,12 +433,12 @@ class TestSelectMotionType:
         assert result == "rotating"  # Melancholic mood overrides genre
 
     def test_mood_tags_priority_dance(self):
-        """Test that dance-related mood tags select bouncing."""
+        """Test that dance-related mood tags select dancing."""
         result = select_motion_type(
             genre="jazz",  # Would normally be "looping"
             mood_tags=["dance", "groovy"],
         )
-        assert result == "bouncing"  # Dance tags override genre
+        assert result == "dancing"  # Dance tags override genre
 
     def test_mood_tags_priority_electronic(self):
         """Test that electronic mood tags select pulsing."""

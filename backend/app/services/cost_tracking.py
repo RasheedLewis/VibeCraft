@@ -1,7 +1,6 @@
 """Cost tracking service for video generation."""
 
 import logging
-from typing import Optional
 from uuid import UUID
 
 from app.core.database import session_scope

@@ -158,6 +158,12 @@ export function useClipPolling(songId: string | null) {
 
         setSummary(data)
 
+        // CRITICAL: Don't poll at all if there's an active job - useJobPolling handles that
+        // useJobPolling now updates summary during processing via onComplete callback
+        if (jobId && (status === 'queued' || status === 'processing')) {
+          return
+        }
+
         // Only continue polling if there are still active clips and no jobId
         const hasActiveClips =
           data.totalClips > 0 && data.completedClips < data.totalClips

@@ -434,7 +434,7 @@ def concatenate_clips(
                         filtered_video_path = temp_video_path.parent / "temp_filtered.mp4"
                         filtered_input = ffmpeg.input(str(temp_video_path))
                         
-                        # Build time-based condition for all beats
+                        # Build time-based condition for ALL beats (removed 50-beat limitation)
                         # FFmpeg's between(t,start,end) returns 1 if true, 0 if false
                         tolerance_sec = 0.05  # 50ms tolerance
                         
@@ -442,24 +442,42 @@ def concatenate_clips(
                         # We'll use a geq filter with a condition that checks if current time
                         # is within any beat window
                         beat_conditions = []
-                        for beat_time in beat_times[:50]:  # Limit to first 50 beats for expression length
+                        for beat_time in beat_times:  # Process ALL beats, not just first 50
                             start_time = max(0, beat_time - tolerance_sec)
                             end_time = min(beat_time + tolerance_sec, song_duration_sec)
                             beat_conditions.append(f"between(t,{start_time},{end_time})")
                         
                         if beat_conditions:
-                            # Combine conditions with OR (using addition since they return 0/1)
-                            # In FFmpeg expressions, we can use min(1, sum) to create OR logic
-                            condition_expr = "+".join(beat_conditions)
-                            
-                            # Apply brightness increase on beats using geq filter
-                            # Increase RGB values by 30 when condition is true
-                            filtered_video = filtered_input["v"].filter(
-                                "geq",
-                                r=f"r+if(min(1,{condition_expr}),30,0)",
-                                g=f"g+if(min(1,{condition_expr}),30,0)",
-                                b=f"b+if(min(1,{condition_expr}),30,0)",
-                            )
+                            # For very long expressions, chunk them to avoid FFmpeg command line limits
+                            # FFmpeg can handle ~1000 beats in a single expression, but we'll chunk at 200
+                            # to be safe and ensure good performance
+                            CHUNK_SIZE = 200
+                            if len(beat_conditions) <= CHUNK_SIZE:
+                                # Single pass for small number of beats
+                                condition_expr = "+".join(beat_conditions)
+                                filtered_video = filtered_input["v"].filter(
+                                    "geq",
+                                    r=f"r+if(min(1,{condition_expr}),30,0)",
+                                    g=f"g+if(min(1,{condition_expr}),30,0)",
+                                    b=f"b+if(min(1,{condition_expr}),30,0)",
+                                )
+                            else:
+                                # Multiple passes for large number of beats
+                                # Apply filter in chunks and chain them
+                                logger.info(f"Chunking {len(beat_conditions)} beat conditions into {CHUNK_SIZE}-beat chunks")
+                                current_video = filtered_input["v"]
+                                
+                                for chunk_start in range(0, len(beat_conditions), CHUNK_SIZE):
+                                    chunk = beat_conditions[chunk_start:chunk_start + CHUNK_SIZE]
+                                    condition_expr = "+".join(chunk)
+                                    current_video = current_video.filter(
+                                        "geq",
+                                        r=f"r+if(min(1,{condition_expr}),30,0)",
+                                        g=f"g+if(min(1,{condition_expr}),30,0)",
+                                        b=f"b+if(min(1,{condition_expr}),30,0)",
+                                    )
+                                
+                                filtered_video = current_video
                         else:
                             filtered_video = filtered_input["v"]
                         

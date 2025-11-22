@@ -65,9 +65,11 @@ def _generate_image_to_video(
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
 
+        # IMPORTANT: Both image AND prompt are used together - the image provides character reference,
+        # while the prompt describes the scene/motion. They complement each other, not replace each other.
         input_params = {
             "first_frame_image": reference_image_url,  # Reference character image
-            "prompt": optimized_prompt,  # Scene prompt
+            "prompt": optimized_prompt,  # Scene prompt (used together with image, not replaced by it)
             "num_frames": max(1, min(frame_count, 120)),
             "width": 576,
             "height": 320,
@@ -81,8 +83,10 @@ def _generate_image_to_video(
             f"[VIDEO-GEN] Starting image-to-video generation for section {scene_spec.section_id}, "
             f"reference_image_url={'set' if reference_image_url else 'none'}"
         )
-        logger.debug(f"Using reference image: {reference_image_url[:100]}...")
-        logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
+        logger.info(f"[VIDEO-GEN] Using reference image: {reference_image_url}")
+        # Log FULL prompt for rapid iteration and debugging
+        logger.info(f"[VIDEO-GEN] FULL PROMPT (optimized): {optimized_prompt}")
+        logger.info(f"[VIDEO-GEN] FULL PROMPT (original): {scene_spec.prompt}")
 
         # Get model version
         model = client.models.get(IMAGE_TO_VIDEO_MODEL)
@@ -268,6 +272,8 @@ def generate_section_video(
         }
 
         # Add image input if provided (for image-to-video)
+        # IMPORTANT: Both image AND prompt are used together - the image provides character reference,
+        # while the prompt describes the scene/motion. They complement each other, not replace each other.
         # Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
         if image_urls:
             # Use first image (model only supports single image)
@@ -279,6 +285,7 @@ def generate_section_video(
                 )
             else:
                 logger.info(f"Using image-to-video generation with reference image: {image_urls[0]}")
+            logger.debug(f"Both image and prompt are being used: image={image_urls[0][:50]}..., prompt={optimized_prompt[:100]}...")
 
         if seed is not None:
             input_params["seed"] = seed
@@ -288,7 +295,9 @@ def generate_section_video(
             f"[VIDEO-GEN] Starting {generation_type} generation for section {scene_spec.section_id}, "
             f"has_image_urls={is_image_to_video}, image_count={len(image_urls) if image_urls else 0}"
         )
-        logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
+        # Log FULL prompt for rapid iteration and debugging
+        logger.info(f"[VIDEO-GEN] FULL PROMPT (optimized): {optimized_prompt}")
+        logger.info(f"[VIDEO-GEN] FULL PROMPT (original): {scene_spec.prompt}")
 
         # Start the prediction (async - use predictions.create for long-running jobs)
         # Get the model version first

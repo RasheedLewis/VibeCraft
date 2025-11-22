@@ -17,7 +17,7 @@ from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_fi
 from app.core.auth import get_current_user
 from app.core.config import get_settings
 from app.models.clip import SongClip
-from app.models.song import DEFAULT_USER_ID, Song
+from app.models.song import Song
 from app.models.user import User
 from app.schemas.analysis import (
     BeatAlignedBoundariesResponse,

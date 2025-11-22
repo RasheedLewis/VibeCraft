@@ -11,8 +11,6 @@ from app.api.deps import get_db
 from app.core.auth import (
     create_access_token,
     get_current_user,
-    hash_password,
-    verify_password,
 )
 from app.models.user import User
 

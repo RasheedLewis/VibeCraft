@@ -1,18 +1,15 @@
 """Simple JWT-based authentication for VibeCraft."""
 
 import hashlib
-import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 import jwt
-from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from app.core.config import get_settings
 from app.core.database import get_session
 from app.models.user import User
 
@@ -36,6 +33,8 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def create_access_token(user_id: str) -> str:
     """Create a JWT access token for a user."""
+    if jwt is None:
+        raise ImportError("PyJWT is required for authentication. Install it with: pip install PyJWT")
     expiration = datetime.now(UTC) + timedelta(hours=JWT_EXPIRATION_HOURS)
     payload = {
         "sub": user_id,
@@ -47,6 +46,8 @@ def create_access_token(user_id: str) -> str:
 
 def decode_access_token(token: str) -> Optional[str]:
     """Decode a JWT token and return the user ID."""
+    if jwt is None:
+        return None
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         return payload.get("sub")

@@ -20,9 +20,9 @@ branch. Each step includes exact actions, expected results, verification methods
 
 ## Quick Smoke Test
 
-**Purpose**: Quickly verify all major features work end-to-end.
+**Purpose**: Quickly verify all major features work end-to-end, including Character Consistency (Phases 2-7) and Beat Sync (Phases 3.1-3.3).
 
-**Time**: 10-15 minutes | **Prerequisites**: Backend and frontend running
+**Time**: 20-25 minutes | **Prerequisites**: Backend and frontend running
 
 ### Steps
 
@@ -33,7 +33,10 @@ branch. Each step includes exact actions, expected results, verification methods
 
 2. **Complete Analysis** (3-5 min)
    - Click "Start Analysis"
-   - **Verify**: Analysis completes, backend logs show section skip message
+   - **Verify**: Analysis completes, backend logs show:
+     - Section skip message for short-form
+     - Beat detection completed (`beat_times` array populated)
+     - BPM calculated and stored
 
 3. **Test Audio Selection** (3-5 min)
    - Verify timeline appears with waveform
@@ -42,18 +45,42 @@ branch. Each step includes exact actions, expected results, verification methods
    - Click "Continue with Selection"
    - **Verify**: Timeline works, constraints enforced, preview works, selection saves
 
-4. **Quick Character Selection** (2 min)
-   - Click "Choose Template" button
-   - Select a template character from modal
-   - **Verify**: Modal opens, templates load, selection applies successfully
-   - **Alternative**: Upload custom image (JPEG/PNG/WEBP)
-   - **Verify**: Upload succeeds, no errors
+4. **Character Consistency Setup** (3-5 min)
+   - Click "Choose Template" button OR upload custom character image
+   - **Verify**: Template modal opens OR custom upload succeeds
+   - Select template character OR upload JPEG/PNG/WEBP
+   - **Verify**: Character image stored, `character_consistency_enabled` set to true
+   - **Verify**: Backend logs show character image generation job enqueued (Phase 5)
+   - **Verify**: CharacterPreview component displays uploaded image (Phase 6)
 
-5. **Verify Song Profile** (1 min)
+5. **Generate Clips with Character Consistency & Beat Sync** (5-7 min)
+   - Click "Generate Clips"
+   - **Verify**: Backend logs show:
+     - **Character Consistency (Phase 2)**: Image interrogation service called (OpenAI or Replicate fallback)
+     - **Character Consistency (Phase 3)**: Character image generation job running (Replicate SDXL)
+     - **Character Consistency (Phase 4)**: Image-to-video generation with consistent character image
+     - **Beat Sync (Phase 3.1)**: Prompt optimization for API, motion type selection, BPM extraction
+   - **Verify**: Clips generate successfully with character consistency
+   - **Verify**: Generated character image stored in S3 (Phase 5)
+
+6. **Compose Video with Beat Sync** (3-5 min)
+   - Click "Compose Video"
+   - **Verify**: Backend logs show:
+     - **Beat Sync (Phase 3.3)**: Beat-aligned boundary calculation
+     - **Beat Sync (Phase 3.2)**: Beat filter generation (flash, color_burst, zoom_pulse, glitch)
+     - **Beat Sync (Phase 3.3)**: Clip trimming/extending to beat boundaries
+     - **Beat Sync (Phase 3.3)**: Transition verification
+   - **Verify**: Final video composed successfully
+   - **Verify**: Visual beat effects visible in video (flash, color burst, etc.)
+   - **Verify**: Clip transitions occur on beats (rhythmically correct)
+   - **Verify**: Character consistency maintained across clips
+
+7. **Verify Song Profile** (1 min)
    - Check song profile view appears
-   - **Verify**: Profile loads, no section errors
+   - **Verify**: Profile loads, CharacterPreview component shows character image
+   - **Verify**: No section errors, character consistency status visible
 
-**All Steps Pass**: System working on happy path
+**All Steps Pass**: System working on happy path with full Character Consistency (Phases 2-7) and Beat Sync (Phases 3.1-3.3) integration
 
 **If Any Step Fails**: Note which step, check Console/Network tabs, see [How to Report Issues](#how-to-report-issues)
 
@@ -236,20 +263,20 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ---
 
-## Character Consistency Foundation
+## Character Consistency (Phases 1-7) ✅ COMPLETE
 
-**Goal**: Verify character image upload and template character selection work.
+**Goal**: Verify complete Character Consistency workflow from image upload through consistent character image generation and video clip generation.
 
-**Time**: 15-20 min
+**Time**: 30-40 min | **Prerequisites**: Backend with OpenAI API key or Replicate API token configured
 
-### Checkpoints
+### Phase 1: Foundation (Database & Storage) ✅ COMPLETE
 
 **4.1 Upload Section Appears**
 
 - Complete analysis for short-form video
-- Verify: Character upload section visible (short-form only), appears after
-  analysis
+- Verify: Character upload section visible (short-form only), appears after analysis
 - Verify: "Choose Template" button visible next to upload area
+- Verify: CharacterPreview component appears after image upload (Phase 6)
 
 **4.2 Template Character Selection**
 
@@ -277,8 +304,8 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 **4.4 Upload Custom Image**
 
 - Upload valid image (JPEG/PNG/WEBP)
-- **Verify**: Preview appears, `POST /api/v1/songs/{id}/character-image` returns
-  200, image saved to S3
+- **Verify**: Preview appears, `POST /api/v1/songs/{id}/character-image` returns 200, image saved to S3
+- **Verify**: CharacterPreview component displays uploaded image (Phase 6)
 - **Verify**: Can switch between template and custom upload
 
 **4.5 Test Validation**
@@ -286,49 +313,259 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 - Try uploading invalid files (.txt, > 10MB, invalid dimensions)
 - **Verify**: Clear error messages, upload rejected, can retry
 
-**4.6 Both Poses Used in Video Generation**
+### Phase 2: Image Interrogation Service ✅ COMPLETE
 
-- Complete clip generation with template character selected
-- **Verify**: Backend logs show both poses passed to video generation
-- **Verify**: `reference_image_urls` array contains 2 URLs (pose-a and pose-b)
-- **Verify**: Video generation attempts multiple images, falls back to single if
-  model doesn't support
-- **Verify**: Clips generated successfully with character consistency
+**4.6 Image Interrogation Workflow**
 
-**Character Consistency Summary**: All checkpoints pass
+- Upload custom character image (not template)
+- **Verify**: Backend logs show character image generation job enqueued
+- **Verify**: Backend logs show `interrogate_reference_image()` called
+- **Verify**: If OpenAI API key configured, logs show OpenAI GPT-4 Vision call
+- **Verify**: If OpenAI unavailable, logs show Replicate `img2prompt` fallback
+- **Verify**: Interrogation result stored in `character_interrogation_prompt` field (JSON)
+- **Verify**: Prompt contains: `prompt`, `character_description`, `style_notes`
 
-**Known**: Foundation only - full workflow (interrogation, generation) pending.
+**4.7 Interrogation Error Handling**
+
+- Test with invalid image URL or corrupted image
+- **Verify**: Error logged, job fails gracefully, `character_consistency_enabled` set to false
+- **Verify**: User can retry with new image
+
+### Phase 3: Character Image Generation Service ✅ COMPLETE
+
+**4.8 Consistent Character Image Generation**
+
+- After image interrogation completes
+- **Verify**: Backend logs show `generate_consistent_character_image()` called
+- **Verify**: Replicate SDXL model called with interrogated prompt and reference image
+- **Verify**: Job polls for completion (logs show polling attempts)
+- **Verify**: Generated image URL returned when job succeeds
+- **Verify**: Generated image downloaded and uploaded to S3:
+  - `songs/{song_id}/character_generated.jpg`
+- **Verify**: `character_generated_image_s3_key` field populated in database
+
+**4.9 Generation Error Handling**
+
+- Test with invalid Replicate API token or model failure
+- **Verify**: Error logged, job fails gracefully, `character_consistency_enabled` set to false
+- **Verify**: User can retry generation
+
+### Phase 4: Video Generation Service Updates ✅ COMPLETE
+
+**4.10 Image-to-Video Generation**
+
+- Generate clips with character image uploaded
+- **Verify**: Backend logs show `_generate_image_to_video()` called
+- **Verify**: Replicate Hailuo 2.3 model called with generated character image
+- **Verify**: Image-to-video generation succeeds for all 6 clips
+- **Verify**: Clips maintain character consistency across all clips
+
+**4.11 Enhanced Fallback Logic**
+
+- Test with missing or invalid character image
+- **Verify**: Backend logs show fallback to text-to-video generation
+- **Verify**: Clips still generate successfully (graceful degradation)
+- **Verify**: No errors thrown, workflow continues
+
+**4.12 Multiple Reference Images Support**
+
+- Use template character (both poses)
+- **Verify**: Backend logs show `reference_image_urls` array with 2 URLs
+- **Verify**: Video generation attempts multiple images
+- **Verify**: Falls back to single image if model doesn't support multiple
+
+### Phase 5: Orchestration Workflow ✅ COMPLETE
+
+**4.13 Full Workflow Integration**
+
+- Upload character image → Generate clips
+- **Verify**: Backend logs show complete workflow:
+  1. Download reference image from S3
+  2. Interrogate image (Phase 2)
+  3. Generate consistent character image (Phase 3)
+  4. Upload generated image to S3
+  5. Update song record with generated image key
+  6. Use generated image for video generation (Phase 4)
+- **Verify**: Background job (`generate_character_image_job`) executes successfully
+- **Verify**: Job status tracked in RQ queue
+
+**4.14 Storage Helpers**
+
+- Check S3 bucket after character image generation
+- **Verify**: Both reference and generated images stored correctly:
+  - `songs/{song_id}/character_reference.jpg` (user upload)
+  - `songs/{song_id}/character_generated.jpg` (generated consistent image)
+- **Verify**: Presigned URLs generated correctly for image access
+
+### Phase 6: Frontend Integration ✅ COMPLETE
+
+**4.15 CharacterPreview Component**
+
+- After character image uploaded
+- **Verify**: CharacterPreview component displays image
+- **Verify**: Loading state shown while fetching image
+- **Verify**: Error state shown if image fails to load
+- **Verify**: Component handles missing image gracefully
+
+**4.16 Character Image Upload UI**
+
+- Upload custom character image
+- **Verify**: Drag-and-drop works in CharacterImageUpload component
+- **Verify**: File validation (format, size, dimensions) works
+- **Verify**: Preview updates after successful upload
+- **Verify**: Error messages displayed for invalid uploads
+
+### Phase 7: Testing & Documentation ✅ COMPLETE
+
+**4.17 Test Scripts**
+
+- Run test scripts in `scripts/checkpoints-advanced-features/`:
+  - `test-character-interrogation-1.sh` (Phase 2)
+  - `test-character-generation-2.sh` (Phase 3)
+  - `test-character-workflow-3.sh` (Phase 5)
+  - `test-character-complete-4.sh` (Phase 4 + full workflow)
+- **Verify**: All test scripts pass
+- **Verify**: Scripts reference correct phases from implementation doc
+
+**Character Consistency Summary**: All phases (1-7) complete and working
+
+**Known**: Full workflow implemented - image interrogation → character generation → image-to-video → consistent clips across all 6 clips.
 
 ---
 
 ## Beat Sync Foundation
 
-**Goal**: Verify beat sync foundation components are integrated.
+**Goal**: Verify all Beat Sync phases (3.1, 3.2, 3.3) are working correctly.
 
-**Time**: 5-10 min
+**Time**: 20-30 min
 
-### Checkpoints
+### Phase 3.1: Prompt Engineering ✅ COMPLETE
 
-**5.1 Beat Detection**
+**5.1 Beat Detection & BPM Calculation**
 
 - Complete analysis
-- Verify: `beat_times` array populated, `bpm` calculated
+- Verify: `beat_times` array populated in database, `bpm` calculated and stored
+- Verify: Backend logs show beat detection completion
 
-**5.2 Prompt Enhancement**
+**5.2 API-Specific Prompt Optimization**
 
-- Generate clips
-- Verify: Backend logs show BPM classification, motion descriptors added to
-  prompts
+- Generate clips for short-form video
+- Verify: Backend logs show prompt optimization for Minimax Hailuo 2.3:
+  - Prompts include BPM information
+  - Motion descriptors added (bouncing, pulsing, rotating, etc.)
+  - API-specific formatting applied
+- Check logs for: `optimize_prompt_for_api` calls
 
-**5.3 Beat Filters**
+**5.3 Motion Type Selection**
+
+- Generate clips with different genres/moods
+- Verify: Backend logs show motion type selection based on:
+  - Scene context (chorus, verse, bridge)
+  - Mood (energetic, calm, melancholic)
+  - Genre (electronic, dance, rock, etc.)
+  - BPM (slow, medium, fast, very fast)
+- Verify: Appropriate motion types selected (bouncing, pulsing, rotating, stepping, looping)
+
+**5.4 BPM Extraction from Prompts**
+
+- Generate clips with prompts containing BPM references
+- Verify: BPM extracted correctly from prompts like "128 BPM", "120BPM"
+- Verify: Extracted BPM used for prompt optimization
+
+### Phase 3.2: Audio-Reactive FFmpeg Filters ✅ COMPLETE
+
+**5.5 Frame-Accurate Beat Time Conversion**
 
 - Compose final video
-- Verify: Backend logs show beat filter expressions generated, beat times
-  passed to composition
+- Verify: Backend logs show `convert_beat_times_to_frames()` called
+- Verify: Beat times converted to frame indices with correct FPS
+
+**5.6 Beat Filter Generation**
+
+- Compose final video
+- Verify: Backend logs show beat filter expressions generated:
+  - `generate_beat_filter_expression()` called with beat_times
+  - Filter type selected (flash, color_burst, zoom_pulse, brightness_pulse, glitch)
+- Verify: Beat times passed to `concatenate_clips()` function
+
+**5.7 Glitch Effect Filter**
+
+- Compose final video with glitch effect enabled
+- Verify: Backend logs show glitch filter generation
+- Verify: RGB channel shift filter applied (check FFmpeg filter string)
+- Verify: Visual glitch effect appears on beats in final video
+
+**5.8 Effect Parameter Customization**
+
+- Check `backend/app/core/config.py` for `BeatEffectConfig`
+- Verify: Environment variables available for effect customization:
+  - `BEAT_EFFECT_TYPE` (flash, color_burst, zoom_pulse, glitch, brightness_pulse)
+  - `BEAT_FLASH_INTENSITY`, `BEAT_FLASH_COLOR`
+  - `BEAT_GLITCH_INTENSITY`
+  - `BEAT_ZOOM_PULSE_AMOUNT`
+  - `BEAT_COLOR_BURST_SATURATION`, `BEAT_COLOR_BURST_BRIGHTNESS`
+- Verify: Default values used if not set
+
+**5.9 Visual Beat Effects in Final Video**
+
+- Compose final video
+- Verify: Visual effects trigger on beats (flash, color burst, zoom pulse, etc.)
+- Verify: Effects are frame-accurate (within ±20ms of beat timestamps)
+- Verify: Effects visible in final composed video
+
+### Phase 3.3: Structural Sync ✅ COMPLETE
+
+**5.10 Beat-Aligned Boundary Calculation**
+
+- Generate clips and compose final video
+- Verify: Backend logs show `calculate_beat_aligned_clip_boundaries()` called
+- Verify: Boundaries calculated with:
+  - Minimum/maximum duration constraints (3-6 seconds)
+  - Beat alignment for start/end times
+  - Frame-accurate alignment
+
+**5.11 User Selection Support (30-Second Clips)**
+
+- Upload audio, select "Short Form", make 30-second selection
+- Generate clips and compose
+- Verify: Backend logs show user selection start/end times used
+- Verify: `calculate_beat_aligned_clip_boundaries()` called with:
+  - `user_selection_start` and `user_selection_end` parameters
+  - Boundaries calculated within selection range
+- Verify: Clips aligned to beats within selected segment
+
+**5.12 Clip Trimming to Beat Boundaries**
+
+- Compose final video
+- Verify: Backend logs show `trim_clip_to_beat_boundary()` called when needed
+- Verify: Clips trimmed to align with beat-aligned start/end times
+- Verify: FFmpeg trim filter applied correctly
+
+**5.13 Clip Extension to Beat Boundaries**
+
+- Compose final video with clips shorter than beat boundaries
+- Verify: Backend logs show `extend_clip_to_beat_boundary()` called
+- Verify: Clips extended using frame freeze (tpad) and fadeout
+- Verify: Extended clips align with beat boundaries
+
+**5.14 Transition Verification**
+
+- Compose final video
+- Verify: Backend logs show `verify_beat_aligned_transitions()` called
+- Verify: All transitions verified to be within ±50ms of beat boundaries
+- Verify: Transition errors logged if any exceed tolerance
+
+**5.15 Beat-Aligned Clip Transitions**
+
+- Compose final video
+- Verify: All clip transitions occur on beat boundaries
+- Verify: Transitions are smooth and rhythmically correct
+- Verify: No jarring cuts between beats
+- Verify: Final video has strong beat synchronization perception
 
 **Beat Sync Summary**: All checkpoints pass
 
-**Known**: Foundation only - full beat sync (structural sync) pending.
+**Known**: All three phases (3.1, 3.2, 3.3) are complete and integrated.
 
 ---
 
@@ -378,6 +615,23 @@ clips use character consistency, clips use selected range.
 
 - Upload poor quality audio, complete analysis, generate clips
 - Verify: Clips generate successfully, beat sync gracefully degrades
+- Verify: If beat_times is empty, beat filters skip but composition still works
+
+### 6. Beat Sync with Very Fast/Slow Tempo
+
+- Upload audio with very fast BPM (> 160) or very slow BPM (< 60)
+- Complete analysis and generate clips
+- Verify: Appropriate motion types selected (pulsing for fast, looping for slow)
+- Verify: Beat filters work correctly with extreme tempos
+- Verify: Beat-aligned boundaries calculated correctly
+
+### 7. Beat Sync with Sparse Beats
+
+- Upload audio with irregular or sparse beat detection
+- Complete analysis and generate clips
+- Verify: Beat-aligned boundaries handle sparse beats gracefully
+- Verify: Clips still transition on available beats
+- Verify: No errors from missing beat data
 
 ---
 

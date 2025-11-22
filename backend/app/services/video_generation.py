@@ -64,13 +64,22 @@ def generate_section_video(
         
         is_image_to_video = image_urls is not None and len(image_urls) > 0
         
+        # Optimize prompt for the specific API/model
+        from app.services.prompt_enhancement import optimize_prompt_for_api
+        
+        optimized_prompt = optimize_prompt_for_api(
+            prompt=scene_spec.prompt,
+            api_name=VIDEO_MODEL,
+            bpm=None,  # Will extract from prompt if available
+        )
+        
         # Prepare input parameters for Minimax Hailuo 2.3
         # Supports both text-to-video and image-to-video
         # Parameters: prompt, num_frames, width, height, fps, seed, image (optional)
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
         input_params = {
-            "prompt": scene_spec.prompt,
+            "prompt": optimized_prompt,
             "num_frames": max(1, min(frame_count, 120)),
             "width": 576,  # Smaller resolution = faster/cheaper (XL supports up to 1024)
             "height": 320,  # 16:9 aspect ratio (576x320)

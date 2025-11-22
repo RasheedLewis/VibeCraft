@@ -404,6 +404,25 @@ async def upload_character_image(
     db.commit()
     db.refresh(song)
     
+    # Enqueue background job to generate consistent character image
+    try:
+        from app.core.queue import get_queue
+        from app.services.character_consistency import generate_character_image_job
+        
+        queue = get_queue(
+            queue_name=f"{settings.rq_worker_queue}:character-generation",
+            timeout=300,  # 5 minutes
+        )
+        queue.enqueue(
+            generate_character_image_job,
+            song_id,
+            job_timeout=300,
+        )
+        logger.info(f"Enqueued character image generation job for song {song_id}")
+    except Exception as exc:
+        # Don't fail the upload if job enqueue fails
+        logger.warning(f"Failed to enqueue character image generation job: {exc}")
+    
     # Generate presigned URL
     try:
         image_url = await asyncio.to_thread(

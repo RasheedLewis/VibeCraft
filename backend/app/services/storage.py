@@ -173,3 +173,32 @@ def get_character_image_s3_key(song_id: str, image_type: str = "reference") -> s
         raise ValueError(f"Unknown image_type: {image_type}. Must be 'reference' or 'generated'")
 
 
+def upload_consistent_character_image(
+    song_id: str,
+    image_bytes: bytes,
+    content_type: str = "image/jpeg",
+) -> str:
+    """
+    Upload a generated consistent character image to S3.
+    
+    Args:
+        song_id: Song UUID (as string)
+        image_bytes: Image bytes to upload
+        content_type: Content type (default: image/jpeg)
+    
+    Returns:
+        S3 key of uploaded image
+    """
+    settings = get_settings()
+    s3_key = get_character_image_s3_key(song_id, image_type="generated")
+    
+    upload_bytes_to_s3(
+        bucket_name=settings.s3_bucket_name,
+        key=s3_key,
+        data=image_bytes,
+        content_type=content_type,
+    )
+    
+    return s3_key
+
+

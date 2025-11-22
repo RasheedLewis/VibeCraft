@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     audjust_timeout_sec: float = Field(default=30.0, alias="AUDJUST_TIMEOUT_SEC")
 
     replicate_api_token: Optional[str] = Field(default=None, alias="REPLICATE_API_TOKEN")
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     whisper_api_token: Optional[str] = Field(default=None, alias="WHISPER_API_TOKEN")
     lyrics_api_key: Optional[str] = Field(default=None, alias="LYRICS_API_KEY")
 
@@ -67,6 +68,7 @@ class Settings(BaseSettings):
         "s3_secret_access_key",
         "s3_region",
         "replicate_api_token",
+        "openai_api_key",
         "whisper_api_token",
         "lyrics_api_key",
         mode="before",

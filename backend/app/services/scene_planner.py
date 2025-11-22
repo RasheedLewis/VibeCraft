@@ -360,15 +360,25 @@ def build_prompt(
     if bpm and bpm > 0:
         from app.services.prompt_enhancement import (
             enhance_prompt_with_rhythm,
-            get_motion_type_from_genre,
+            select_motion_type,
         )
         
-        # Determine motion type
+        # Determine motion type using advanced selection
         effective_motion_type = motion_type
-        if not effective_motion_type and genre:
-            effective_motion_type = get_motion_type_from_genre(genre)
         if not effective_motion_type:
-            effective_motion_type = "bouncing"  # Default
+            # Use advanced selection based on mood, genre, BPM, and scene context
+            scene_context = {}
+            if section:
+                scene_context["section_type"] = section.type
+                scene_context["intensity"] = 0.5  # Default intensity
+            
+            effective_motion_type = select_motion_type(
+                genre=genre,
+                mood=mood_primary,
+                mood_tags=mood_tags,
+                bpm=bpm,
+                scene_context=scene_context if section else None,
+            )
         
         # Enhance prompt
         base_prompt = enhance_prompt_with_rhythm(

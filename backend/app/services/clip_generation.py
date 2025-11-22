@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import subprocess
 from collections import Counter
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -212,8 +213,26 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     scene_spec = _build_scene_spec_for_clip(clip_id, analysis)
     seed = _determine_seed_for_clip(clip_id)
 
+    # Get character image URLs if character consistency is enabled
+    character_image_urls = []
+    character_image_url = None
+    
+    try:
+        song = SongRepository.get_by_id(song_id)
+        if song:
+            character_image_urls, character_image_url = _get_character_image_urls(song)
+    except SongNotFoundError:
+        logger.warning(f"Song {song_id} not found when checking character consistency")
+    except Exception as e:
+        logger.warning(f"Error checking character consistency: {e}")
+
     success, video_url, metadata = generate_section_video(
-        scene_spec, seed=seed, num_frames=clip_num_frames, fps=clip_fps
+        scene_spec,
+        seed=seed,
+        num_frames=clip_num_frames,
+        fps=clip_fps,
+        reference_image_url=character_image_url,  # Fallback single image
+        reference_image_urls=character_image_urls if len(character_image_urls) > 0 else None,  # Try multiple
     )
     metadata = metadata or {}
 
@@ -372,6 +391,76 @@ def _find_section_for_clip(start_time: float, sections: List[SongSection]) -> So
     return min(sections, key=lambda s: abs(s.start_sec - start_time))
 
 
+def _get_character_image_urls(song) -> tuple[list[str], Optional[str]]:
+    """
+    Get character image URLs for video generation.
+    
+    Returns tuple of (urls_list, fallback_url) where:
+    - urls_list: List of all available character image URLs (for multiple image support)
+    - fallback_url: Single URL for fallback (first available image)
+    
+    Priority order:
+    1. character_generated_image_s3_key (if available)
+    2. character_reference_image_s3_key (pose-a)
+    3. character_pose_b_s3_key (pose-b, added to list but not as fallback)
+    """
+    if not song or not song.character_consistency_enabled:
+        return [], None
+    
+    character_image_urls = []
+    character_image_url = None
+    settings = get_settings()
+    
+    # Priority 1: Use generated image if available
+    if song.character_generated_image_s3_key:
+        try:
+            generated_url = generate_presigned_get_url(
+                bucket_name=settings.s3_bucket_name,
+                key=song.character_generated_image_s3_key,
+                expires_in=3600,
+            )
+            character_image_urls.append(generated_url)
+            character_image_url = generated_url
+            logger.info(f"Using character generated image for clip generation: {song.character_generated_image_s3_key}")
+        except Exception as e:
+            logger.warning(f"Failed to generate presigned URL for character generated image: {e}")
+    
+    # Priority 2: Use reference image (pose-a)
+    if song.character_reference_image_s3_key:
+        try:
+            pose_a_url = generate_presigned_get_url(
+                bucket_name=settings.s3_bucket_name,
+                key=song.character_reference_image_s3_key,
+                expires_in=3600,
+            )
+            # Only add if not already added (generated image takes priority)
+            if not character_image_urls:
+                character_image_urls.append(pose_a_url)
+                character_image_url = pose_a_url
+            logger.info(f"Using character reference image (pose-a) for clip generation: {song.character_reference_image_s3_key}")
+        except Exception as e:
+            logger.warning(f"Failed to generate presigned URL for character reference image: {e}")
+    
+    # Priority 3: Add pose-b if available (for multiple image support)
+    if song.character_pose_b_s3_key:
+        try:
+            pose_b_url = generate_presigned_get_url(
+                bucket_name=settings.s3_bucket_name,
+                key=song.character_pose_b_s3_key,
+                expires_in=3600,
+            )
+            character_image_urls.append(pose_b_url)
+            logger.info(f"Using character pose-b image for clip generation: {song.character_pose_b_s3_key}")
+        except Exception as e:
+            logger.warning(f"Failed to generate presigned URL for character pose-b image: {e}")
+    
+    # Ensure we have at least one URL for fallback
+    if character_image_urls and not character_image_url:
+        character_image_url = character_image_urls[0]
+    
+    return character_image_urls, character_image_url
+
+
 def _determine_seed_for_clip(clip_id: UUID) -> Optional[int]:
     try:
         clip = ClipRepository.get_by_id(clip_id)
@@ -403,6 +492,56 @@ def _verify_url_exists(url: str, timeout: float = 10.0) -> bool:
             return response.status_code in (200, 206)  # 206 = Partial Content
         except Exception:
             return False
+
+
+def _extract_audio_segment(
+    audio_path: Path,
+    start_sec: float,
+    end_sec: float,
+    output_path: Path,
+) -> None:
+    """Extract audio segment using ffmpeg.
+    
+    Args:
+        audio_path: Path to input audio file
+        start_sec: Start time in seconds
+        end_sec: End time in seconds
+        output_path: Path to output audio file
+        
+    Raises:
+        RuntimeError: If ffmpeg extraction fails
+    """
+    settings = get_settings()
+    ffmpeg_bin = settings.ffmpeg_bin
+    
+    duration = end_sec - start_sec
+    cmd = [
+        ffmpeg_bin,
+        "-i", str(audio_path),
+        "-ss", str(start_sec),
+        "-t", str(duration),
+        "-acodec", "copy",  # Copy codec to avoid re-encoding
+        "-y",  # Overwrite output file
+        str(output_path),
+    ]
+    
+    try:
+        subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60.0,
+        )
+        logger.info(
+            f"Extracted audio segment: {start_sec}s - {end_sec}s "
+            f"({duration:.2f}s) from {audio_path} to {output_path}"
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg extraction failed: {e.stderr}")
+        raise RuntimeError(f"Failed to extract audio segment: {e.stderr}") from e
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Audio extraction timed out after 60 seconds") from None
 
 
 def _download_clip_to_path(url: str, destination: Path, timeout: float = 120.0) -> None:
@@ -631,8 +770,27 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         # Download audio (key has already been validated to exist in S3 above)
         audio_bytes = download_bytes_from_s3(bucket_name=bucket, key=audio_key)
         audio_extension = Path(audio_key).suffix or ".wav"
-        audio_path = temp_dir / f"song_audio{audio_extension}"
-        audio_path.write_bytes(audio_bytes)
+        full_audio_path = temp_dir / f"song_audio_full{audio_extension}"
+        full_audio_path.write_bytes(audio_bytes)
+
+        # Extract audio segment if selection exists
+        if song.selected_start_sec is not None and song.selected_end_sec is not None:
+            logger.info(
+                f"Extracting selected audio segment: {song.selected_start_sec}s - {song.selected_end_sec}s "
+                f"(duration: {song.selected_end_sec - song.selected_start_sec}s)"
+            )
+            audio_path = temp_dir / f"song_audio_selected{audio_extension}"
+            _extract_audio_segment(
+                audio_path=full_audio_path,
+                start_sec=song.selected_start_sec,
+                end_sec=song.selected_end_sec,
+                output_path=audio_path,
+            )
+            # Use selected duration for composition
+            effective_duration = song.selected_end_sec - song.selected_start_sec
+        else:
+            audio_path = full_audio_path
+            effective_duration = float(song_duration)
 
         if job_id:
             update_job_progress(job_id, 65, "processing")  # Starting concatenation
@@ -643,7 +801,7 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
             [str(path) for path in normalized_paths],
             str(audio_path),
             str(output_path),
-            song_duration_sec=float(song_duration),
+            song_duration_sec=effective_duration,
             job_id=job_id,
         )
         

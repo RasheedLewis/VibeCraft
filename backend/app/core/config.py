@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 from pydantic import AnyUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -53,11 +53,14 @@ class Settings(BaseSettings):
     audjust_timeout_sec: float = Field(default=30.0, alias="AUDJUST_TIMEOUT_SEC")
 
     replicate_api_token: Optional[str] = Field(default=None, alias="REPLICATE_API_TOKEN")
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     whisper_api_token: Optional[str] = Field(default=None, alias="WHISPER_API_TOKEN")
     lyrics_api_key: Optional[str] = Field(default=None, alias="LYRICS_API_KEY")
 
     ffmpeg_bin: str = Field(default="ffmpeg", alias="FFMPEG_BIN")
     librosa_cache_dir: str = Field(default=".cache/librosa", alias="LIBROSA_CACHE_DIR")
+
+    enable_sections: bool = Field(default=True, alias="ENABLE_SECTIONS")
 
     @field_validator(
         "s3_endpoint_url",
@@ -65,6 +68,7 @@ class Settings(BaseSettings):
         "s3_secret_access_key",
         "s3_region",
         "replicate_api_token",
+        "openai_api_key",
         "whisper_api_token",
         "lyrics_api_key",
         mode="before",
@@ -79,4 +83,64 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
+
+
+@lru_cache
+def is_sections_enabled() -> bool:
+    """Check if section-based generation is enabled."""
+    return get_settings().enable_sections
+
+
+class HasVideoType(Protocol):
+    """Protocol for objects with video_type attribute."""
+
+    video_type: str | None
+
+
+def should_use_sections_for_song(song: HasVideoType | Any) -> bool:
+    """Determine if sections should be used for a specific song.
+
+    Args:
+        song: Song model instance (or any object with video_type attribute)
+
+    Returns:
+        True if sections should be used, False otherwise
+    """
+    from app.core.constants import VIDEO_TYPE_FULL_LENGTH
+    
+    video_type = getattr(song, 'video_type', None)
+    if video_type:
+        return video_type == VIDEO_TYPE_FULL_LENGTH
+
+    # Default to False if video_type is not set
+    return False
+
+
+class BeatEffectConfig(BaseSettings):
+    """Configuration for beat-synced visual effects."""
+    
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILE_PATH,
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+    
+    enabled: bool = Field(default=True, alias="BEAT_EFFECTS_ENABLED")
+    effect_type: str = Field(default="flash", alias="BEAT_EFFECT_TYPE")  # flash, color_burst, zoom_pulse, glitch, brightness_pulse
+    flash_intensity: float = Field(default=50.0, alias="BEAT_FLASH_INTENSITY")  # 0-255 pixel value increase
+    flash_color: str = Field(default="white", alias="BEAT_FLASH_COLOR")  # white, red, blue, etc.
+    color_burst_hue: int = Field(default=0, alias="BEAT_COLOR_BURST_HUE")  # 0-360 degrees
+    color_burst_saturation: float = Field(default=1.5, alias="BEAT_COLOR_BURST_SATURATION")
+    color_burst_brightness: float = Field(default=0.1, alias="BEAT_COLOR_BURST_BRIGHTNESS")
+    zoom_pulse_amount: float = Field(default=1.05, alias="BEAT_ZOOM_PULSE_AMOUNT")  # 1.0 = no zoom, 1.05 = 5% zoom
+    zoom_pulse_duration_frames: int = Field(default=3, alias="BEAT_ZOOM_PULSE_DURATION_FRAMES")
+    glitch_intensity: float = Field(default=0.3, alias="BEAT_GLITCH_INTENSITY")  # 0.0-1.0
+    brightness_pulse_amount: float = Field(default=0.15, alias="BEAT_BRIGHTNESS_PULSE_AMOUNT")  # 0.0-1.0
+    tolerance_ms: float = Field(default=20.0, alias="BEAT_EFFECT_TOLERANCE_MS")  # Tolerance window in milliseconds
+
+
+@lru_cache
+def get_beat_effect_config() -> BeatEffectConfig:
+    """Get beat effect configuration."""
+    return BeatEffectConfig()  # type: ignore[call-arg]
 

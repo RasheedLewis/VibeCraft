@@ -2,11 +2,14 @@
 
 ## Overview
 
-The beat alignment system calculates where clip boundaries should be placed so that **transitions between clips happen on beats**. This ensures smooth, musically-synced video transitions.
+The beat alignment system calculates where clip boundaries should be placed so that
+**transitions between clips happen on beats**. This ensures smooth, musically-synced video
+transitions.
 
 ## The Problem
 
 Video generation APIs (like Replicate's Zeroscope) let you specify:
+
 - `num_frames`: Number of frames to generate
 - `fps`: Frames per second
 
@@ -19,6 +22,7 @@ The challenge: We want clip transitions to happen **on beats**, not at arbitrary
 ## The Solution
 
 Use `calculate_beat_aligned_boundaries()` to:
+
 1. Find beat-aligned boundaries (where clips should start/end)
 2. Calculate exact `num_frames` for each clip based on boundary duration
 3. Generate clips with those exact frame counts
@@ -47,6 +51,7 @@ boundaries = calculate_beat_aligned_boundaries(
 ```
 
 **Result:** List of `ClipBoundary` objects, each with:
+
 - `start_time`, `end_time`: Beat-aligned timestamps
 - `start_beat_index`, `end_beat_index`: Which beats this clip spans
 - `start_frame_index`, `end_frame_index`: Frame indices for alignment
@@ -107,6 +112,7 @@ for i, boundary in enumerate(boundaries):
 ### Step 4: Stitch Clips Together
 
 When stitching clips, transitions automatically happen on beats because:
+
 - Each clip ends at a beat boundary (`boundary.end_time` aligns with a beat)
 - The next clip starts at the next beat boundary (`boundary.start_time` aligns with a beat)
 - No need to calculate transition timing - it's already beat-aligned!
@@ -176,6 +182,7 @@ curl "http://localhost:8000/api/v1/songs/{song_id}/beat-aligned-boundaries?fps=8
 ### Problem Statement
 
 Given:
+
 - **Song BPM:** 110 beats per minute
 - **Video FPS:** 8 frames per second = 480 frames per minute
 
@@ -184,22 +191,28 @@ Find the optimal alignment between beats and frames for beat-synced video genera
 ### Mathematical Setup
 
 #### Constants
+
 - `BPM = 110` beats per minute
 - `FPS = 8` frames per second = 480 frames per minute
 
 #### Time Calculations
+
 - **Beat interval:** `beat_interval = 60 / BPM = 60 / 110 ≈ 0.5455 seconds`
 - **Frame interval:** `frame_interval = 1 / FPS = 1 / 8 = 0.125 seconds`
 
 #### Beat Times
+
 For beat `i` (starting at 0):
-```
+
+```text
 beat_time[i] = i * beat_interval = i * (60 / BPM)
 ```
 
 #### Frame Times
+
 For frame `j` (starting at 0):
-```
+
+```text
 frame_time[j] = j * frame_interval = j / FPS
 ```
 
@@ -217,6 +230,7 @@ frame_time[j] = j * frame_interval = j / FPS
 ### Approach 1: Nearest Neighbor Matching
 
 #### Algorithm
+
 For each beat, find the nearest frame.
 
 ```python
@@ -234,16 +248,19 @@ def nearest_frame_for_beat(beat_index, fps, bpm):
 ```
 
 #### Pros
+
 - Simple and fast
 - Works well when frame rate is high relative to beat rate
 
 #### Cons
+
 - May miss some beats if frame rate is too low
 - Doesn't optimize globally
 
 ### Approach 2: Optimal Alignment (Dynamic Programming)
 
 #### Algorithm
+
 Find the alignment that minimizes total distance between beats and frames.
 
 ```python
@@ -314,16 +331,19 @@ def optimal_beat_frame_alignment(beats, frames, max_distance=0.1):
 ```
 
 #### Pros
+
 - Globally optimal alignment
 - Handles missing beats/frames gracefully
 
 #### Cons
+
 - More complex
 - O(n_beats × n_frames) time complexity
 
 ### Approach 3: Phase Offset Optimization
 
 #### Algorithm
+
 Since both beats and frames are periodic, find the phase offset that minimizes total error.
 
 ```python
@@ -373,16 +393,19 @@ def find_optimal_phase_offset(bpm, fps, duration_sec):
 ```
 
 #### Pros
+
 - Accounts for periodic nature
 - Good for long videos
 - Can be used to adjust video generation timing
 
 #### Cons
+
 - Assumes uniform beat spacing (may not work for variable tempo)
 
 ### Approach 4: Beat-Synced Frame Generation (Recommended)
 
 #### Algorithm
+
 Instead of aligning existing frames, generate frames at beat times (or as close as possible).
 
 ```python
@@ -429,7 +452,9 @@ def generate_beat_synced_frames(bpm, fps, duration_sec):
 ```
 
 #### For Video Generation
+
 When generating video, you can:
+
 1. **Generate frames at beat times:** Request frames at specific timestamps
 2. **Emphasize beat-aligned frames:** Use higher quality/weight for beat frames
 3. **Adjust generation timing:** Shift frame generation to align with beats
@@ -439,6 +464,7 @@ When generating video, you can:
 ## Practical Implementation
 
 ### Step 1: Calculate Beat Times
+
 ```python
 def get_beat_times(bpm, start_time, end_time):
     """Get all beat times within a section."""
@@ -452,6 +478,7 @@ def get_beat_times(bpm, start_time, end_time):
 ```
 
 ### Step 2: Map Beats to Frames
+
 ```python
 def map_beats_to_frames(beat_times, fps):
     """Map each beat to its nearest frame index."""
@@ -470,7 +497,9 @@ def map_beats_to_frames(beat_times, fps):
 ```
 
 ### Step 3: Use for Transitions
+
 Use beat-aligned frames for:
+
 - **Hard cuts:** Cut exactly at beat-aligned frames
 - **Transitions:** Start/end transitions at beat-aligned frames
 - **Effects:** Apply effects (flares, zooms) at beat times
@@ -480,7 +509,8 @@ Use beat-aligned frames for:
 ## Example: 110 BPM, 8 FPS
 
 ### Beat and Frame Timeline
-```
+
+```text
 Time (s)  | 0.000 | 0.125 | 0.250 | 0.375 | 0.500 | 0.625 | 0.750 | 0.875 | 1.000 | 1.125 | 1.250 | 1.375 | 1.500 | 1.625 | 1.750 | 1.875 | 2.000
 Frame     |   0   |   1   |   2   |   3   |   4   |   5   |   6   |   7   |   8   |   9   |  10   |  11   |  12   |  13   |  14   |  15   |  16
 Beat      |   ✓   |       |       |       |   ✓   |       |       |       |       |   ✓   |       |       |       |   ✓   |       |       |   ✓
@@ -488,6 +518,7 @@ Beat Time | 0.000 |       |       |       | 0.545 |       |       |       |     
 ```
 
 ### Alignment Results
+
 - **Beat 0** (0.000s) → **Frame 0** (0.000s), error = 0.000s ✓ Perfect
 - **Beat 1** (0.545s) → **Frame 4** (0.500s), error = 0.045s ✓ Good
 - **Beat 2** (1.091s) → **Frame 9** (1.125s), error = 0.034s ✓ Good
@@ -501,12 +532,14 @@ Beat Time | 0.000 |       |       |       | 0.545 |       |       |       |     
 ## Quality Metrics
 
 ### Alignment Quality
+
 - **Excellent:** Error < 0.02s (1 frame at 8fps = 0.125s, so < 16% of frame interval)
 - **Good:** Error < 0.05s (< 40% of frame interval)
 - **Acceptable:** Error < 0.1s (< 80% of frame interval)
 - **Poor:** Error ≥ 0.1s (consider adjusting FPS or using interpolation)
 
-### For 110 BPM, 8 FPS:
+### For 110 BPM, 8 FPS
+
 - Beat interval: 0.545s
 - Frame interval: 0.125s
 - **Ratio:** 0.545 / 0.125 ≈ 4.36 frames per beat
@@ -518,9 +551,12 @@ Beat Time | 0.000 |       |       |       | 0.545 |       |       |       |     
 
 Even though we're snapping to beats, we still need frame alignment because:
 
-1. **Video APIs work in frames**: You can't request "4.364 seconds" - you request "35 frames at 8 FPS"
-2. **Precise transitions**: Knowing the exact frame indices helps ensure transitions happen at the right moment
-3. **Alignment quality**: The `start_alignment_error` and `end_alignment_error` tell you how close you are to perfect beat alignment
+1. **Video APIs work in frames**: You can't request "4.364 seconds" - you request "35 frames at
+   8 FPS"
+2. **Precise transitions**: Knowing the exact frame indices helps ensure transitions happen at
+   the right moment
+3. **Alignment quality**: The `start_alignment_error` and `end_alignment_error` tell you how
+   close you are to perfect beat alignment
 
 ---
 
@@ -537,12 +573,13 @@ Even though we're snapping to beats, we still need frame alignment because:
 ## Code Integration Points
 
 ### Video Generation
+
 - Store beat times with clip metadata
 - Optionally request frames at specific beat times (if API supports)
 
 ### Composition Engine
+
 - Load beat times from analysis
 - Calculate beat-to-frame alignment
 - Use aligned frames for cuts and transitions
 - Apply effects at beat times
-

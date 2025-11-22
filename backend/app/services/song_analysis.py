@@ -12,7 +12,7 @@ import librosa
 import numpy as np
 from rq.job import Job, get_current_job
 
-from app.core.config import get_settings
+from app.core.config import get_settings, should_use_sections_for_song
 from app.core.constants import ANALYSIS_QUEUE_TIMEOUT_SEC
 from app.core.database import session_scope
 from app.core.queue import get_queue
@@ -215,64 +215,72 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
         logger.info("✅ [ANALYSIS] Progress updated to 25%% - song_id=%s, job_id=%s", song_id, job_id)
 
         # Section detection timing
-        logger.info("🔵 [ANALYSIS] Starting section detection - song_id=%s", song_id)
-        section_start = time.time()
+        # Check if sections should be analyzed based on video_type
+        use_sections = should_use_sections_for_song(song)
+        logger.info("🔵 [ANALYSIS] Section detection check - song_id=%s, use_sections=%s, video_type=%s", song_id, use_sections, getattr(song, 'video_type', None))
         
-        sections: List[SongSection]
-        audjust_sections_raw: Optional[List[dict]] = None
+        section_start = time.time()
+        sections: List[SongSection] = []
+        
+        if use_sections:
+            logger.info("🔵 [ANALYSIS] Starting section detection - song_id=%s", song_id)
+            audjust_sections_raw: Optional[List[dict]] = None
 
-        if settings.audjust_base_url and settings.audjust_api_key:
-            try:
-                audjust_sections_raw = fetch_structure_segments(audio_path)
-                logger.info(
-                    "Fetched %d sections from Audjust for song %s",
-                    len(audjust_sections_raw),
-                    song_id,
-                )
-            except AudjustConfigurationError as exc:
-                logger.warning("Audjust configuration invalid: %s", exc)
-            except AudjustRequestError as exc:
-                logger.warning(
-                    "Audjust section request failed for song %s: %s. Falling back to internal segmentation.",
-                    song_id,
-                    exc,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(
-                    "Unexpected error while calling Audjust for song %s: %s",
-                    song_id,
-                    exc,
-                )
-
-        if audjust_sections_raw:
-            try:
-                energy_per_section = _compute_section_energy(
-                    y, sr, audjust_sections_raw
-                )
-                inferred_sections = infer_section_types(
-                    audjust_sections=audjust_sections_raw,
-                    energy_per_section=energy_per_section,
-                )
-                if inferred_sections:
-                    sections = _build_song_sections_from_inference(inferred_sections)
-                else:
-                    logger.warning(
-                        "Audjust returned no usable sections for song %s. Falling back to internal segmentation.",
+            if settings.audjust_base_url and settings.audjust_api_key:
+                try:
+                    audjust_sections_raw = fetch_structure_segments(audio_path)
+                    logger.info(
+                        "Fetched %d sections from Audjust for song %s",
+                        len(audjust_sections_raw),
                         song_id,
                     )
+                except AudjustConfigurationError as exc:
+                    logger.warning("Audjust configuration invalid: %s", exc)
+                except AudjustRequestError as exc:
+                    logger.warning(
+                        "Audjust section request failed for song %s: %s. Falling back to internal segmentation.",
+                        song_id,
+                        exc,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "Unexpected error while calling Audjust for song %s: %s",
+                        song_id,
+                        exc,
+                    )
+
+            if audjust_sections_raw:
+                try:
+                    energy_per_section = _compute_section_energy(
+                        y, sr, audjust_sections_raw
+                    )
+                    inferred_sections = infer_section_types(
+                        audjust_sections=audjust_sections_raw,
+                        energy_per_section=energy_per_section,
+                    )
+                    if inferred_sections:
+                        sections = _build_song_sections_from_inference(inferred_sections)
+                    else:
+                        logger.warning(
+                            "Audjust returned no usable sections for song %s. Falling back to internal segmentation.",
+                            song_id,
+                        )
+                        sections = _detect_sections(y, sr, duration)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "Failed to build sections from Audjust response for song %s: %s. Falling back to internal segmentation.",
+                        song_id,
+                        exc,
+                    )
                     sections = _detect_sections(y, sr, duration)
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(
-                    "Failed to build sections from Audjust response for song %s: %s. Falling back to internal segmentation.",
-                    song_id,
-                    exc,
-                )
+            else:
                 sections = _detect_sections(y, sr, duration)
+            
+            section_time = time.time() - section_start
+            logger.info("✅ [ANALYSIS] Section detection completed - song_id=%s, sections=%d, time=%.2fs", song_id, len(sections), section_time)
         else:
-            sections = _detect_sections(y, sr, duration)
-        
-        section_time = time.time() - section_start
-        logger.info("✅ [ANALYSIS] Section detection completed - song_id=%s, sections=%d, time=%.2fs", song_id, len(sections), section_time)
+            logger.info("⏭️ [ANALYSIS] Skipping section detection (short-form video) - song_id=%s", song_id)
+            section_time = 0.0
 
         logger.info("🔵 [ANALYSIS] Updating progress to 50%% - song_id=%s, job_id=%s", song_id, job_id)
         _update_job_progress(job_id, 50)

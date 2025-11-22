@@ -4,9 +4,10 @@ This document describes where logs are written and how to inspect them during E2
 
 ## Log File Locations
 
-When running the development environment via `scripts/dev.sh`, logs are written to the `logs/` directory at the project root:
+When running the development environment via `scripts/dev.sh`, logs are written to the `logs/`
+directory at the project root:
 
-```
+```text
 logs/
 ├── backend.log      # Backend API server logs (uvicorn)
 ├── worker.log       # RQ worker logs (job execution)
@@ -36,10 +37,12 @@ logs/
 ### Key Logging Points
 
 **API Routes (`backend/app/api/v1/routes_songs.py`):**
+
 - `logger.exception()` on upload errors (line 176, 203)
 - `logger.exception()` on composition errors (line 608)
 
 **Song Analysis Service (`backend/app/services/song_analysis.py`):**
+
 - `logger.info()` - Job enqueuing, status updates, progress
 - `logger.warning()` - Configuration issues, missing data
 - `logger.error()` - Missing audio keys
@@ -47,13 +50,16 @@ logs/
 - Look for: `🔵 [ANALYSIS]`, `✅ [ANALYSIS]`, `❌ [ANALYSIS]`, `⚠️ [ANALYSIS]` prefixes
 
 **Section Inference (`backend/app/services/section_inference.py`):**
+
 - `logger.info()` - Section detection details, clustering results
 - `logger.warning()` - No chorus/verse candidates found
 
 **Audjust Client (`backend/app/services/audjust_client.py`):**
+
 - Errors are raised as exceptions (no direct logging, but exceptions will appear in logs)
 
 **Clip Generation (`backend/app/services/clip_generation.py`):**
+
 - Uses `logger` from module (check for clip-related errors)
 
 ### Logging Configuration
@@ -84,11 +90,13 @@ All output from RQ worker processes, including:
 ### Key Things to Look For
 
 **Song Analysis Jobs:**
+
 - Look for: `🚀 [ANALYSIS] RQ WORKER PICKED UP JOB - song_id=...`
 - Look for: `❌ [ANALYSIS] Song analysis failed`
 - Look for: Audjust API errors or fallback to internal detection
 
 **Clip Generation Jobs:**
+
 - Job enqueuing messages
 - Processing errors
 - Queue name verification (should include `:clip-generation` suffix)
@@ -109,6 +117,7 @@ All output from RQ worker processes, including:
 ### Frontend Console Logging Points
 
 **UploadPage (`frontend/src/pages/UploadPage.tsx`):**
+
 - `console.log('[compose] ...')` - Composition job lifecycle
 - `console.log('[generate-clips] ...')` - Clip generation lifecycle
 - `console.error('[compose] Failed to start composition:', err)`
@@ -185,6 +194,7 @@ grep "retry" logs/backend.log logs/worker.log -i
 ### Browser DevTools Console
 
 During E2E testing, also check the browser console (F12 → Console tab) for:
+
 - Frontend errors
 - API call failures
 - State update issues
@@ -193,19 +203,22 @@ During E2E testing, also check the browser console (F12 → Console tab) for:
 ## Log Format Examples
 
 ### Backend Log Format
-```
+
+```text
 2025-11-21 11:13:15 - app.services.song_analysis - INFO - 🔵 [ANALYSIS] Enqueuing analysis job - song_id=123e4567-e89b-12d3-a456-426614174000
 2025-11-21 11:13:16 - app.services.song_analysis - ERROR - ❌ [ANALYSIS] Song analysis failed for song_id=123e4567-e89b-12d3-a456-426614174000, job_id=abc123
 ```
 
 ### Worker Log Format
-```
+
+```text
 2025-11-21 11:13:20 - app.services.song_analysis - INFO - ================================================================================
 2025-11-21 11:13:20 - app.services.song_analysis - INFO - 🚀 [ANALYSIS] RQ WORKER PICKED UP JOB - song_id=123e4567-e89b-12d3-a456-426614174000
 ```
 
 ### Access Log Format
-```
+
+```text
 2025-11-21 11:13:15 - 127.0.0.1:54321 - "POST /api/v1/songs HTTP/1.1" 201
 2025-11-21 11:13:16 - 127.0.0.1:54321 - "GET /api/v1/songs/123e4567-e89b-12d3-a456-426614174000/analysis HTTP/1.1" 200
 ```
@@ -224,4 +237,3 @@ During E2E testing, also check the browser console (F12 → Console tab) for:
 - `API_LOG_LEVEL` - Controls backend log level (default: "info")
   - Options: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
   - Set in `backend/.env` or environment
-

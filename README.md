@@ -4,9 +4,11 @@
 
 VibeCraft is an end-to-end AI video generation pipeline built for musicians and creators.
 Upload a song → get a full music video.
-Generate visuals for individual sections → assemble a complete track-long video with beat-matched transitions and a cohesive aesthetic.
+Generate visuals for individual sections → assemble a complete track-long video with
+beat-matched transitions and a cohesive aesthetic.
 
-Built during an accelerated competition sprint, VibeCraft demonstrates what modern multimodal AI can do when paired with an elegant pipeline, thoughtful UX, and a synesthetic design philosophy.
+Built during an accelerated competition sprint, VibeCraft demonstrates what modern multimodal AI
+can do when paired with an elegant pipeline, thoughtful UX, and a synesthetic design philosophy.
 
 ---
 
@@ -30,7 +32,8 @@ Built during an accelerated competition sprint, VibeCraft demonstrates what mode
   * High-quality 1080p output
 * 🎥 **Download or share your final video**
 
-VibeCraft turns audio into cinema — no editing timeline, expensive software, or motion graphics expertise required.
+VibeCraft turns audio into cinema — no editing timeline, expensive software, or motion graphics
+expertise required.
 
 ---
 
@@ -42,8 +45,9 @@ VibeCraft turns audio into cinema — no editing timeline, expensive software, o
 [Railway Dashboard](https://railway.app/project/9d147533-96b0-4aeb-ab3a-502138d87ae7) | [Health Check](https://backend-api-production-c6ee.up.railway.app/healthz)
 
 **Redeploy:**
-- Backend: `cd backend && railway up`
-- Frontend: `cd frontend && railway up`
+
+* Backend: `cd backend && railway up`
+* Frontend: `cd frontend && railway up`
 
 ---
 
@@ -51,7 +55,7 @@ VibeCraft turns audio into cinema — no editing timeline, expensive software, o
 
 VibeCraft is built on a modular, scalable pipeline optimized for both cost and performance.
 
-```
+```text
 Audio Upload → Music Analysis → Scene Planning → Section Video Generation → 
 Composition Engine → Final 1080p Music Video
 ```
@@ -153,7 +157,7 @@ VibeCraft is built on a synesthetic design philosophy:
 
 # 📂 **Repository Structure**
 
-```
+```text
 vibecraft/
   backend/
     app/
@@ -247,6 +251,7 @@ npm run dev
 
 # 🎤 **Created for Music Creators. Built by Passion. Driven by AI.**
 
-Whether you're an indie artist making visuals for your first EP, a producer crafting lofi loops, or a label needing scalable video content — **VibeCraft brings your sound to life.**
+Whether you're an indie artist making visuals for your first EP, a producer crafting lofi loops,
+or a label needing scalable video content — **VibeCraft brings your sound to life.**
 
 If you like this project, ⭐️ star the repo or follow along for more updates.

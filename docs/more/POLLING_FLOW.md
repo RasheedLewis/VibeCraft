@@ -1,10 +1,12 @@
 # Polling System Flow Documentation
 
-This document breaks down how polling works in the VibeCraft frontend application, with specific line references for verification.
+This document breaks down how polling works in the VibeCraft frontend application, with
+specific line references for verification.
 
 ## Overview
 
 The app uses a multi-layered polling system to track the status of asynchronous jobs:
+
 1. **Analysis Polling** - Tracks song analysis jobs
 2. **Clip Polling** - Tracks clip generation jobs (most complex)
 3. **Composition Polling** - Tracks video composition jobs
@@ -57,6 +59,7 @@ Uses `useJobPolling` to poll analysis jobs.
 ### Flow
 
 1. **Initialization in UploadPage** (line 67):
+
    ```67:67:frontend/src/pages/UploadPage.tsx
    const analysisPolling = useAnalysisPolling(result?.songId ?? null)
    ```
@@ -94,6 +97,7 @@ Uses `useJobPolling` to poll analysis jobs.
 **Location:** `frontend/src/hooks/useClipPolling.ts`
 
 This is the most complex polling hook because it uses **two polling mechanisms**:
+
 1. **Job-based polling** (via `useJobPolling`) when there's an active job
 2. **Summary-based polling** (custom useEffect) as a fallback
 
@@ -123,6 +127,7 @@ When a clip generation job is active, it uses `useJobPolling`:
 #### Part 2: Summary-Based Polling (lines 108-190)
 
 This is a fallback that polls the clip summary endpoint directly when:
+
 - There's no active job ID
 - Clips exist but job tracking is unavailable
 
@@ -228,6 +233,7 @@ This hook has its own custom polling implementation (doesn't use `useJobPolling`
 ### Flow
 
 1. **Initialization in UploadPage** (lines 76-80):
+
    ```76:80:frontend/src/pages/UploadPage.tsx
    const compositionPolling = useCompositionPolling({
      jobId: composeJobId,
@@ -329,7 +335,7 @@ All three polling hooks are initialized and their states are synchronized:
 ## Key Polling Intervals
 
 | Hook | Interval | Location |
-|------|----------|----------|
+| :--- | :------- | :------- |
 | `useJobPolling` | 3000ms (3s) | `useJobPolling.ts:22` |
 | `useClipPolling` (summary fallback) | 5000ms (5s) | `useClipPolling.ts:170` |
 | `useCompositionPolling` | 2000ms (2s) | `useCompositionPolling.ts:47` |
@@ -339,17 +345,21 @@ All three polling hooks are initialized and their states are synchronized:
 ## Error Handling & Retries
 
 ### Job Polling Errors
+
 - Calls `onError` callback (line 68 in `useJobPolling.ts`)
 - Does NOT automatically retry (stops polling)
 
 ### Clip Summary Polling Errors
+
 - Retries after 10 seconds (line 176 in `useClipPolling.ts`)
 - Only retries if clips exist and no active job
 
 ### Composition Polling Errors
+
 - Retries after 5 seconds (line 51 in `useCompositionPolling.ts`)
 
 ### Clip Job Polling Errors
+
 - Retries after 5 seconds via `onError` callback (line 80 in `useClipPolling.ts`)
 
 ---
@@ -363,6 +373,7 @@ All polling hooks properly clean up:
 3. **useCompositionPolling**: Clears timeout and sets cancellation flag (lines 58-63)
 
 Cleanup happens when:
+
 - Component unmounts
 - Dependencies change (jobId, songId, enabled, etc.)
 - Polling completes or fails
@@ -395,4 +406,3 @@ To verify the polling system works correctly, check these key points:
    - ✅ All hooks have cleanup functions
    - ✅ Timeouts are cleared on unmount
    - ✅ Cancellation flags prevent race conditions
-

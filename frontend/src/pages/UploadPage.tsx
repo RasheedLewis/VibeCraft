@@ -24,6 +24,8 @@ import { normalizeClipStatus } from '../utils/status'
 import { useAnalysisPolling } from '../hooks/useAnalysisPolling'
 import { useClipPolling } from '../hooks/useClipPolling'
 import { useCompositionPolling } from '../hooks/useCompositionPolling'
+import { useVideoTypeSelection } from '../hooks/useVideoTypeSelection'
+import { useAudioSelection } from '../hooks/useAudioSelection'
 
 // Components
 import { BackgroundOrbs } from '../components/upload/BackgroundOrbs'
@@ -35,6 +37,10 @@ import {
   HardDriveIcon,
   ErrorIcon,
 } from '../components/upload/Icons'
+import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimeline'
+import { VideoTypeSelector } from '../components/upload/VideoTypeSelector'
+import { CharacterImageUpload } from '../components/upload/CharacterImageUpload'
+import { TemplateCharacterModal } from '../components/upload/TemplateCharacterModal'
 import { SongProfileView } from '../components/song/SongProfileView'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
@@ -61,10 +67,55 @@ export const UploadPage: React.FC = () => {
   const [playerClipSelectionLocked, setPlayerClipSelectionLocked] =
     useState<boolean>(false)
   const compositionCompleteHandledRef = useRef<string | null>(null)
+  const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  const [videoTypeSelectorVisible, setVideoTypeSelectorVisible] = useState(true)
+
+  // Use custom hooks for video type and audio selection
+  const videoTypeSelection = useVideoTypeSelection({
+    songId: result?.songId ?? null,
+    songDetails,
+    onError: setError,
+    onAnalysisTriggered: async (jobId: string) => {
+      // Set the jobId in the polling hook so it starts polling automatically
+      analysisPolling.setJobId?.(jobId)
+      return Promise.resolve()
+    },
+  })
+  const audioSelection = useAudioSelection({
+    songId: result?.songId ?? null,
+    songDetails,
+  })
 
   // Use polling hooks with bugfixes
   const analysisPolling = useAnalysisPolling(result?.songId ?? null)
   const clipPolling = useClipPolling(result?.songId ?? null)
+
+  // Sync video type selection state
+  const videoType = videoTypeSelection.videoType
+  // const isSettingVideoType = videoTypeSelection.isSetting
+
+  // Hide video type selector 3 seconds after analysis begins (fade out)
+  // COMMENTED OUT: Timing logic for fade-out
+  // useEffect(() => {
+  //   if (
+  //     videoType &&
+  //     (analysisState === 'queued' || analysisState === 'processing') &&
+  //     videoTypeSelectorVisible
+  //   ) {
+  //     const timer = setTimeout(() => {
+  //       setVideoTypeSelectorVisible(false)
+  //     }, 3000)
+  //     return () => clearTimeout(timer)
+  //   }
+  //   // Reset visibility when videoType becomes null (new upload)
+  //   if (!videoType) {
+  //     setVideoTypeSelectorVisible(true)
+  //   }
+  // }, [videoType, analysisState, videoTypeSelectorVisible])
+
+  // Sync audio selection state
+  const audioSelectionValue = audioSelection.audioSelection
+  const isSavingSelection = audioSelection.isSaving
 
   // Memoize enabled to prevent unnecessary re-renders
   const compositionEnabled = useMemo(
@@ -369,6 +420,9 @@ export const UploadPage: React.FC = () => {
     setComposeJobId(null)
     setPlayerActiveClipId(null)
     setPlayerClipSelectionLocked(false)
+    setVideoTypeSelectorVisible(true)
+    videoTypeSelection.reset()
+    audioSelection.reset()
     // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
     // if (highlightTimeoutRef.current) {
     //   window.clearTimeout(highlightTimeoutRef.current)
@@ -378,7 +432,7 @@ export const UploadPage: React.FC = () => {
     if (inputRef.current) {
       inputRef.current.value = ''
     }
-  }, [])
+  }, [videoTypeSelection, audioSelection])
 
   const fetchSongDetails = useCallback(async (songId: string) => {
     try {
@@ -465,14 +519,34 @@ export const UploadPage: React.FC = () => {
     }
   }, [clipSummary?.analysis, analysisData, result?.songId, analysisPolling])
 
-  // Fetch song details when analysis completes (backup in case it wasn't fetched after upload)
+  // Fetch song details when analysis completes to ensure we have latest data including video_type
   useEffect(() => {
-    if (analysisState === 'completed' && result?.songId && !songDetails) {
+    if (analysisState === 'completed' && result?.songId) {
+      // Always refresh songDetails when analysis completes to get latest video_type
       setTimeout(() => {
         void fetchSongDetails(result.songId)
       }, 0)
     }
-  }, [analysisState, result?.songId, songDetails, fetchSongDetails])
+  }, [analysisState, result?.songId, fetchSongDetails])
+
+  // Handler for selection changes - uses hook's saveSelection
+  const handleSelectionChange = useCallback(
+    (startSec: number, endSec: number) => {
+      audioSelection.saveSelection(startSec, endSec)
+    },
+    [audioSelection],
+  )
+
+  // Parse waveform data
+  const waveformValues = useMemo(() => {
+    if (!songDetails?.waveform_json) return []
+    try {
+      const parsed = JSON.parse(songDetails.waveform_json)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }, [songDetails?.waveform_json])
 
   useEffect(() => {
     if (!clipSummary?.composedVideoUrl) {
@@ -590,7 +664,7 @@ export const UploadPage: React.FC = () => {
         setResult(response.data)
         setProgress(100)
         setStage('uploaded')
-        await analysisPolling.startAnalysis(response.data.songId)
+        // Don't start analysis automatically - wait for user to select video type first
         await fetchSongDetails(response.data.songId)
         // Initialize clip summary (will be empty for new songs)
         await clipPolling.fetchClipSummary(response.data.songId)
@@ -603,7 +677,7 @@ export const UploadPage: React.FC = () => {
         setStage('error')
       }
     },
-    [resetState, analysisPolling, fetchSongDetails, clipPolling],
+    [resetState, fetchSongDetails, clipPolling],
   )
 
   const handleFilesSelected = useCallback(
@@ -668,6 +742,13 @@ export const UploadPage: React.FC = () => {
     </div>
   )
 
+  // Determine if video type selector should be shown
+  const showVideoTypeSelector =
+    stage === 'uploaded' &&
+    !analysisPolling.data &&
+    analysisState === 'idle' &&
+    !videoType
+
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#0C0C12] via-[#121224] to-[#0B0B16] px-4 py-16 text-white">
       <BackgroundOrbs />
@@ -686,6 +767,27 @@ export const UploadPage: React.FC = () => {
               and structure — setting the stage for a cinematic video.
             </p>
           </div>
+
+          {/* Video Type Selection - shown between heading and upload card */}
+          {(showVideoTypeSelector || (videoType && videoTypeSelectorVisible)) && (
+            <div
+              className={clsx(
+                'w-full transition-opacity duration-500',
+                videoType &&
+                  (analysisState === 'queued' || analysisState === 'processing') &&
+                  !videoTypeSelectorVisible
+                  ? 'opacity-0'
+                  : 'opacity-100',
+              )}
+            >
+              <div className="rounded-2xl border-2 border-vc-accent-primary/50 bg-gradient-to-br from-vc-accent-primary/10 via-vc-surface-primary to-vc-surface-primary p-4 shadow-xl">
+                <VideoTypeSelector
+                  onSelect={videoTypeSelection.setVideoType}
+                  selectedType={videoType}
+                />
+              </div>
+            </div>
+          )}
 
           <input
             id={fileInputId}
@@ -719,7 +821,7 @@ export const UploadPage: React.FC = () => {
                     metadata={metadata}
                     progress={progress}
                     result={result}
-                    analysisState={analysisState}
+                    analysisState={videoType ? analysisState : 'idle'}
                     analysisProgress={analysisProgress}
                     analysisError={analysisError}
                     analysisData={analysisData}
@@ -747,32 +849,157 @@ export const UploadPage: React.FC = () => {
         </div>
       )}
 
+      {/* Trigger analysis automatically after video type is selected */}
+      {stage === 'uploaded' &&
+        videoType &&
+        analysisState === 'idle' &&
+        !isFetchingAnalysis && (
+          <div className="vc-app-main mx-auto w-full max-w-4xl px-4 py-12">
+            <div className="text-center space-y-4">
+              <p className="text-sm text-vc-text-secondary">Starting analysis...</p>
+              <VCButton
+                onClick={async () => {
+                  if (result?.songId) {
+                    try {
+                      await apiClient.post(`/songs/${result.songId}/analyze`)
+                      await analysisPolling.fetchAnalysis(result.songId)
+                    } catch (err) {
+                      console.error('Failed to start analysis:', err)
+                      setError(extractErrorMessage(err, 'Failed to start analysis'))
+                    }
+                  }
+                }}
+              >
+                Start Analysis
+              </VCButton>
+            </div>
+          </div>
+        )}
+
       {analysisState === 'completed' && analysisData && songDetails && (
         <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
-          <SongProfileView
-            analysisData={analysisData}
-            songDetails={songDetails}
-            clipSummary={clipSummary}
-            clipJobId={clipJobId}
-            clipJobStatus={clipJobStatus}
-            clipJobProgress={clipJobProgress}
-            clipJobError={clipJobError}
-            isComposing={isComposing}
-            composeJobProgress={composeJobProgress}
-            playerActiveClipId={playerActiveClipId}
-            highlightedSectionId={highlightedSectionId}
-            metadata={metadata}
-            lyricsBySection={lyricsBySection}
-            audioUrl={result?.audioUrl ?? null}
-            onGenerateClips={handleGenerateClips}
-            onCancelClipJob={handleCancelClipJob}
-            onCompose={handleComposeClips}
-            onPreviewClip={handlePreviewClip}
-            onRegenerateClip={handleRegenerateClip}
-            onRetryClip={handleRetryClip}
-            onPlayerClipSelect={handlePlayerClipSelect}
-            onSectionSelect={handleSectionSelect}
-          />
+          {/* Fallback: If videoType is not set, show a message */}
+          {!videoType && (
+            <div className="mb-8 rounded-3xl border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-7">
+              <div className="text-center space-y-4">
+                <h3 className="text-lg font-semibold text-white">Video type not set</h3>
+                <p className="text-sm text-vc-text-secondary">
+                  This song was analyzed before video type selection was implemented.
+                  Please upload a new song to select a video type.
+                </p>
+              </div>
+            </div>
+          )}
+          {/* Character Image Upload Step - only for short-form videos */}
+          {videoType === 'short_form' && result?.songId && (
+            <section className="mb-8 space-y-4">
+              <div className="vc-label">Character Consistency (Optional)</div>
+              <p className="text-sm text-vc-text-secondary">
+                Upload a character reference image to maintain consistent character
+                appearance across all clips.
+              </p>
+              <CharacterImageUpload
+                songId={result.songId}
+                onUploadSuccess={(imageUrl) => {
+                  console.log('Character image uploaded:', imageUrl)
+                  // Optionally refresh song details to show character consistency is enabled
+                  if (result?.songId) {
+                    apiClient
+                      .get(`/songs/${result.songId}`)
+                      .then((response) => {
+                        setSongDetails(response.data)
+                      })
+                      .catch(console.error)
+                  }
+                }}
+                onUploadError={(error) => {
+                  console.error('Character image upload failed:', error)
+                  setError(error)
+                }}
+                onTemplateSelect={() => setTemplateModalOpen(true)}
+              />
+              <TemplateCharacterModal
+                isOpen={templateModalOpen}
+                onClose={() => setTemplateModalOpen(false)}
+                onSelect={(characterId) => {
+                  console.log('Template character selected:', characterId)
+                  // Refresh song details to show character consistency is enabled
+                  if (result?.songId) {
+                    apiClient
+                      .get(`/songs/${result.songId}`)
+                      .then((response) => {
+                        setSongDetails(response.data)
+                      })
+                      .catch(console.error)
+                  }
+                }}
+                songId={result.songId}
+              />
+            </section>
+          )}
+
+          {/* Audio Selection Step - only for short-form videos */}
+          {videoType === 'short_form' && !audioSelectionValue && (
+            <section className="mb-8 space-y-4">
+              <div className="vc-label">Select Audio Segment (Up to 30s)</div>
+              <p className="text-sm text-vc-text-secondary">
+                Choose up to 30 seconds from your track to generate video clips.
+              </p>
+              {result?.audioUrl && songDetails.duration_sec && (
+                <AudioSelectionTimeline
+                  audioUrl={result.audioUrl}
+                  waveform={waveformValues}
+                  durationSec={songDetails.duration_sec}
+                  beatTimes={analysisData.beatTimes}
+                  onSelectionChange={handleSelectionChange}
+                />
+              )}
+              {audioSelectionValue && (
+                <div className="flex justify-end">
+                  <VCButton
+                    onClick={() => {
+                      // Selection is saved automatically, proceed
+                      audioSelection.setAudioSelection(audioSelectionValue)
+                    }}
+                    disabled={isSavingSelection}
+                  >
+                    {isSavingSelection ? 'Saving...' : 'Continue with Selection'}
+                  </VCButton>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Song Profile View - shown after selection is made (for short-form) or directly (for full-length) */}
+          {(videoType === 'full_length' ||
+            (videoType === 'short_form' && audioSelectionValue)) &&
+            analysisData &&
+            songDetails && (
+              <SongProfileView
+                analysisData={analysisData}
+                songDetails={songDetails}
+                clipSummary={clipSummary}
+                clipJobId={clipJobId}
+                clipJobStatus={clipJobStatus}
+                clipJobProgress={clipJobProgress}
+                clipJobError={clipJobError}
+                isComposing={isComposing}
+                composeJobProgress={composeJobProgress}
+                playerActiveClipId={playerActiveClipId}
+                highlightedSectionId={highlightedSectionId}
+                metadata={metadata}
+                lyricsBySection={lyricsBySection}
+                audioUrl={result?.audioUrl ?? null}
+                onGenerateClips={handleGenerateClips}
+                onCancelClipJob={handleCancelClipJob}
+                onCompose={handleComposeClips}
+                onPreviewClip={handlePreviewClip}
+                onRegenerateClip={handleRegenerateClip}
+                onRetryClip={handleRetryClip}
+                onPlayerClipSelect={handlePlayerClipSelect}
+                onSectionSelect={handleSectionSelect}
+              />
+            )}
         </div>
       )}
       {analysisState === 'completed' && (!analysisData || !songDetails) && (

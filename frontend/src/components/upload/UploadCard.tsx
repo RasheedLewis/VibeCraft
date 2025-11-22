@@ -173,7 +173,9 @@ export const UploadCard: React.FC<UploadCardProps> = ({
             )}
           </div>
 
-          <WaveformPlaceholder />
+          <WaveformPlaceholder
+            isAnimating={analysisState !== 'idle' && analysisState !== 'completed'}
+          />
 
           {analysisState !== 'idle' && (
             <AnalysisProgress

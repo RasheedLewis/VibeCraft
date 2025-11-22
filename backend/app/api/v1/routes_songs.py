@@ -13,10 +13,15 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlmodel import Session, select
 
 from app.api.deps import get_db
+from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_field
 from app.core.config import get_settings
 from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
-from app.schemas.analysis import BeatAlignedBoundariesResponse, ClipBoundaryMetadata, SongAnalysis
+from app.schemas.analysis import (
+    BeatAlignedBoundariesResponse,
+    ClipBoundaryMetadata,
+    SongAnalysis,
+)
 from app.schemas.clip import (
     ClipGenerationSummary,
     ClipPlanBatchResponse,
@@ -24,7 +29,12 @@ from app.schemas.clip import (
     SongClipStatus,
 )
 from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
-from app.schemas.song import SongRead, SongUploadResponse
+from app.schemas.song import (
+    AudioSelectionUpdate,
+    SongRead,
+    SongUploadResponse,
+    VideoTypeUpdate,
+)
 from app.services import preprocess_audio
 from app.core.constants import (
     ACCEPTABLE_ALIGNMENT,
@@ -63,7 +73,12 @@ from app.services.composition_job import (
     get_job_status,
 )
 from app.services.song_analysis import enqueue_song_analysis, get_latest_analysis
-from app.services.storage import generate_presigned_get_url, upload_bytes_to_s3
+from app.services.storage import (
+    generate_presigned_get_url,
+    upload_bytes_to_s3,
+    get_character_image_s3_key,
+)
+from app.services.image_validation import validate_image, normalize_image_format
 from app.schemas.composition import (
     ComposeVideoRequest,
     ComposeVideoResponse,
@@ -102,7 +117,9 @@ async def upload_song(
     db: Session = Depends(get_db),
 ) -> SongUploadResponse:
     if not file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing filename")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Missing filename"
+        )
 
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -115,7 +132,9 @@ async def upload_song(
 
     contents = await file.read()
     if not contents:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty"
+        )
 
     try:
         preprocess_result = await asyncio.to_thread(
@@ -155,7 +174,9 @@ async def upload_song(
     db.refresh(song)
 
     original_s3_key = f"songs/{song.id}/original{suffix}"
-    processed_s3_key = f"songs/{song.id}/processed{preprocess_result.processed_extension}"
+    processed_s3_key = (
+        f"songs/{song.id}/processed{preprocess_result.processed_extension}"
+    )
 
     try:
         await asyncio.to_thread(
@@ -224,10 +245,14 @@ async def upload_song(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Enqueue song analysis job",
 )
-def analyze_song(song_id: UUID, db: Session = Depends(get_db)) -> SongAnalysisJobResponse:
+def analyze_song(
+    song_id: UUID, db: Session = Depends(get_db)
+) -> SongAnalysisJobResponse:
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     if not song.processed_s3_key:
         raise HTTPException(
@@ -246,7 +271,9 @@ def analyze_song(song_id: UUID, db: Session = Depends(get_db)) -> SongAnalysisJo
 def get_song_analysis(song_id: UUID, db: Session = Depends(get_db)) -> SongAnalysis:
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     analysis = get_latest_analysis(song_id)
     if not analysis:
@@ -262,8 +289,193 @@ def get_song_analysis(song_id: UUID, db: Session = Depends(get_db)) -> SongAnaly
 def get_song(song_id: UUID, db: Session = Depends(get_db)) -> Song:
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
     return song
+
+
+@router.patch(
+    "/{song_id}/video-type",
+    response_model=SongRead,
+    summary="Set video type for song",
+)
+def set_video_type(
+    song_id: UUID,
+    video_type: VideoTypeUpdate,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Set the video type (full-length or short-form) for a song.
+
+    This must be set before analysis runs, as it affects the analysis
+    and generation workflow.
+    """
+    song = get_song_or_404(song_id, db)
+
+    # Prevent changing after analysis has started
+    # Note: video_type validation is handled by VideoTypeUpdate schema
+    ensure_no_analysis(song_id)
+
+    return update_song_field(song, "video_type", video_type.video_type, db)
+
+
+@router.patch(
+    "/{song_id}/selection",
+    response_model=SongRead,
+    summary="Update audio selection range",
+)
+def update_audio_selection(
+    song_id: UUID,
+    selection: AudioSelectionUpdate,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Update the selected audio segment for a song."""
+    song = get_song_or_404(song_id, db)
+
+    if song.duration_sec is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Song duration not available. Please wait for analysis to complete.",
+        )
+
+    # Validate selection using centralized validation service
+    from app.services.audio_selection import validate_audio_selection
+
+    try:
+        validate_audio_selection(
+            start_sec=selection.start_sec,
+            end_sec=selection.end_sec,
+            song_duration_sec=song.duration_sec,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
+    # Update song fields
+    song.selected_start_sec = selection.start_sec
+    song.selected_end_sec = selection.end_sec
+    db.add(song)
+    db.commit()
+    db.refresh(song)
+
+    return song
+
+
+@router.post(
+    "/{song_id}/character-image",
+    status_code=status.HTTP_200_OK,
+    summary="Upload character reference image",
+)
+async def upload_character_image(
+    song_id: UUID,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Upload a character reference image for a song.
+
+    Only available for songs with video_type='short_form'.
+    The image will be validated, normalized to JPEG, and stored in S3.
+    """
+    settings = get_settings()
+
+    # Get song
+    song = get_song_or_404(song_id, db)
+
+    # Only allow for short_form videos
+    if song.video_type != "short_form":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Character consistency only available for short_form videos",
+        )
+
+    # Read image bytes
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Image file is empty"
+        )
+
+    # Validate image
+    is_valid, error_msg, metadata = validate_image(image_bytes, image.filename)
+    if not is_valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+
+    # Normalize to JPEG
+    try:
+        normalized_bytes = normalize_image_format(image_bytes, "JPEG")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid image format: {str(exc)}"
+        ) from exc
+
+    # Generate S3 key
+    s3_key = get_character_image_s3_key(str(song_id), "reference")
+
+    # Upload to S3
+    try:
+        await asyncio.to_thread(
+            upload_bytes_to_s3,
+            bucket_name=settings.s3_bucket_name,
+            key=s3_key,
+            data=normalized_bytes,
+            content_type="image/jpeg",
+        )
+    except Exception as exc:
+        logger.exception(f"Failed to upload character image to S3: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to store image. Verify storage configuration.",
+        ) from exc
+
+    # Update song record
+    song.character_reference_image_s3_key = s3_key
+    song.character_consistency_enabled = True
+    db.add(song)
+    db.commit()
+    db.refresh(song)
+
+    # Enqueue background job to generate consistent character image
+    try:
+        from app.core.queue import get_queue
+        from app.services.character_consistency import generate_character_image_job
+
+        queue = get_queue(
+            queue_name=f"{settings.rq_worker_queue}:character-generation",
+            timeout=300,  # 5 minutes
+        )
+        queue.enqueue(
+            generate_character_image_job,
+            song_id,
+            job_timeout=300,
+        )
+        logger.info(f"Enqueued character image generation job for song {song_id}")
+    except Exception as exc:
+        # Don't fail the upload if job enqueue fails
+        logger.warning(f"Failed to enqueue character image generation job: {exc}")
+
+    # Generate presigned URL
+    try:
+        image_url = await asyncio.to_thread(
+            generate_presigned_get_url,
+            bucket_name=settings.s3_bucket_name,
+            key=s3_key,
+            expires_in=3600,
+        )
+    except Exception as exc:
+        logger.exception(f"Failed to generate presigned URL: {exc}")
+        image_url = None
+
+    return {
+        "song_id": str(song_id),
+        "image_s3_key": s3_key,
+        "image_url": image_url,
+        "metadata": metadata,
+        "status": "uploaded",
+        "character_consistency_enabled": True,
+    }
 
 
 @router.get(
@@ -288,7 +500,9 @@ def get_beat_aligned_boundaries(
     """
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     analysis = get_latest_analysis(song_id)
     if not analysis:
@@ -377,7 +591,9 @@ def plan_clips_for_song(
 ) -> ClipPlanBatchResponse:
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
     if not song.duration_sec:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -397,7 +613,22 @@ def plan_clips_for_song(
             detail="Song analysis not found. Run analysis before planning clips.",
         )
 
-    min_required_clips = max(1, int(math.ceil(song.duration_sec / max_clip_sec)))
+    # Determine effective duration and time offset based on selection
+    if song.selected_start_sec is not None and song.selected_end_sec is not None:
+        effective_duration = song.selected_end_sec - song.selected_start_sec
+        time_offset = song.selected_start_sec
+        logger.info(
+            f"Using selected audio range: {song.selected_start_sec}s - {song.selected_end_sec}s "
+            f"(duration: {effective_duration}s) for song {song_id}"
+        )
+    else:
+        effective_duration = song.duration_sec
+        time_offset = 0.0
+        logger.info(
+            f"Using full audio duration: {effective_duration}s for song {song_id}"
+        )
+
+    min_required_clips = max(1, int(math.ceil(effective_duration / max_clip_sec)))
 
     effective_clip_count = clip_count if clip_count is not None else min_required_clips
     effective_clip_count = max(3, min(64, effective_clip_count))
@@ -406,18 +637,18 @@ def plan_clips_for_song(
         effective_clip_count = min(64, min_required_clips)
 
     min_total_required = min_clip_sec * effective_clip_count
-    if song.duration_sec < min_total_required - 1e-3:
+    if effective_duration < min_total_required - 1e-3:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Unable to plan clips: song duration is shorter than minimum total clip "
+                "Unable to plan clips: effective duration is shorter than minimum total clip "
                 "duration. Reduce clip_count or lower min_clip_sec."
             ),
         )
 
     try:
         plans = plan_beat_aligned_clips(
-            duration_sec=song.duration_sec,
+            duration_sec=effective_duration,
             analysis=analysis,
             clip_count=effective_clip_count,
             min_clip_sec=min_clip_sec,
@@ -425,7 +656,15 @@ def plan_clips_for_song(
             generator_fps=8,
         )
     except ClipPlanningError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+    # Adjust clip start/end times by time offset if selection is active
+    if time_offset > 0:
+        for plan in plans:
+            plan.start_sec = round(plan.start_sec + time_offset, 4)
+            plan.end_sec = round(plan.end_sec + time_offset, 4)
 
     persisted = persist_clip_plans(
         song_id=song_id,
@@ -443,13 +682,19 @@ def plan_clips_for_song(
     response_model=List[SongClipRead],
     summary="List planned clips for a song",
 )
-def list_planned_clips(song_id: UUID, db: Session = Depends(get_db)) -> List[SongClipRead]:
+def list_planned_clips(
+    song_id: UUID, db: Session = Depends(get_db)
+) -> List[SongClipRead]:
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     clips = db.exec(
-        select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        select(SongClip)
+        .where(SongClip.song_id == song_id)
+        .order_by(SongClip.clip_index)
     ).all()
 
     return [SongClipRead.model_validate(clip) for clip in clips]
@@ -460,10 +705,14 @@ def list_planned_clips(song_id: UUID, db: Session = Depends(get_db)) -> List[Son
     response_model=ClipGenerationSummary,
     summary="Get clip generation status and aggregate progress",
 )
-def get_clip_generation_status(song_id: UUID, db: Session = Depends(get_db)) -> ClipGenerationSummary:
+def get_clip_generation_status(
+    song_id: UUID, db: Session = Depends(get_db)
+) -> ClipGenerationSummary:
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     try:
         return get_clip_generation_summary(song_id)
@@ -485,7 +734,9 @@ def get_active_clip_generation_job(
     """Get the active (queued or processing) clip generation job for a song, if any."""
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     from sqlmodel import select
     from app.models.analysis import ClipGenerationJob
@@ -520,7 +771,9 @@ def generate_clip_batch(
 ) -> ClipGenerationJobResponse:
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     try:
         return start_clip_generation_job(song_id, max_parallel=max_parallel)
@@ -544,7 +797,9 @@ def retry_clip_generation_route(
 ) -> SongClipStatus:
     clip = db.get(SongClip, clip_id)
     if not clip or clip.song_id != song_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found for song")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found for song"
+        )
 
     if clip.status in {"processing", "queued"}:
         raise HTTPException(
@@ -555,9 +810,13 @@ def retry_clip_generation_route(
     try:
         refreshed = retry_clip_generation(clip_id)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
 
     return refreshed
 
@@ -573,7 +832,9 @@ async def compose_completed_clips(
 ) -> ClipGenerationSummary:
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     try:
         summary = get_clip_generation_summary(song_id)
@@ -607,7 +868,9 @@ async def compose_completed_clips(
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to compose video for song %s", song_id)
         # Include the actual error message for debugging
-        error_detail = str(exc) if exc else "Failed to compose video. Please try again later."
+        error_detail = (
+            str(exc) if exc else "Failed to compose video. Please try again later."
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to compose video: {error_detail}",
@@ -628,7 +891,7 @@ def compose_song_clips_async(
 ) -> ComposeVideoResponse:
     """
     Enqueue an async composition job to stitch all completed SongClips into a single video.
-    
+
     This endpoint automatically uses all completed SongClips for the song and returns
     a job ID that can be polled for progress.
 
@@ -640,7 +903,9 @@ def compose_song_clips_async(
     """
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     try:
         summary = get_clip_generation_summary(song_id)
@@ -677,7 +942,9 @@ def compose_song_clips_async(
     try:
         job_id, _ = enqueue_song_clip_composition(song_id)
     except (ValueError, CompositionError, SongNotFoundError) as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
 
     return ComposeVideoResponse(
         job_id=job_id,
@@ -709,7 +976,9 @@ def compose_video(
     """
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     # Validate clip IDs match metadata
     if len(request.clip_ids) != len(request.clip_metadata):
@@ -736,7 +1005,9 @@ def compose_video(
             clip_metadata=clip_metadata_dicts,
         )
     except (ValueError, CompositionError, SongNotFoundError, ClipNotFoundError) as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
 
     return ComposeVideoResponse(
         job_id=job_id,
@@ -767,7 +1038,9 @@ def get_composition_job_status(
     """
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     try:
         return get_job_status(job_id)
@@ -797,13 +1070,17 @@ def cancel_composition_job(
     """
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     try:
         cancel_job(job_id)
         return {"status": "cancelled", "job_id": job_id}
     except (ValueError, JobNotFoundError, JobStateError) as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
 
 
 @router.get(
@@ -828,7 +1105,9 @@ def get_composed_video_endpoint(
     """
     song = db.get(Song, song_id)
     if not song:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
 
     composed_video = get_composed_video(composed_video_id)
     if not composed_video:
@@ -871,4 +1150,3 @@ def get_composed_video_endpoint(
         status=composed_video.status,
         created_at=composed_video.created_at.isoformat(),
     )
-

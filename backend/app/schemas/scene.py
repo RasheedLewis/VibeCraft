@@ -1,6 +1,6 @@
 """Scene specification schemas for video generation."""
 
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -36,7 +36,7 @@ class ShotPattern(BaseModel):
 class SceneSpec(BaseModel):
     """Complete scene specification for video generation."""
 
-    section_id: str = Field(..., alias="sectionId")
+    section_id: Optional[str] = Field(None, alias="sectionId")
     template: TemplateType
     prompt: str = Field(..., description="Full prompt for video generation")
     color_palette: ColorPalette = Field(..., alias="colorPalette")

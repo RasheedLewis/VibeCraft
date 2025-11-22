@@ -20,9 +20,11 @@ from app.services.beat_alignment import (  # noqa: E402
     MAX_CLIP_DURATION,
     MIN_CLIP_DURATION,
     calculate_beat_aligned_boundaries,
+    calculate_beat_aligned_clip_boundaries,
     find_nearest_beat_index,
     map_beats_to_frames,
     validate_boundaries,
+    verify_beat_aligned_transitions,
 )
 
 
@@ -329,4 +331,215 @@ class TestValidateBoundaries:
         assert isinstance(is_valid_30, bool)
         assert max_error_30 >= 0
         assert avg_error_30 >= 0
+
+
+class TestCalculateBeatAlignedClipBoundaries:
+    """Test beat-aligned clip boundaries with user selection support.
+    
+    Justification: User selection (30s clips) is a key feature requirement.
+    This ensures boundaries are correctly calculated for selected segments.
+    """
+
+    def test_without_user_selection(self):
+        """Test boundary calculation without user selection (full song)."""
+        beat_times = [i * 0.5 for i in range(21)]  # 10 seconds
+        song_duration = 10.0
+        
+        boundaries = calculate_beat_aligned_clip_boundaries(
+            beat_times=beat_times,
+            song_duration=song_duration,
+            num_clips=6,
+        )
+        
+        assert len(boundaries) > 0
+        # First boundary should start at first beat
+        assert boundaries[0].start_time == pytest.approx(beat_times[0], abs=0.1)
+        # Last boundary should end near song duration
+        assert boundaries[-1].end_time == pytest.approx(song_duration, abs=0.5)
+
+    def test_with_user_selection_30s(self):
+        """Test boundary calculation with 30-second user selection."""
+        beat_times = [i * 0.5 for i in range(121)]  # 60 seconds of beats
+        song_duration = 60.0
+        
+        # User selects 10-40 second segment
+        boundaries = calculate_beat_aligned_clip_boundaries(
+            beat_times=beat_times,
+            song_duration=song_duration,
+            num_clips=6,
+            user_selection_start=10.0,
+            user_selection_end=40.0,
+        )
+        
+        assert len(boundaries) > 0
+        # First boundary should start at or after user selection start
+        assert boundaries[0].start_time >= 10.0
+        # Last boundary may extend slightly beyond selection end to meet duration constraints
+        # But should start within selection
+        assert boundaries[-1].start_time <= 40.0
+
+    def test_user_selection_filters_beats(self):
+        """Test that user selection filters beats correctly."""
+        beat_times = [i * 0.5 for i in range(21)]  # 0-10 seconds
+        song_duration = 10.0
+        
+        # Select 2-6 second segment
+        boundaries = calculate_beat_aligned_clip_boundaries(
+            beat_times=beat_times,
+            song_duration=song_duration,
+            user_selection_start=2.0,
+            user_selection_end=6.0,
+        )
+        
+        # Boundaries should only use beats in the 2-6 second range
+        for boundary in boundaries:
+            assert boundary.start_time >= 2.0
+            assert boundary.end_time <= 6.0
+
+    def test_user_selection_adjusts_times(self):
+        """Test that boundaries are adjusted for user selection offset."""
+        beat_times = [i * 0.5 for i in range(21)]  # 0-10 seconds
+        song_duration = 10.0
+        
+        # Select 2-8 second segment (longer to ensure we get boundaries)
+        boundaries = calculate_beat_aligned_clip_boundaries(
+            beat_times=beat_times,
+            song_duration=song_duration,
+            user_selection_start=2.0,
+            user_selection_end=8.0,
+        )
+        
+        # Should have at least one boundary
+        assert len(boundaries) > 0
+        # Boundaries should be in absolute time (not relative to selection start)
+        assert boundaries[0].start_time >= 2.0
+        # Last boundary may extend slightly beyond selection end to meet duration constraints
+        assert boundaries[-1].start_time <= 8.0
+
+
+class TestVerifyBeatAlignedTransitions:
+    """Test transition verification for beat alignment.
+    
+    Justification: Transition verification ensures all cuts occur on beats.
+    This is critical for Phase 3.3 success criteria (100% within ±50ms).
+    """
+
+    def test_perfect_alignment(self):
+        """Test verification when all transitions are perfectly aligned."""
+        beat_times = [0.0, 1.0, 2.0, 3.0, 4.0]
+        from app.services.beat_alignment import ClipBoundary
+        
+        boundaries = [
+            ClipBoundary(
+                start_time=0.0, end_time=1.0,
+                start_beat_index=0, end_beat_index=1,
+                start_frame_index=0, end_frame_index=24,
+                start_alignment_error=0.0, end_alignment_error=0.0,
+                duration_sec=1.0, beats_in_clip=[0, 1]
+            ),
+            ClipBoundary(
+                start_time=1.0, end_time=2.0,
+                start_beat_index=1, end_beat_index=2,
+                start_frame_index=24, end_frame_index=48,
+                start_alignment_error=0.0, end_alignment_error=0.0,
+                duration_sec=1.0, beats_in_clip=[1, 2]
+            ),
+        ]
+        
+        all_aligned, errors = verify_beat_aligned_transitions(boundaries, beat_times, tolerance_sec=0.05)
+        
+        assert all_aligned is True
+        assert len(errors) == 1  # One transition
+        assert errors[0] == pytest.approx(0.0, abs=0.001)
+
+    def test_transitions_within_tolerance(self):
+        """Test verification when transitions are within tolerance."""
+        beat_times = [0.0, 1.0, 2.0, 3.0]
+        from app.services.beat_alignment import ClipBoundary
+        
+        boundaries = [
+            ClipBoundary(
+                start_time=0.0, end_time=1.02,  # 20ms off
+                start_beat_index=0, end_beat_index=1,
+                start_frame_index=0, end_frame_index=24,
+                start_alignment_error=0.0, end_alignment_error=0.02,
+                duration_sec=1.02, beats_in_clip=[0, 1]
+            ),
+            ClipBoundary(
+                start_time=1.02, end_time=2.03,  # 30ms off
+                start_beat_index=1, end_beat_index=2,
+                start_frame_index=24, end_frame_index=48,
+                start_alignment_error=0.02, end_alignment_error=0.03,
+                duration_sec=1.01, beats_in_clip=[1, 2]
+            ),
+        ]
+        
+        all_aligned, errors = verify_beat_aligned_transitions(boundaries, beat_times, tolerance_sec=0.05)
+        
+        assert all_aligned is True  # Both within 50ms tolerance
+        assert len(errors) == 1
+        assert errors[0] <= 0.05
+
+    def test_transitions_outside_tolerance(self):
+        """Test verification when transitions exceed tolerance."""
+        beat_times = [0.0, 1.0, 2.0, 3.0]
+        from app.services.beat_alignment import ClipBoundary
+        
+        boundaries = [
+            ClipBoundary(
+                start_time=0.0, end_time=1.1,  # 100ms off beat at 1.0
+                start_beat_index=0, end_beat_index=1,
+                start_frame_index=0, end_frame_index=24,
+                start_alignment_error=0.0, end_alignment_error=0.1,
+                duration_sec=1.1, beats_in_clip=[0, 1]
+            ),
+            ClipBoundary(
+                start_time=1.1, end_time=2.0,  # Transition at 1.1 (100ms off)
+                start_beat_index=1, end_beat_index=2,
+                start_frame_index=24, end_frame_index=48,
+                start_alignment_error=0.1, end_alignment_error=0.0,
+                duration_sec=0.9, beats_in_clip=[1, 2]
+            ),
+        ]
+        
+        all_aligned, errors = verify_beat_aligned_transitions(boundaries, beat_times, tolerance_sec=0.05)
+        
+        assert all_aligned is False  # 100ms > 50ms tolerance
+        assert len(errors) == 1  # One transition
+        assert errors[0] > 0.05  # Error exceeds tolerance
+
+    def test_multiple_transitions(self):
+        """Test verification with multiple clip transitions."""
+        beat_times = [i * 0.5 for i in range(11)]  # 0-5 seconds
+        from app.services.beat_alignment import ClipBoundary
+        
+        boundaries = [
+            ClipBoundary(
+                start_time=0.0, end_time=1.0,
+                start_beat_index=0, end_beat_index=2,
+                start_frame_index=0, end_frame_index=24,
+                start_alignment_error=0.0, end_alignment_error=0.0,
+                duration_sec=1.0, beats_in_clip=[0, 1, 2]
+            ),
+            ClipBoundary(
+                start_time=1.0, end_time=2.0,
+                start_beat_index=2, end_beat_index=4,
+                start_frame_index=24, end_frame_index=48,
+                start_alignment_error=0.0, end_alignment_error=0.0,
+                duration_sec=1.0, beats_in_clip=[2, 3, 4]
+            ),
+            ClipBoundary(
+                start_time=2.0, end_time=3.0,
+                start_beat_index=4, end_beat_index=6,
+                start_frame_index=48, end_frame_index=72,
+                start_alignment_error=0.0, end_alignment_error=0.0,
+                duration_sec=1.0, beats_in_clip=[4, 5, 6]
+            ),
+        ]
+        
+        all_aligned, errors = verify_beat_aligned_transitions(boundaries, beat_times, tolerance_sec=0.05)
+        
+        assert all_aligned is True
+        assert len(errors) == 2  # Two transitions between three clips
+        assert all(error <= 0.05 for error in errors)
 

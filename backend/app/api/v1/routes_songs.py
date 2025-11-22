@@ -176,6 +176,16 @@ async def upload_song(
             detail="Audio duration must be 7 minutes or less.",
         )
 
+    # Check if user has reached the 5-project limit
+    existing_songs_count = db.exec(
+        select(Song).where(Song.user_id == current_user.id)
+    ).all()
+    if len(existing_songs_count) >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="sorry create a new account, limit of 5 reached",
+        )
+
     settings = get_settings()
     song_title = Path(sanitized_filename).stem or "Untitled Song"
 

@@ -15,6 +15,7 @@ from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import SongAnalysis
 from app.services.clip_generation import (
+    _get_character_image_urls,
     enqueue_clip_generation_batch,
     get_clip_generation_job_status,
     get_clip_generation_summary,
@@ -619,4 +620,79 @@ def test_clip_generation_character_consistency_priority(monkeypatch):
     assert "character_generated" in captured["reference_image_url"]
 
     _cleanup_song(song_id)
+
+
+def test_get_character_image_urls_priority(monkeypatch):
+    """Test _get_character_image_urls respects priority order."""
+    song = Song(
+        id=uuid4(),
+        user_id=DEFAULT_USER_ID,
+        title="Test",
+        original_filename="test.mp3",
+        original_file_size=1024,
+        original_s3_key="s3://test/test.mp3",
+        character_consistency_enabled=True,
+        character_generated_image_s3_key="songs/test/generated.jpg",
+        character_reference_image_s3_key="songs/test/reference.jpg",
+        character_pose_b_s3_key="songs/test/pose_b.jpg",
+    )
+    
+    monkeypatch.setattr(
+        "app.services.clip_generation.generate_presigned_get_url",
+        lambda *args, **kwargs: f"https://s3.example.com/{kwargs.get('key', 'test')}"
+    )
+    
+    urls, fallback = _get_character_image_urls(song)
+    
+    # Should have generated image as first (priority 1)
+    assert len(urls) >= 1
+    assert "generated" in urls[0]
+    assert fallback == urls[0]
+
+
+def test_get_character_image_urls_without_generated(monkeypatch):
+    """Test _get_character_image_urls uses reference when generated not available."""
+    song = Song(
+        id=uuid4(),
+        user_id=DEFAULT_USER_ID,
+        title="Test",
+        original_filename="test.mp3",
+        original_file_size=1024,
+        original_s3_key="s3://test/test.mp3",
+        character_consistency_enabled=True,
+        character_reference_image_s3_key="songs/test/reference.jpg",
+        character_pose_b_s3_key="songs/test/pose_b.jpg",
+    )
+    
+    monkeypatch.setattr(
+        "app.services.clip_generation.generate_presigned_get_url",
+        lambda *args, **kwargs: f"https://s3.example.com/{kwargs.get('key', 'test')}"
+    )
+    
+    urls, fallback = _get_character_image_urls(song)
+    
+    # Should have reference (pose-a) and pose-b
+    assert len(urls) == 2
+    assert "reference" in urls[0]
+    assert "pose_b" in urls[1]
+    assert fallback == urls[0]
+
+
+def test_get_character_image_urls_disabled():
+    """Test _get_character_image_urls returns empty when consistency disabled."""
+    song = Song(
+        id=uuid4(),
+        user_id=DEFAULT_USER_ID,
+        title="Test",
+        original_filename="test.mp3",
+        original_file_size=1024,
+        original_s3_key="s3://test/test.mp3",
+        character_consistency_enabled=False,
+        character_reference_image_s3_key="songs/test/reference.jpg",
+    )
+    
+    urls, fallback = _get_character_image_urls(song)
+    
+    assert urls == []
+    assert fallback is None
 

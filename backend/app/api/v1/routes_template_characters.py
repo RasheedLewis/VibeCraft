@@ -31,6 +31,64 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _upload_template_pose_to_song(
+    character_id: str,
+    pose: str,
+    s3_key: str,
+    settings,
+    require_success: bool = True,
+) -> bool:
+    """
+    Upload a template character pose to song's S3 location.
+    
+    Args:
+        character_id: Template character ID
+        pose: Pose ID ("pose-a" or "pose-b")
+        s3_key: Target S3 key for the song
+        settings: Application settings
+        require_success: If True, raise exception on failure; if False, return False
+    
+    Returns:
+        True if successful, False if failed and require_success=False
+    
+    Raises:
+        HTTPException: If require_success=True and upload fails
+    """
+    # Get pose image bytes
+    pose_bytes = get_template_character_image(character_id, pose)
+    if not pose_bytes:
+        if require_success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Failed to retrieve {pose} image for character {character_id}"
+            )
+        logger.warning(f"Failed to retrieve {pose} image for character {character_id}")
+        return False
+    
+    # Normalize to JPEG
+    normalized_bytes = normalize_image_format(pose_bytes, "JPEG")
+    
+    # Upload to S3
+    try:
+        await asyncio.to_thread(
+            upload_bytes_to_s3,
+            bucket_name=settings.s3_bucket_name,
+            key=s3_key,
+            data=normalized_bytes,
+            content_type="image/jpeg",
+        )
+        return True
+    except Exception as exc:
+        if require_success:
+            logger.exception(f"Failed to upload {pose} to S3: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to store character image. Verify storage configuration."
+            ) from exc
+        logger.warning(f"Failed to upload {pose} to S3: {exc}")
+        return False
+
+
 @router.get(
     "/template-characters",
     response_model=TemplateCharacterListResponse,
@@ -92,57 +150,24 @@ async def apply_template_character(
     # Copy pose-a (primary) to song's character reference location
     # Note: We always use pose-a as primary, pose-b as secondary
     pose_a_s3_key = get_character_image_s3_key(str(song_id), "reference")
-    
-    # Get pose-a image bytes and normalize to JPEG
-    pose_a_bytes = get_template_character_image(template.character_id, "pose-a")
-    if not pose_a_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Failed to retrieve pose-a image for character {template.character_id}"
-        )
-    
-    # Normalize to JPEG
-    normalized_pose_a = normalize_image_format(pose_a_bytes, "JPEG")
-    
-    # Upload pose-a
-    try:
-        await asyncio.to_thread(
-            upload_bytes_to_s3,
-            bucket_name=settings.s3_bucket_name,
-            key=pose_a_s3_key,
-            data=normalized_pose_a,
-            content_type="image/jpeg",
-        )
-    except Exception as exc:
-        logger.exception(f"Failed to upload pose-a to S3: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to store character image. Verify storage configuration."
-        ) from exc
+    await _upload_template_pose_to_song(
+        character_id=template.character_id,
+        pose="pose-a",
+        s3_key=pose_a_s3_key,
+        settings=settings,
+        require_success=True,  # Pose-a is required
+    )
     
     # Copy pose-b (secondary) to song's character pose-b location
     pose_b_s3_key = f"songs/{song_id}/character_pose_b.jpg"
-    
-    pose_b_bytes = get_template_character_image(template.character_id, "pose-b")
-    if pose_b_bytes:
-        # Normalize to JPEG
-        normalized_pose_b = normalize_image_format(pose_b_bytes, "JPEG")
-        
-        # Upload pose-b
-        try:
-            await asyncio.to_thread(
-                upload_bytes_to_s3,
-                bucket_name=settings.s3_bucket_name,
-                key=pose_b_s3_key,
-                data=normalized_pose_b,
-                content_type="image/jpeg",
-            )
-        except Exception as exc:
-            logger.warning(f"Failed to upload pose-b to S3: {exc}")
-            # Don't fail the request if pose-b fails, just log it
-            pose_b_s3_key = None
-    else:
-        logger.warning(f"Failed to retrieve pose-b image for character {template.character_id}")
+    pose_b_success = await _upload_template_pose_to_song(
+        character_id=template.character_id,
+        pose="pose-b",
+        s3_key=pose_b_s3_key,
+        settings=settings,
+        require_success=False,  # Pose-b is optional, don't fail request if it fails
+    )
+    if not pose_b_success:
         pose_b_s3_key = None
     
     # Update song record

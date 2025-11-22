@@ -227,6 +227,8 @@ class TestApplyTemplateCharacter:
             assert any("character_pose_b" in key for key in upload_keys)
 
 
+
+
 if __name__ == "__main__":
     import pytest
 

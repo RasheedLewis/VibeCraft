@@ -80,7 +80,7 @@ def execute_composition_pipeline(
                 raise ValueError(f"Job {job_id} not found")
             if job.status == "cancelled":
                 logger.info(f"Job {job_id} was cancelled, aborting")
-                return
+                return {"status": "cancelled", "job_id": job_id}
 
         update_job_progress(job_id, PROGRESS_VALIDATION, "processing")
 
@@ -127,7 +127,7 @@ def execute_composition_pipeline(
                     job = session.get(CompositionJob, job_id)
                     if job and job.status == "cancelled":
                         logger.info(f"Job {job_id} was cancelled during download")
-                        return
+                        return {"status": "cancelled", "job_id": job_id}
 
                 clip_path = temp_path / f"clip_{i}.mp4"
                 try:
@@ -327,13 +327,18 @@ def execute_composition_pipeline(
             # Beat times already retrieved above for beat alignment, reuse here for filters
             
             output_path = temp_path / "composed.mp4"
+            # Get effect type from config
+            from app.core.config import get_beat_effect_config
+            effect_config = get_beat_effect_config()
+            filter_type = effect_config.effect_type if effect_config.enabled else None
+            
             composition_result = concatenate_clips(
                 normalized_clip_paths=normalized_paths,
                 audio_path=audio_path,
                 output_path=output_path,
                 song_duration_sec=song_duration,
-                beat_times=beat_times,  # NEW: Pass beat times for filters
-                filter_type="flash",  # Can be made configurable later
+                beat_times=beat_times if effect_config.enabled else None,  # Only pass if effects enabled
+                filter_type=filter_type or "flash",  # Use config or default
                 frame_rate=24.0,
             )
             logger.info(
@@ -375,7 +380,18 @@ def execute_composition_pipeline(
                 clip_ids=clip_ids,
             )
 
-            # Step 9: Complete job
+            # Step 9: Track total cost for this video (sum of all clip generation costs)
+            # Note: Individual clip costs are already tracked during clip generation
+            # This is just for logging the final total
+            from app.repositories import SongRepository
+            final_song = SongRepository.get_by_id(song_id)
+            if final_song and final_song.total_generation_cost_usd:
+                logger.info(
+                    f"[COST-TRACKING] Final cost for song {song_id}: "
+                    f"${final_song.total_generation_cost_usd:.4f}"
+                )
+
+            # Step 10: Complete job
             complete_job(job_id, composed_video.id)
             update_job_progress(job_id, PROGRESS_COMPLETE, "completed")
 

@@ -9,6 +9,12 @@
 - Cache character templates on Cloudfront
 - dev/start script shouldn't say "No backend unit tests found"
 - 'Compose when done' button, I just remembered that's silly wording unless you can actually click it before clips are done
+- Not a fix but Reena suggested wow imagine if I could provide video for ref (like screenshots), ooh Murad told her there are also models that take video directly
+- the playback in audio selection timeline leaves much to be desired. right now the start and end times are wrong, see screenshot, but also and more important it's a drag (lol) to drag the markers, and also the playhead should be draggable too, and snap to the beginning-marker. ok actually it is draggable but sometimes it's hard especially going backwards and near the start-marker
+- add back button for templates/image-upload
+- ok so start/end definitely need to be draggable as a group...ah it is, but has annoying "Max: 30s"
+- oh also pretty sure it only sends the first pose so lol what's the point of two, let user pick?
+- also when the figure is spinning, the head doesn't look so good
 - ?
 
 ## New Future Work For Sure
@@ -19,6 +25,7 @@
 
 Do-first:
 
+- Ooh, Reena's tip, ask Murad what he did to have user provide a YouTube link and it downloads it
 - Crazy: the clips are currently generated with concurrency limit 2, that's low!
 - Uhh if you refresh page all state is lost... terrible UX
 - *MOST* important! — Transition beat-sync logic to use actual beat times from analysis (not

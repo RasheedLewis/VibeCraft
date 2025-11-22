@@ -2,8 +2,9 @@
 
 ## Overview
 
-Add pre-generated template character images (4-6 options) that users can select instead of
-uploading their own. This will make manual testing easier and provide quick character options.
+Add pre-generated template character images (4 characters, each with 2 poses = 8 images total) that
+users can select instead of uploading their own. This will make manual testing easier and provide
+quick character options.
 
 **Benefits**:
 
@@ -16,7 +17,7 @@ uploading their own. This will make manual testing easier and provide quick char
 
 ## Goals
 
-1. Provide 4-6 high-quality template character options
+1. Provide 4 high-quality template character options (each with 2 poses)
 2. Make manual testing easier
 3. Seamlessly integrate with existing character upload flow
 4. Allow users to choose template OR upload their own
@@ -38,12 +39,14 @@ uploading their own. This will make manual testing easier and provide quick char
 ```text
 1. User sees "Character Consistency (Optional)" section
 2. User has two options:
-   a. Click "Choose Template" → Modal opens with 4-6 template options
+   a. Click "Choose Template" → Modal opens with 4 character options (each showing 2 poses)
    b. Upload their own image (existing flow)
-3. If template selected:
-   - Template image is "uploaded" to song (same backend flow)
+3. If character selected:
+   - Both poses (pose-a and pose-b) are stored for the song
    - Character consistency enabled
-   - Same behavior as custom upload
+   - Video generation will attempt to use both poses, with fallback to pose-a if multiple
+     images are not supported by the model
+   - See "Video Generation Integration" section for implementation details
 ```
 
 ---
@@ -69,15 +72,14 @@ uploading their own. This will make manual testing easier and provide quick char
 ┌─────────────────────────────────────────────────────────┐
 │  Choose Template Character                    [×]       │
 ├─────────────────────────────────────────────────────────┤
-│  Select a character template:                            │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
-│  │ Template │  │ Template │  │ Template │            │
-│  │   1      │  │   2      │  │   3      │            │
-│  └──────────┘  └──────────┘  └──────────┘            │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
-│  │ Template │  │ Template │  │ Template │            │
-│  │   4      │  │   5      │  │   6      │            │
-│  └──────────┘  └──────────┘  └──────────┘            │
+│  Select a character (each shows 2 poses):               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
+│  │  Pose A  │  │  Pose A  │  │  Pose A  │  │  Pose A  │
+│  │          │  │          │  │          │  │          │
+│  │  Pose B  │  │  Pose B  │  │  Pose B  │  │  Pose B  │
+│  │ Character│  │ Character│  │ Character│  │ Character│
+│  │    1     │  │    2     │  │    3     │  │    4     │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘
 │  [Cancel]                                    [Select]   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -86,7 +88,9 @@ uploading their own. This will make manual testing easier and provide quick char
 
 - **Button Placement**: "Choose Template" next to/above upload area, secondary button style
 - **Modal Behavior**: Click outside/ESC to close, loading state during upload, success state
-- **Template Display**: Thumbnail images (~200x200px), name/description, highlight selected, hover effects
+- **Template Display**: Each column shows both poses stacked vertically (~200x200px each),
+  character name, highlight selected column, hover effects
+- **Selection**: User selects entire character (column), not individual pose
 - **State Management**: Show preview if template selected, allow switching between template/custom
 
 ---
@@ -95,7 +99,10 @@ uploading their own. This will make manual testing easier and provide quick char
 
 ### Template Storage: Hybrid Approach (Recommended)
 
-- Templates stored in S3: `s3://bucket/template-characters/template-1.jpg` through `template-6.jpg`
+- Templates stored in S3: `s3://bucket/template-characters/character-1-pose-a.jpg`,
+  `character-1-pose-b.jpg`, `character-2-pose-a.jpg`, `character-2-pose-b.jpg`,
+  `character-3-pose-a.jpg`, `character-3-pose-b.jpg`, `character-4-pose-a.jpg`,
+  `character-4-pose-b.jpg` (8 images total)
 - Frontend fetches template list from backend
 - Frontend displays templates in modal
 - When selected, backend copies template to song's character image location
@@ -119,11 +126,22 @@ frontend deployment) and simplicity (consistent with existing storage).
 {
   "templates": [
     {
-      "id": "template-1",
+      "id": "character-1",
       "name": "Geometric Character",
       "description": "Clean, minimalist geometric design",
-      "thumbnail_url": "https://...",
-      "image_url": "https://..."
+      "poses": [
+        {
+          "id": "pose-a",
+          "thumbnail_url": "https://...",
+          "image_url": "https://..."
+        },
+        {
+          "id": "pose-b",
+          "thumbnail_url": "https://...",
+          "image_url": "https://..."
+        }
+      ],
+      "default_pose": "pose-a"
     }
   ]
 }
@@ -147,9 +165,12 @@ async def list_template_characters(db: Session = Depends(get_db)):
 
 ```json
 {
-  "template_id": "template-1"
+  "character_id": "character-1",
+  "pose": "pose-a"
 }
 ```
+
+**Note**: `pose` is optional, defaults to `pose-a` if not specified.
 
 **Response**:
 
@@ -175,8 +196,9 @@ async def apply_template_character(
     if not song or song.video_type != "short_form":
         raise HTTPException(status_code=404 if not song else 400, ...)
     
-    # Get template image from S3
-    template_image = get_template_character_image(template.template_id)
+    # Get character image from S3 (default to pose-a if not specified)
+    pose = template.pose or "pose-a"
+    template_image = get_template_character_image(template.character_id, pose)
     if not template_image:
         raise HTTPException(status_code=404, ...)
     
@@ -202,21 +224,55 @@ async def apply_template_character(
 """Template character management service."""
 
 TEMPLATE_CHARACTERS = [
-    {"id": "template-1", "name": "Geometric Character", "s3_key": "template-characters/template-1.jpg"},
-    {"id": "template-2", "name": "Organic Character", "s3_key": "template-characters/template-2.jpg"},
-    {"id": "template-3", "name": "Abstract Character", "s3_key": "template-characters/template-3.jpg"},
-    {"id": "template-4", "name": "Minimalist Character", "s3_key": "template-characters/template-4.jpg"},
-    {"id": "template-5", "name": "Vibrant Character", "s3_key": "template-characters/template-5.jpg"},
-    {"id": "template-6", "name": "Classic Character", "s3_key": "template-characters/template-6.jpg"},
+    {
+        "id": "character-1",
+        "name": "Geometric Character",
+        "description": "Clean, minimalist geometric design",
+        "poses": {
+            "pose-a": "template-characters/character-1-pose-a.jpg",
+            "pose-b": "template-characters/character-1-pose-b.jpg",
+        },
+        "default_pose": "pose-a",
+    },
+    {
+        "id": "character-2",
+        "name": "Organic Character",
+        "description": "Flowing, natural organic design",
+        "poses": {
+            "pose-a": "template-characters/character-2-pose-a.jpg",
+            "pose-b": "template-characters/character-2-pose-b.jpg",
+        },
+        "default_pose": "pose-a",
+    },
+    {
+        "id": "character-3",
+        "name": "Abstract Character",
+        "description": "Bold, abstract artistic design",
+        "poses": {
+            "pose-a": "template-characters/character-3-pose-a.jpg",
+            "pose-b": "template-characters/character-3-pose-b.jpg",
+        },
+        "default_pose": "pose-a",
+    },
+    {
+        "id": "character-4",
+        "name": "Minimalist Character",
+        "description": "Simple, elegant minimalist design",
+        "poses": {
+            "pose-a": "template-characters/character-4-pose-a.jpg",
+            "pose-b": "template-characters/character-4-pose-b.jpg",
+        },
+        "default_pose": "pose-a",
+    },
 ]
 
 def get_template_characters() -> list[dict]:
-    """Get list of available template characters with presigned URLs."""
-    # Generate presigned URLs for each template
-    # Return list with thumbnail_url, image_url, etc.
+    """Get list of available template characters with presigned URLs for both poses."""
+    # Generate presigned URLs for each character's poses
+    # Return list with poses array containing thumbnail_url, image_url for each pose
 
-def get_template_character_image(template_id: str) -> Optional[bytes]:
-    """Get template character image bytes from S3."""
+def get_template_character_image(character_id: str, pose: str = "pose-a") -> Optional[bytes]:
+    """Get template character image bytes from S3 for specified character and pose."""
 
 def copy_template_to_song(template_image_bytes: bytes, song_s3_key: str) -> str:
     """Copy template image to song's character image location."""
@@ -227,18 +283,24 @@ def copy_template_to_song(template_image_bytes: bytes, song_s3_key: str) -> str:
 **File**: `backend/app/schemas/template_character.py` (NEW)
 
 ```python
+class CharacterPose(BaseModel):
+    id: str
+    thumbnail_url: str
+    image_url: str
+
 class TemplateCharacter(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
-    thumbnail_url: str
-    image_url: str
+    poses: list[CharacterPose]
+    default_pose: str
 
 class TemplateCharacterListResponse(BaseModel):
     templates: list[TemplateCharacter]
 
 class TemplateCharacterApply(BaseModel):
-    template_id: str
+    character_id: str
+    pose: Optional[str] = "pose-a"
 ```
 
 ---
@@ -253,11 +315,12 @@ class TemplateCharacterApply(BaseModel):
 
 **Key Features**:
 
-- Fetches templates from `GET /api/v1/template-characters`
-- Displays 4-6 templates in grid (2-3 columns)
-- Shows thumbnail, name, description
-- Highlights selected template
-- Applies template via `POST /api/v1/songs/{song_id}/character-image/template`
+- Fetches characters from `GET /api/v1/template-characters`
+- Displays 4 characters in grid (4 columns)
+- Each column shows both poses stacked vertically
+- Shows character name, description
+- Highlights selected character (entire column)
+- Applies character via `POST /api/v1/songs/{song_id}/character-image/template` (uses default pose)
 - Loading states during fetch and apply
 - Error handling
 
@@ -296,11 +359,189 @@ interface TemplateCharacterModalProps {
 
 ---
 
+## Video Generation Integration
+
+### Implementation Strategy: Try Both Poses with Fallback
+
+**Model**: `minimax/hailuo-2.3` (Replicate)
+
+**Approach**: Attempt to use **both poses** (pose-a and pose-b) for video generation when
+possible, with automatic fallback to single pose if multiple images are not supported.
+
+### Current Implementation
+
+**Current Behavior**:
+
+- Only **ONE reference image** is passed to video generation
+- The model accepts a single `image` parameter
+- Currently, only **pose-a** (default pose) is used when a template character is selected
+
+**Code Reference** (`backend/app/services/video_generation.py`):
+
+```python
+if reference_image_url:
+    input_params["image"] = reference_image_url  # Single image only
+```
+
+### New Implementation Plan
+
+#### Step 1: Update Template Character Service
+
+**File**: `backend/app/services/template_characters.py`
+
+When applying a template character, store **both poses** in song metadata:
+
+```python
+def apply_template_character_to_song(song_id: UUID, character_id: str) -> dict:
+    """Apply template character to song, storing both poses."""
+    character = get_template_character(character_id)
+    
+    # Store both poses in song metadata or S3
+    pose_a_s3_key = f"songs/{song_id}/character_pose_a.jpg"
+    pose_b_s3_key = f"songs/{song_id}/character_pose_b.jpg"
+    
+    # Copy both poses to song's S3 location
+    copy_template_pose_to_song(character_id, "pose-a", pose_a_s3_key)
+    copy_template_pose_to_song(character_id, "pose-b", pose_b_s3_key)
+    
+    # Update song record
+    song.character_reference_image_s3_key = pose_a_s3_key  # Primary (fallback)
+    song.character_pose_b_s3_key = pose_b_s3_key  # Secondary
+    song.character_consistency_enabled = True
+```
+
+**Note**: May need to add `character_pose_b_s3_key` field to Song model, or store in JSON
+metadata field.
+
+#### Step 2: Update Video Generation Service
+
+**File**: `backend/app/services/video_generation.py`
+
+Modify `generate_section_video()` to accept multiple reference images:
+
+```python
+def generate_section_video(
+    scene_spec: SceneSpec,
+    seed: Optional[int] = None,
+    num_frames: Optional[int] = None,
+    fps: Optional[int] = None,
+    reference_image_url: Optional[str] = None,
+    reference_image_urls: Optional[list[str]] = None,  # NEW: Multiple images
+    max_poll_attempts: int = 180,
+    poll_interval_sec: float = 5.0,
+) -> tuple[bool, Optional[str], Optional[dict]]:
+    """Generate video with support for multiple reference images."""
+    
+    # Try multiple images first (if provided)
+    if reference_image_urls and len(reference_image_urls) > 1:
+        # Attempt to pass multiple images
+        # Check if model supports multiple images (research needed)
+        input_params = {
+            "prompt": scene_spec.prompt,
+            "num_frames": max(1, min(frame_count, 120)),
+            "width": 576,
+            "height": 320,
+            "fps": effective_fps,
+        }
+        
+        # Try different parameter names that might support multiple images
+        # Option 1: Array of images
+        try:
+            input_params["images"] = reference_image_urls
+            # Test if model accepts this
+        except:
+            # Option 2: image parameter with array
+            try:
+                input_params["image"] = reference_image_urls
+            except:
+                # Fallback: Use first image only
+                logger.warning("Model doesn't support multiple images, using first image only")
+                input_params["image"] = reference_image_urls[0]
+    elif reference_image_url:
+        # Single image (existing behavior)
+        input_params["image"] = reference_image_url
+    elif reference_image_urls and len(reference_image_urls) == 1:
+        # Single image in list
+        input_params["image"] = reference_image_urls[0]
+```
+
+#### Step 3: Update Clip Generation Service
+
+**File**: `backend/app/services/clip_generation.py`
+
+Modify to pass both poses when available:
+
+```python
+# Get character image URLs if character consistency is enabled
+character_image_urls = []
+if song and song.character_consistency_enabled:
+    try:
+        # Get primary pose (pose-a)
+        if song.character_reference_image_s3_key:
+            pose_a_url = generate_presigned_get_url(
+                bucket_name=settings.s3_bucket_name,
+                key=song.character_reference_image_s3_key,
+                expires_in=3600
+            )
+            character_image_urls.append(pose_a_url)
+        
+        # Get secondary pose (pose-b) if available
+        if hasattr(song, 'character_pose_b_s3_key') and song.character_pose_b_s3_key:
+            pose_b_url = generate_presigned_get_url(
+                bucket_name=settings.s3_bucket_name,
+                key=song.character_pose_b_s3_key,
+                expires_in=3600
+            )
+            character_image_urls.append(pose_b_url)
+    except Exception as e:
+        logger.warning(f"Failed to generate presigned URLs for character images: {e}")
+
+# Pass to video generation (will try multiple, fallback to single)
+success, video_url, metadata = generate_section_video(
+    scene_spec,
+    seed=seed,
+    num_frames=clip_num_frames,
+    fps=clip_fps,
+    reference_image_urls=character_image_urls if character_image_urls else None,
+    reference_image_url=character_image_urls[0] if character_image_urls else None,  # Fallback
+)
+```
+
+### Model Support Research
+
+**Question**: Does `minimax/hailuo-2.3` support multiple reference images?
+
+**Research Tasks**:
+
+1. Check Replicate model documentation for `minimax/hailuo-2.3`
+2. Test API with array of images: `input_params["images"] = [url1, url2]`
+3. Test API with single image parameter containing array: `input_params["image"] = [url1, url2]`
+4. Check for alternative parameter names (e.g., `reference_images`, `image_list`)
+5. If not supported, implement graceful fallback to single image
+
+**Fallback Strategy**:
+
+- If model doesn't support multiple images, automatically use **pose-a** (primary pose)
+- Log warning when fallback occurs
+- No user-facing error - seamless degradation
+- Both poses still shown in UI for user context
+
+### Benefits
+
+- **Better character consistency**: Model sees both poses, better understanding of character
+- **Graceful degradation**: Falls back to single pose if not supported
+- **Future-proof**: Easy to enable when model support is confirmed
+- **No breaking changes**: Existing single-image flow still works
+
+---
+
 ## Template Character Images
 
 ### Requirements
 
-**Style Variety**: Geometric, organic, abstract, minimalist, vibrant, classic
+**Style Variety**: 4 distinct character styles (e.g., geometric, organic, abstract, minimalist)
+
+**Pose Variety**: Each character has 2 different poses (pose-a and pose-b)
 
 **Technical**:
 
@@ -310,15 +551,21 @@ interface TemplateCharacterModalProps {
 - Background: Transparent or solid color
 - Character: Single character, centered, clear, recognizable
 
-**Naming**: `template-1.jpg` through `template-6.jpg` in S3 `template-characters/` directory
+**Naming**: `character-{1-4}-pose-{a|b}.jpg` in S3 `template-characters/` directory
+
+- `character-1-pose-a.jpg`, `character-1-pose-b.jpg`
+- `character-2-pose-a.jpg`, `character-2-pose-b.jpg`
+- `character-3-pose-a.jpg`, `character-3-pose-b.jpg`
+- `character-4-pose-a.jpg`, `character-4-pose-b.jpg`
 
 ### Creation Process
 
-1. Design 6 distinct character designs
-2. Export as 1024x1024px JPEG
-3. Optimize (< 500KB each)
-4. Upload to S3 `template-characters/` bucket
-5. Test with video generation
+1. Design 4 distinct character designs
+2. Create 2 poses for each character (8 images total)
+3. Export as 1024x1024px JPEG
+4. Optimize (< 500KB each)
+5. Upload to S3 `template-characters/` bucket with naming convention
+6. Test with video generation
 
 ---
 
@@ -330,7 +577,7 @@ interface TemplateCharacterModalProps {
 - [ ] Create template character schemas
 - [ ] Create `GET /api/v1/template-characters` endpoint
 - [ ] Create `POST /api/v1/songs/{song_id}/character-image/template` endpoint
-- [ ] Upload 6 template character images to S3
+- [ ] Upload 8 template character images to S3 (4 characters × 2 poses)
 - [ ] Test endpoints
 
 ### Phase 2: Frontend Components
@@ -361,7 +608,8 @@ interface TemplateCharacterModalProps {
 
 ### Manual Testing
 
-1. **Template Selection Flow**: Open modal → View templates → Select → Verify applied
+1. **Template Selection Flow**: Open modal → View 4 characters (each with 2 poses) → Select character
+   → Verify applied (default pose-a)
 2. **Template vs Custom**: Switch between template and custom upload, verify only one active
 3. **Error Handling**: Invalid template ID, network errors, S3 access errors
 
@@ -386,7 +634,8 @@ interface TemplateCharacterModalProps {
 
 ## Open Questions
 
-1. **Template Source**: Who creates initial 6 templates? (Designer, AI-generated, etc.)
+1. **Template Source**: Who creates initial 4 characters with 2 poses each?
+   (Designer, AI-generated, etc.)
 2. **Template Updates**: How to update/add templates without breaking existing songs? Version templates?
 3. **Template Licensing**: What license? Commercial use allowed?
 4. **Template Storage**: Separate S3 bucket? Use CDN?
@@ -395,7 +644,7 @@ interface TemplateCharacterModalProps {
 
 ## Success Criteria
 
-1. ✅ Users can select from 4-6 template characters
+1. ✅ Users can select from 4 template characters (each with 2 poses visible)
 2. ✅ Template selection works seamlessly with existing upload flow
 3. ✅ Templates are applied correctly to songs
 4. ✅ Manual testing is easier (no need for custom images)
@@ -421,7 +670,7 @@ interface TemplateCharacterModalProps {
 
 ### Storage
 
-- S3: `template-characters/template-1.jpg` through `template-6.jpg`
+- S3: `template-characters/character-{1-4}-pose-{a|b}.jpg` (8 images total)
 
 ---
 

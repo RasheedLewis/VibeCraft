@@ -279,12 +279,52 @@ If you find a result you like, save the seed to regenerate it later.
 **Note:** Seed only works with Zeroscope/Luma-style models. Minimax/Hailuo models do not
 support seed parameters.
 
+### test_rapid_iteration.py
+
+Rapid iteration testing for prompt experimentation. Generates multiple 4-second videos quickly.
+
+**Positional Arguments:**
+
+- `prompt` - Base prompt for video generation (required)
+
+**Optional Flags:**
+
+- `--model` - Replicate model identifier (default: `minimax/hailuo-2.3`)
+- `--iterations` - Number of iterations to run (default: 50)
+- `--delay` - Delay between iterations in seconds (default: 2.0)
+
+**Features:**
+
+- Generates 4-second clips for fast iteration
+- Logs full prompts (not truncated) to `rapid_iteration.log` in JSON format
+- Tracks success/failure rates
+- Optimized for speed (uses 768p resolution for minimax models)
+
+**Example:**
+
+```bash
+python test_rapid_iteration.py "A futuristic cityscape" --iterations 50 --delay 2.0
+```
+
+**Log Format:**
+
+Each iteration is logged as a JSON object with:
+- `iteration`: Iteration number
+- `timestamp`: ISO timestamp
+- `model`: Model used
+- `prompt`: Full prompt (not truncated)
+- `parameters`: Full parameter dict
+- `result`: Video URL or error message
+- `duration_sec`: Generation duration
+
 ## File Structure
 
 - `test_video.py` - Single video generation script
 - `test_batch.py` - Batch testing from file
 - `test_interactive.py` - Interactive prompt testing
 - `test_seed_variations.py` - Test same prompt with multiple seeds
+- `test_rapid_iteration.py` - Rapid iteration testing (50 iterations, 4s clips, full prompt logging)
 - `requirements.txt` - Python dependencies
 - `output/` - Generated videos metadata (gitignored)
 - `api_calls.log` - Automatic log of all API calls with timing (gitignored)
+- `rapid_iteration.log` - Full prompt logs for rapid iteration testing (gitignored)

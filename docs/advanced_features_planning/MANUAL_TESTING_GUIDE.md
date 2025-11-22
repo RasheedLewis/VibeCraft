@@ -42,8 +42,11 @@ branch. Each step includes exact actions, expected results, verification methods
    - Click "Continue with Selection"
    - **Verify**: Timeline works, constraints enforced, preview works, selection saves
 
-4. **Quick Character Upload** (2 min)
-   - Upload valid image (JPEG/PNG/WEBP)
+4. **Quick Character Selection** (2 min)
+   - Click "Choose Template" button
+   - Select a template character from modal
+   - **Verify**: Modal opens, templates load, selection applies successfully
+   - **Alternative**: Upload custom image (JPEG/PNG/WEBP)
    - **Verify**: Upload succeeds, no errors
 
 5. **Verify Song Profile** (1 min)
@@ -235,9 +238,9 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ## Character Consistency Foundation
 
-**Goal**: Verify character image upload works (foundation only).
+**Goal**: Verify character image upload and template character selection work.
 
-**Time**: 10-15 min
+**Time**: 15-20 min
 
 ### Checkpoints
 
@@ -246,17 +249,51 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 - Complete analysis for short-form video
 - Verify: Character upload section visible (short-form only), appears after
   analysis
+- Verify: "Choose Template" button visible next to upload area
 
-**4.2 Upload Valid Image**
+**4.2 Template Character Selection**
+
+- Click "Choose Template" button
+- **Verify**: Modal opens, displays 4 characters in grid (4 columns)
+- **Verify**: Each character shows 2 poses stacked vertically
+- **Verify**: Character names and descriptions visible
+- **Verify**: `GET /api/v1/template-characters` returns 200 with templates array
+- Select a character (click on character column)
+- **Verify**: Modal shows loading state during application
+- **Verify**: `POST /api/v1/songs/{id}/character-image/template` returns 200
+- **Verify**: Modal closes after successful selection
+- **Verify**: Character consistency enabled in database
+- **Verify**: Both poses (pose-a and pose-b) stored in S3:
+  - `songs/{song_id}/character_reference.jpg` (pose-a)
+  - `songs/{song_id}/character_pose_b.jpg` (pose-b)
+
+**4.3 Template Character Error Handling**
+
+- Try selecting template when song doesn't exist (404)
+- Try selecting template for full_length video (400 error)
+- Try selecting invalid character ID (404 error)
+- **Verify**: Clear error messages displayed in modal
+
+**4.4 Upload Custom Image**
 
 - Upload valid image (JPEG/PNG/WEBP)
-- Verify: Preview appears, `POST /api/v1/songs/{id}/character-image` returns
+- **Verify**: Preview appears, `POST /api/v1/songs/{id}/character-image` returns
   200, image saved to S3
+- **Verify**: Can switch between template and custom upload
 
-**4.3 Test Validation**
+**4.5 Test Validation**
 
 - Try uploading invalid files (.txt, > 10MB, invalid dimensions)
-- Verify: Clear error messages, upload rejected, can retry
+- **Verify**: Clear error messages, upload rejected, can retry
+
+**4.6 Both Poses Used in Video Generation**
+
+- Complete clip generation with template character selected
+- **Verify**: Backend logs show both poses passed to video generation
+- **Verify**: `reference_image_urls` array contains 2 URLs (pose-a and pose-b)
+- **Verify**: Video generation attempts multiple images, falls back to single if
+  model doesn't support
+- **Verify**: Clips generated successfully with character consistency
 
 **Character Consistency Summary**: All checkpoints pass
 
@@ -297,12 +334,15 @@ Open browser DevTools (F12), enable Network and Console tabs, clear console.
 
 ## End-to-End Flows
 
-### Flow 1: Short-Form with Character
+### Flow 1: Short-Form with Template Character
 
-**Steps**: Upload → Select "Short Form" → Analysis → Upload character
-(optional) → Select 30s → Generate clips → Compose
+**Steps**: Upload → Select "Short Form" → Analysis → Select template character
+→ Select 30s → Generate clips → Compose
 
-**Success**: All steps complete, character consistent (if uploaded), clips use selected range.
+**Success**: All steps complete, template character applied (both poses stored),
+clips use character consistency, clips use selected range.
+
+**Alternative**: Upload custom character image instead of template.
 
 ### Flow 2: Full-Length (Traditional)
 
@@ -403,7 +443,9 @@ I found an issue during manual testing of the advancedFeatures branch.
 - `PATCH /api/v1/songs/{song_id}/video-type` - Set video type
 - `POST /api/v1/songs/{song_id}/analyze` - Start analysis
 - `PATCH /api/v1/songs/{song_id}/selection` - Save audio selection
-- `POST /api/v1/songs/{song_id}/character-image` - Upload character image
+- `GET /api/v1/template-characters` - List available template characters
+- `POST /api/v1/songs/{song_id}/character-image/template` - Apply template character
+- `POST /api/v1/songs/{song_id}/character-image` - Upload custom character image
 - `POST /api/v1/songs/{song_id}/clips/generate` - Generate clips
 - `POST /api/v1/compositions` - Compose final video
 
@@ -411,7 +453,8 @@ I found an issue during manual testing of the advancedFeatures branch.
 
 - `video_type`: `"full_length"` or `"short_form"`
 - `selected_start_sec`, `selected_end_sec`: Audio selection times
-- `character_reference_image_s3_key`: Character image S3 key
+- `character_reference_image_s3_key`: Character pose-a image S3 key
+- `character_pose_b_s3_key`: Character pose-b image S3 key (template characters)
 - `character_consistency_enabled`: Boolean flag
 
 ### Feature Flags

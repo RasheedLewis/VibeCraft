@@ -6,6 +6,7 @@ export interface CharacterImageUploadProps {
   songId: string
   onUploadSuccess?: (imageUrl: string) => void
   onUploadError?: (error: string) => void
+  onTemplateSelect?: () => void
   className?: string
 }
 
@@ -16,6 +17,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
   songId,
   onUploadSuccess,
   onUploadError,
+  onTemplateSelect,
   className,
 }) => {
   const [uploading, setUploading] = useState(false)
@@ -197,6 +199,20 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
       </div>
 
       {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+
+      {/* Template selection button */}
+      <div className="mt-4 flex items-center gap-4">
+        <div className="flex-1 border-t border-vc-border/30"></div>
+        <span className="text-xs text-vc-text-secondary/70">OR</span>
+        <div className="flex-1 border-t border-vc-border/30"></div>
+      </div>
+      <button
+        onClick={onTemplateSelect}
+        disabled={uploading}
+        className="mt-4 w-full px-4 py-3 bg-vc-border/30 text-vc-text-secondary rounded-lg hover:bg-vc-border/50 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+      >
+        Choose Template
+      </button>
     </div>
   )
 }

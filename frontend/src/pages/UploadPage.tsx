@@ -40,6 +40,7 @@ import {
 import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimeline'
 import { VideoTypeSelector } from '../components/upload/VideoTypeSelector'
 import { CharacterImageUpload } from '../components/upload/CharacterImageUpload'
+import { TemplateCharacterModal } from '../components/upload/TemplateCharacterModal'
 import { SongProfileView } from '../components/song/SongProfileView'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
@@ -66,6 +67,7 @@ export const UploadPage: React.FC = () => {
   const [playerClipSelectionLocked, setPlayerClipSelectionLocked] =
     useState<boolean>(false)
   const compositionCompleteHandledRef = useRef<string | null>(null)
+  const [templateModalOpen, setTemplateModalOpen] = useState(false)
 
   // Use custom hooks for video type and audio selection
   const videoTypeSelection = useVideoTypeSelection({
@@ -863,6 +865,24 @@ export const UploadPage: React.FC = () => {
                   console.error('Character image upload failed:', error)
                   setError(error)
                 }}
+                onTemplateSelect={() => setTemplateModalOpen(true)}
+              />
+              <TemplateCharacterModal
+                isOpen={templateModalOpen}
+                onClose={() => setTemplateModalOpen(false)}
+                onSelect={(characterId) => {
+                  console.log('Template character selected:', characterId)
+                  // Refresh song details to show character consistency is enabled
+                  if (result?.songId) {
+                    apiClient
+                      .get(`/songs/${result.songId}`)
+                      .then((response) => {
+                        setSongDetails(response.data)
+                      })
+                      .catch(console.error)
+                  }
+                }}
+                songId={result.songId}
               />
             </section>
           )}

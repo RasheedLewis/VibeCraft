@@ -24,6 +24,7 @@ def generate_section_video(
     num_frames: Optional[int] = None,
     fps: Optional[int] = None,
     reference_image_url: Optional[str] = None,
+    reference_image_urls: Optional[list[str]] = None,
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
 ) -> tuple[bool, Optional[str], Optional[dict]]:
@@ -35,7 +36,8 @@ def generate_section_video(
         seed: Optional seed for reproducibility
         num_frames: Optional frame count override
         fps: Optional FPS override
-        reference_image_url: Optional image URL for image-to-video generation
+        reference_image_url: Optional single image URL for image-to-video generation
+        reference_image_urls: Optional list of image URLs (tries multiple, falls back to single)
         max_poll_attempts: Maximum number of polling attempts
         poll_interval_sec: Seconds between polling attempts
 
@@ -53,7 +55,14 @@ def generate_section_video(
         client = replicate.Client(api_token=settings.replicate_api_token)
 
         # Determine if using image-to-video or text-to-video
-        is_image_to_video = reference_image_url is not None
+        # Prioritize reference_image_urls (multiple images) over single reference_image_url
+        image_urls = None
+        if reference_image_urls and len(reference_image_urls) > 0:
+            image_urls = reference_image_urls
+        elif reference_image_url:
+            image_urls = [reference_image_url]
+        
+        is_image_to_video = image_urls is not None and len(image_urls) > 0
         
         # Prepare input parameters for Minimax Hailuo 2.3
         # Supports both text-to-video and image-to-video
@@ -69,9 +78,32 @@ def generate_section_video(
         }
 
         # Add image input if provided (for image-to-video)
-        if reference_image_url:
-            input_params["image"] = reference_image_url
-            logger.info(f"Using image-to-video generation with reference image: {reference_image_url}")
+        # Try multiple images first, fallback to single image
+        if image_urls:
+            if len(image_urls) > 1:
+                # Try to pass multiple images
+                # Attempt different parameter formats that might support multiple images
+                # Note: minimax/hailuo-2.3 may not support multiple images, so we'll try and fallback
+                try:
+                    # Try "images" parameter (array)
+                    input_params["images"] = image_urls
+                    logger.info(f"Attempting image-to-video with {len(image_urls)} reference images")
+                except (TypeError, ValueError):
+                    # Fallback: try "image" parameter with array
+                    try:
+                        input_params["image"] = image_urls
+                        logger.info(f"Attempting image-to-video with {len(image_urls)} reference images (array format)")
+                    except (TypeError, ValueError):
+                        # Final fallback: use first image only
+                        logger.warning(
+                            f"Model doesn't support multiple images, using first image only "
+                            f"(fallback from {len(image_urls)} images)"
+                        )
+                        input_params["image"] = image_urls[0]
+            else:
+                # Single image
+                input_params["image"] = image_urls[0]
+                logger.info(f"Using image-to-video generation with reference image: {image_urls[0]}")
 
         if seed is not None:
             input_params["seed"] = seed

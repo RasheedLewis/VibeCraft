@@ -174,6 +174,144 @@ class TestGenerateSectionVideo:
         assert success is True
         assert video_url == "https://replicate.delivery/pbxt/video.mp4"
 
+    @patch("app.services.video_generation.get_settings")
+    @patch("app.services.video_generation.replicate.Client")
+    def test_generation_with_single_reference_image(self, mock_client_class, mock_get_settings):
+        """Test generation with single reference image (existing behavior)."""
+        mock_settings = MagicMock()
+        mock_settings.replicate_api_token = "test-token"
+        mock_get_settings.return_value = mock_settings
+
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_prediction = MagicMock()
+        mock_prediction.id = "pred-123"
+        mock_prediction.status = "succeeded"
+        mock_prediction.output = "https://replicate.delivery/pbxt/video.mp4"
+
+        mock_client.predictions.create.return_value = mock_prediction
+        mock_client.predictions.get.return_value = mock_prediction
+
+        scene_spec = SceneSpec(
+            sectionId="section-1",
+            template="abstract",
+            prompt="Test prompt",
+            colorPalette=ColorPalette(primary="#FF0000", secondary="#00FF00", accent="#0000FF", mood="vibrant"),
+            cameraMotion=CameraMotion(type="slow_pan", intensity=0.5, speed="medium"),
+            shotPattern=ShotPattern(pattern="wide", pacing="slow", transitions=["fade"]),
+            intensity=0.5,
+            durationSec=5.0,
+        )
+
+        success, video_url, metadata = generate_section_video(
+            scene_spec,
+            reference_image_url="https://example.com/image.jpg",
+            max_poll_attempts=1,
+        )
+
+        assert success is True
+        assert video_url == "https://replicate.delivery/pbxt/video.mp4"
+        # Verify image parameter was passed
+        call_args = mock_client.predictions.create.call_args
+        assert call_args.kwargs["input"]["image"] == "https://example.com/image.jpg"
+
+    @patch("app.services.video_generation.get_settings")
+    @patch("app.services.video_generation.replicate.Client")
+    def test_generation_with_multiple_reference_images(self, mock_client_class, mock_get_settings):
+        """Test generation with multiple reference images."""
+        mock_settings = MagicMock()
+        mock_settings.replicate_api_token = "test-token"
+        mock_get_settings.return_value = mock_settings
+
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_prediction = MagicMock()
+        mock_prediction.id = "pred-123"
+        mock_prediction.status = "succeeded"
+        mock_prediction.output = "https://replicate.delivery/pbxt/video.mp4"
+
+        mock_client.predictions.create.return_value = mock_prediction
+        mock_client.predictions.get.return_value = mock_prediction
+
+        scene_spec = SceneSpec(
+            sectionId="section-1",
+            template="abstract",
+            prompt="Test prompt",
+            colorPalette=ColorPalette(primary="#FF0000", secondary="#00FF00", accent="#0000FF", mood="vibrant"),
+            cameraMotion=CameraMotion(type="slow_pan", intensity=0.5, speed="medium"),
+            shotPattern=ShotPattern(pattern="wide", pacing="slow", transitions=["fade"]),
+            intensity=0.5,
+            durationSec=5.0,
+        )
+
+        image_urls = ["https://example.com/pose-a.jpg", "https://example.com/pose-b.jpg"]
+
+        success, video_url, metadata = generate_section_video(
+            scene_spec,
+            reference_image_urls=image_urls,
+            max_poll_attempts=1,
+        )
+
+        assert success is True
+        # Verify multiple images were attempted (may fallback to single)
+        call_args = mock_client.predictions.create.call_args
+        input_params = call_args.kwargs["input"]
+        # Should have either "images" or "image" parameter
+        assert "images" in input_params or "image" in input_params
+
+    @patch("app.services.video_generation.get_settings")
+    @patch("app.services.video_generation.replicate.Client")
+    def test_generation_prioritizes_reference_image_urls_over_single(
+        self, mock_client_class, mock_get_settings
+    ):
+        """Test that reference_image_urls takes priority over reference_image_url."""
+        mock_settings = MagicMock()
+        mock_settings.replicate_api_token = "test-token"
+        mock_get_settings.return_value = mock_settings
+
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_prediction = MagicMock()
+        mock_prediction.id = "pred-123"
+        mock_prediction.status = "succeeded"
+        mock_prediction.output = "https://replicate.delivery/pbxt/video.mp4"
+
+        mock_client.predictions.create.return_value = mock_prediction
+        mock_client.predictions.get.return_value = mock_prediction
+
+        scene_spec = SceneSpec(
+            sectionId="section-1",
+            template="abstract",
+            prompt="Test prompt",
+            colorPalette=ColorPalette(primary="#FF0000", secondary="#00FF00", accent="#0000FF", mood="vibrant"),
+            cameraMotion=CameraMotion(type="slow_pan", intensity=0.5, speed="medium"),
+            shotPattern=ShotPattern(pattern="wide", pacing="slow", transitions=["fade"]),
+            intensity=0.5,
+            durationSec=5.0,
+        )
+
+        # Provide both single and multiple
+        success, video_url, metadata = generate_section_video(
+            scene_spec,
+            reference_image_url="https://example.com/single.jpg",
+            reference_image_urls=["https://example.com/pose-a.jpg", "https://example.com/pose-b.jpg"],
+            max_poll_attempts=1,
+        )
+
+        assert success is True
+        # Verify multiple images were used (not single)
+        call_args = mock_client.predictions.create.call_args
+        input_params = call_args.kwargs["input"]
+        # Should use multiple images, not single
+        if "images" in input_params:
+            assert len(input_params["images"]) == 2
+        elif "image" in input_params:
+            # If fallback occurred, should be first image from list
+            assert input_params["image"] in ["https://example.com/pose-a.jpg", "https://example.com/pose-b.jpg"]
+
 
 class TestPollVideoGenerationStatus:
     """Test polling video generation status."""

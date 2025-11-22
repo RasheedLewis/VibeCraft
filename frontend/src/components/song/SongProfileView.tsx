@@ -145,7 +145,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       : 'Generate clips'
 
   return (
-    <section className="mt-12 w-full space-y-8">
+    <section className="mt-4 w-full space-y-8">
       <header className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2">
           <div className="vc-label">Song profile</div>

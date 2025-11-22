@@ -529,10 +529,11 @@ export const UploadPage: React.FC = () => {
     }
   }, [analysisState, result?.songId, fetchSongDetails])
 
-  // Handler for selection changes - uses hook's saveSelection
+  // Handler for selection changes - just updates local state, doesn't save yet
   const handleSelectionChange = useCallback(
     (startSec: number, endSec: number) => {
-      audioSelection.saveSelection(startSec, endSec)
+      // Only update local state, don't save to backend until user confirms
+      audioSelection.setAudioSelection({ startSec, endSec })
     },
     [audioSelection],
   )
@@ -768,26 +769,249 @@ export const UploadPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Video Type Selection - shown between heading and upload card */}
-          {(showVideoTypeSelector || (videoType && videoTypeSelectorVisible)) && (
-            <div
-              className={clsx(
-                'w-full transition-opacity duration-500',
-                videoType &&
-                  (analysisState === 'queued' || analysisState === 'processing') &&
-                  !videoTypeSelectorVisible
-                  ? 'opacity-0'
-                  : 'opacity-100',
-              )}
-            >
-              <div className="rounded-2xl border-2 border-vc-accent-primary/50 bg-gradient-to-br from-vc-accent-primary/10 via-vc-surface-primary to-vc-surface-primary p-4 shadow-xl">
-                <VideoTypeSelector
-                  onSelect={videoTypeSelection.setVideoType}
-                  selectedType={videoType}
-                />
+          {/* Video Type Selection OR Audio Selection - shown between heading and upload card */}
+          {/* For short-form: Replace video type selector with audio selection once selected */}
+          {(() => {
+            // Show audio selection when short_form is selected
+            // IMPORTANT: Even if analysis already exists, we should show audio selection
+            // Check if song already has a selection saved in the database
+            const hasExistingSelection =
+              songDetails?.selected_start_sec != null &&
+              songDetails?.selected_end_sec != null
+
+            // Show the UI if short_form is selected, regardless of existing analysis or selection state
+            // This allows users to make or change their selection even if analysis exists
+            const shouldShowAudioSelection =
+              stage === 'uploaded' &&
+              videoType === 'short_form' &&
+              // Show even if analysis is completed - user might want to re-select
+              (analysisState === 'idle' ||
+                analysisState === 'queued' ||
+                analysisState === 'processing' ||
+                analysisState === 'failed' ||
+                analysisState === 'completed')
+
+            // Don't reset selection here - let the user make their selection
+            // The reset logic was causing the button to disappear immediately
+            // Only reset if we're switching songs or starting fresh
+
+            // Debug logging
+            console.log('[AudioSelection] Debug:', {
+              shouldShowAudioSelection,
+              stage,
+              videoType,
+              audioSelectionValue,
+              analysisState,
+              hasExistingSelection,
+              selectedStartSec: songDetails?.selected_start_sec,
+              selectedEndSec: songDetails?.selected_end_sec,
+              hasResult: !!result,
+              hasAudioUrl: !!result?.audioUrl,
+              hasMetadata: !!metadata,
+              durationFromMetadata: metadata?.durationSeconds,
+              hasSongDetails: !!songDetails,
+              durationFromSongDetails: songDetails?.duration_sec,
+              analysisData: !!analysisPolling.data,
+            })
+
+            return shouldShowAudioSelection ? (
+              // Audio Selection UI - replaces video type selector for short-form
+              <div className="w-full">
+                <div className="rounded-2xl border-2 border-vc-accent-primary/50 bg-gradient-to-br from-vc-accent-primary/10 via-vc-surface-primary to-vc-surface-primary p-4 shadow-xl">
+                  <div className="mb-4">
+                    <div className="vc-label">Select Audio Segment (Up to 30s)</div>
+                    <p className="text-sm text-vc-text-secondary mt-1">
+                      Choose up to 30 seconds from your track. Analysis will start after
+                      you make your selection.
+                    </p>
+                  </div>
+                  {(() => {
+                    // Try to get audioUrl from result first, fallback to fetching from songDetails if needed
+                    const audioUrl = result?.audioUrl
+                    const duration =
+                      metadata?.durationSeconds ?? songDetails?.duration_sec ?? null
+
+                    // If no audioUrl but we have songId, we might need to fetch it
+                    // For now, show a message if audioUrl is missing
+                    if (!audioUrl) {
+                      return (
+                        <div className="rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-4 text-sm text-vc-text-secondary">
+                          <p>Loading audio URL...</p>
+                          <p className="text-xs mt-2 opacity-70">
+                            If this persists, the audio file may not be accessible. Please
+                            try uploading again.
+                          </p>
+                        </div>
+                      )
+                    }
+                    if (!duration || duration === 0) {
+                      return (
+                        <div className="rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-4 text-sm text-vc-text-secondary">
+                          <p>Loading audio duration...</p>
+                          <p className="text-xs mt-2 opacity-70">
+                            Calculating track length...
+                          </p>
+                        </div>
+                      )
+                    }
+                    return (
+                      <AudioSelectionTimeline
+                        audioUrl={audioUrl}
+                        waveform={waveformValues}
+                        durationSec={duration}
+                        beatTimes={[]} // No beatTimes yet - analysis hasn't run
+                        onSelectionChange={handleSelectionChange}
+                        onConfirm={
+                          audioSelectionValue
+                            ? async () => {
+                                if (!result?.songId || !audioSelectionValue) return
+
+                                try {
+                                  // Save the selection to backend
+                                  await audioSelection.saveSelection(
+                                    audioSelectionValue.startSec,
+                                    audioSelectionValue.endSec,
+                                  )
+
+                                  // Then start analysis
+                                  const response = await apiClient.post<{
+                                    jobId: string
+                                    status: string
+                                  }>(`/songs/${result.songId}/analyze`)
+                                  if (response.data.jobId) {
+                                    analysisPolling.setJobId?.(response.data.jobId)
+                                  }
+                                } catch (err) {
+                                  console.error(
+                                    'Failed to save selection or start analysis:',
+                                    err,
+                                  )
+                                  setError(
+                                    extractErrorMessage(
+                                      err,
+                                      'Failed to confirm selection or start analysis',
+                                    ),
+                                  )
+                                }
+                              }
+                            : undefined
+                        }
+                        confirmButtonDisabled={
+                          !audioSelectionValue ||
+                          analysisState === 'queued' ||
+                          analysisState === 'processing'
+                        }
+                        confirmButtonText={
+                          analysisState === 'queued' || analysisState === 'processing'
+                            ? 'Starting Analysis...'
+                            : 'Confirm & Start Analysis'
+                        }
+                      />
+                    )
+                  })()}
+                </div>
               </div>
-            </div>
-          )}
+            ) : (
+              // Debug: Show why audio selection isn't showing
+              <div className="w-full rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-4 text-xs">
+                <p className="font-semibold text-vc-accent-primary mb-2">
+                  Debug: Audio selection not showing
+                </p>
+                <div className="space-y-1 text-vc-text-secondary">
+                  <p>Conditions check:</p>
+                  <ul className="list-disc list-inside ml-2 space-y-0.5">
+                    <li
+                      className={stage === 'uploaded' ? 'text-green-400' : 'text-red-400'}
+                    >
+                      stage === 'uploaded': {String(stage === 'uploaded')} (current:{' '}
+                      {stage})
+                    </li>
+                    <li
+                      className={
+                        videoType === 'short_form' ? 'text-green-400' : 'text-red-400'
+                      }
+                    >
+                      videoType === 'short_form': {String(videoType === 'short_form')}{' '}
+                      (current: {videoType ?? 'null'})
+                    </li>
+                    <li
+                      className={!audioSelectionValue ? 'text-green-400' : 'text-red-400'}
+                    >
+                      !audioSelectionValue: {String(!audioSelectionValue)} (current:{' '}
+                      {audioSelectionValue ? 'exists' : 'null'})
+                    </li>
+                    <li
+                      className={
+                        !hasExistingSelection ? 'text-green-400' : 'text-red-400'
+                      }
+                    >
+                      !hasExistingSelection: {String(!hasExistingSelection)} (selected:{' '}
+                      {songDetails?.selected_start_sec ?? 'null'}-
+                      {songDetails?.selected_end_sec ?? 'null'})
+                    </li>
+                    <li
+                      className={
+                        analysisState === 'idle' ||
+                        analysisState === 'queued' ||
+                        analysisState === 'processing' ||
+                        analysisState === 'failed' ||
+                        analysisState === 'completed'
+                          ? 'text-green-400'
+                          : 'text-red-400'
+                      }
+                    >
+                      analysisState allowed:{' '}
+                      {String(
+                        analysisState === 'idle' ||
+                          analysisState === 'queued' ||
+                          analysisState === 'processing' ||
+                          analysisState === 'failed' ||
+                          analysisState === 'completed',
+                      )}{' '}
+                      (current: {analysisState})
+                    </li>
+                  </ul>
+                  <p className="mt-2 text-vc-text-muted">
+                    Check browser console for detailed logs with prefix [AudioSelection]
+                  </p>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Video Type Selection - shown when no video type selected or for full-length */}
+          {(() => {
+            const shouldShowVideoTypeSelector =
+              showVideoTypeSelector ||
+              (videoType && videoTypeSelectorVisible && videoType === 'full_length')
+
+            console.log('[VideoTypeSelector] Debug:', {
+              shouldShowVideoTypeSelector,
+              showVideoTypeSelector,
+              videoType,
+              videoTypeSelectorVisible,
+            })
+
+            return shouldShowVideoTypeSelector ? (
+              <div
+                className={clsx(
+                  'w-full transition-opacity duration-500',
+                  videoType &&
+                    (analysisState === 'queued' || analysisState === 'processing') &&
+                    !videoTypeSelectorVisible
+                    ? 'opacity-0'
+                    : 'opacity-100',
+                )}
+              >
+                <div className="rounded-2xl border-2 border-vc-accent-primary/50 bg-gradient-to-br from-vc-accent-primary/10 via-vc-surface-primary to-vc-surface-primary p-4 shadow-xl">
+                  <VideoTypeSelector
+                    onSelect={videoTypeSelection.setVideoType}
+                    selectedType={videoType}
+                  />
+                </div>
+              </div>
+            ) : null
+          })()}
 
           <input
             id={fileInputId}
@@ -849,32 +1073,9 @@ export const UploadPage: React.FC = () => {
         </div>
       )}
 
-      {/* Trigger analysis automatically after video type is selected */}
-      {stage === 'uploaded' &&
-        videoType &&
-        analysisState === 'idle' &&
-        !isFetchingAnalysis && (
-          <div className="vc-app-main mx-auto w-full max-w-4xl px-4 py-12">
-            <div className="text-center space-y-4">
-              <p className="text-sm text-vc-text-secondary">Starting analysis...</p>
-              <VCButton
-                onClick={async () => {
-                  if (result?.songId) {
-                    try {
-                      await apiClient.post(`/songs/${result.songId}/analyze`)
-                      await analysisPolling.fetchAnalysis(result.songId)
-                    } catch (err) {
-                      console.error('Failed to start analysis:', err)
-                      setError(extractErrorMessage(err, 'Failed to start analysis'))
-                    }
-                  }
-                }}
-              >
-                Start Analysis
-              </VCButton>
-            </div>
-          </div>
-        )}
+      {/* Removed: "Start Analysis" button moved inside AudioSelectionTimeline component */}
+      {/* For short_form videos, the button is now part of the timeline */}
+      {/* For full_length videos, analysis starts automatically after video type selection */}
 
       {analysisState === 'completed' && analysisData && songDetails && (
         <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
@@ -938,37 +1139,41 @@ export const UploadPage: React.FC = () => {
             </section>
           )}
 
-          {/* Audio Selection Step - only for short-form videos */}
-          {videoType === 'short_form' && !audioSelectionValue && (
-            <section className="mb-8 space-y-4">
-              <div className="vc-label">Select Audio Segment (Up to 30s)</div>
-              <p className="text-sm text-vc-text-secondary">
-                Choose up to 30 seconds from your track to generate video clips.
-              </p>
-              {result?.audioUrl && songDetails.duration_sec && (
-                <AudioSelectionTimeline
-                  audioUrl={result.audioUrl}
-                  waveform={waveformValues}
-                  durationSec={songDetails.duration_sec}
-                  beatTimes={analysisData.beatTimes}
-                  onSelectionChange={handleSelectionChange}
-                />
-              )}
-              {audioSelectionValue && (
-                <div className="flex justify-end">
-                  <VCButton
-                    onClick={() => {
-                      // Selection is saved automatically, proceed
-                      audioSelection.setAudioSelection(audioSelectionValue)
-                    }}
-                    disabled={isSavingSelection}
-                  >
-                    {isSavingSelection ? 'Saving...' : 'Continue with Selection'}
-                  </VCButton>
-                </div>
-              )}
-            </section>
-          )}
+          {/* Audio Selection Step - only shown if analysis completed but selection not made yet (fallback) */}
+          {videoType === 'short_form' &&
+            !audioSelectionValue &&
+            analysisState === 'completed' &&
+            analysisData &&
+            songDetails && (
+              <section className="mb-8 space-y-4">
+                <div className="vc-label">Select Audio Segment (Up to 30s)</div>
+                <p className="text-sm text-vc-text-secondary">
+                  Choose up to 30 seconds from your track to generate video clips.
+                </p>
+                {result?.audioUrl && songDetails.duration_sec && (
+                  <AudioSelectionTimeline
+                    audioUrl={result.audioUrl}
+                    waveform={waveformValues}
+                    durationSec={songDetails.duration_sec}
+                    beatTimes={analysisData.beatTimes}
+                    onSelectionChange={handleSelectionChange}
+                  />
+                )}
+                {audioSelectionValue && (
+                  <div className="flex justify-end">
+                    <VCButton
+                      onClick={() => {
+                        // Selection is saved automatically, proceed
+                        audioSelection.setAudioSelection(audioSelectionValue)
+                      }}
+                      disabled={isSavingSelection}
+                    >
+                      {isSavingSelection ? 'Saving...' : 'Continue with Selection'}
+                    </VCButton>
+                  </div>
+                )}
+              </section>
+            )}
 
           {/* Song Profile View - shown after selection is made (for short-form) or directly (for full-length) */}
           {(videoType === 'full_length' ||

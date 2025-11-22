@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 import clsx from 'clsx'
+import { VCButton } from '../vibecraft'
+import { ArrowRightIcon } from './Icons'
 
 export interface AudioSelectionTimelineProps {
   audioUrl: string
@@ -9,12 +11,15 @@ export interface AudioSelectionTimelineProps {
   initialStartSec?: number
   initialEndSec?: number
   onSelectionChange: (startSec: number, endSec: number) => void
+  onConfirm?: () => void | Promise<void>
+  confirmButtonDisabled?: boolean
+  confirmButtonText?: string
   className?: string
 }
 
 const MAX_SELECTION_DURATION = 30.0
 const MIN_SELECTION_DURATION = 1.0
-const MARKER_HANDLE_WIDTH = 20
+const MARKER_HANDLE_WIDTH = 24 // Increased from 20 for easier grabbing
 
 export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
   audioUrl,
@@ -24,6 +29,9 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
   initialStartSec,
   initialEndSec,
   onSelectionChange,
+  onConfirm,
+  confirmButtonDisabled = false,
+  confirmButtonText = 'Confirm & Start Analysis',
   className,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -288,26 +296,38 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
         onClick={handleTimelineClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverSec(null)}
+        style={{ position: 'relative' }}
       >
         {/* Waveform background */}
         <div className="absolute inset-0 flex items-center gap-[2px] px-2">
-          {waveform.slice(0, 512).map((value, idx) => {
-            const barTime = (idx / 512) * durationSec
-            const isInSelection = barTime >= startSec && barTime <= endSec
-            return (
-              <div
-                key={`bar-${idx}`}
-                className="w-[2px] rounded-full transition-opacity"
-                style={{
-                  height: `${Math.max(8, value * 100)}%`,
-                  opacity: isInSelection ? 0.9 : 0.3,
-                  background: isInSelection
-                    ? 'linear-gradient(to top, #6E6BFF, #FF6FF5, #00C6C0)'
-                    : 'rgba(255, 255, 255, 0.2)',
-                }}
-              />
-            )
-          })}
+          {waveform.length > 0
+            ? waveform.slice(0, 512).map((value, idx) => {
+                const barTime = (idx / 512) * durationSec
+                const isInSelection = barTime >= startSec && barTime <= endSec
+                return (
+                  <div
+                    key={`bar-${idx}`}
+                    className="w-[2px] rounded-full transition-opacity"
+                    style={{
+                      height: `${Math.max(8, value * 100)}%`,
+                      opacity: isInSelection ? 0.9 : 0.3,
+                      background: isInSelection
+                        ? 'linear-gradient(to top, #6E6BFF, #FF6FF5, #00C6C0)'
+                        : 'rgba(255, 255, 255, 0.2)',
+                    }}
+                  />
+                )
+              })
+            : // Placeholder bars when waveform data not available
+              Array.from({ length: 100 }).map((_, idx) => (
+                <div
+                  key={`placeholder-bar-${idx}`}
+                  className="w-[2px] rounded-full bg-vc-border/20"
+                  style={{
+                    height: `${20 + (idx % 3) * 10}%`,
+                  }}
+                />
+              ))}
         </div>
 
         {/* Beat markers */}
@@ -324,41 +344,51 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
 
         {/* Selected region highlight */}
         <div
-          className="absolute top-0 bottom-0 bg-vc-accent-primary/10 border-y border-vc-accent-primary/30"
+          className="absolute top-0 bottom-0 bg-vc-accent-primary/10 border-y border-vc-accent-primary/30 z-0"
           style={{
             left: `${startPercent}%`,
             width: `${endPercent - startPercent}%`,
           }}
         />
 
-        {/* Start marker */}
+        {/* Start marker - higher z-index to ensure it's above other elements */}
         <div
-          className="absolute top-0 bottom-0 cursor-ew-resize group"
+          className="absolute top-0 bottom-0 cursor-ew-resize group z-20"
           style={{
             left: `${startPercent}%`,
             width: `${MARKER_HANDLE_WIDTH}px`,
             marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px`,
+            pointerEvents: 'auto', // Ensure it's clickable
           }}
-          onMouseDown={(e) => handleMouseDown('start', e)}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleMouseDown('start', e)
+          }}
         >
-          <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary" />
-          <div className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary" />
-          <div className="absolute left-1/2 bottom-0 h-3 w-3 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary" />
+          <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary pointer-events-none" />
+          <div className="absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
+          <div className="absolute left-1/2 bottom-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
         </div>
 
-        {/* End marker */}
+        {/* End marker - higher z-index to ensure it's above other elements */}
         <div
-          className="absolute top-0 bottom-0 cursor-ew-resize group"
+          className="absolute top-0 bottom-0 cursor-ew-resize group z-20"
           style={{
             left: `${endPercent}%`,
             width: `${MARKER_HANDLE_WIDTH}px`,
             marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px`,
+            pointerEvents: 'auto', // Ensure it's clickable
           }}
-          onMouseDown={(e) => handleMouseDown('end', e)}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleMouseDown('end', e)
+          }}
         >
-          <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary" />
-          <div className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary" />
-          <div className="absolute left-1/2 bottom-0 h-3 w-3 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary" />
+          <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary pointer-events-none" />
+          <div className="absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
+          <div className="absolute left-1/2 bottom-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
         </div>
 
         {/* Playhead */}
@@ -397,6 +427,21 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
           {formatTime(startSec)} → {formatTime(endSec)}
         </div>
       </div>
+
+      {/* Confirm button - shown at bottom when onConfirm is provided */}
+      {onConfirm && (
+        <div className="mt-4 flex justify-end">
+          <VCButton
+            variant="primary"
+            size="md"
+            onClick={onConfirm}
+            disabled={confirmButtonDisabled}
+            iconRight={<ArrowRightIcon />}
+          >
+            {confirmButtonText}
+          </VCButton>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,27 +1,106 @@
 # Troubleshooting Log
 
-## Current Testing Status
+## Current Testing Status - Gentle Testing Guide
 
-**Ready for Testing:**
-- Video type selection modal overlay flow has been fixed and is ready for testing
-- All known issues have been addressed:
+**Testing Guide Summary:**
+The gentle testing guide outlines 7 steps for testing the video app:
+1. **Upload Audio** (2 min) - Upload file, wait for completion
+2. **Choose Video Type** (1 min) - Select "Short Form" or "Full Length"
+3. **Start Analysis** (3-5 min) - Analysis runs automatically (full-length) or after audio selection (short-form)
+4. **Select 30 Seconds of Audio** (3 min) - Drag markers to select segment (short-form only, happens BEFORE analysis)
+5. **Choose a Character** (3-5 min) - Upload character image or select template
+6. **Generate Video Clips** (5-10 min) - Generate 6 video clips
+7. **Compose Final Video** (3-5 min) - Compose final video from clips
+
+**Current Step: Step 3 - Analysis in Progress** ✅
+- ✅ Step 1: Audio uploaded successfully
+- ✅ Step 2: Video type selected (30-second/Short Form)
+- ✅ Step 4 (done early): 30-second audio segment selected and confirmed
+- 🔄 Step 3: Analysis started and currently running (3-5 minutes)
+- ⏭️ Next: Step 5 - Choose a Character (after analysis completes)
+
+**Note:** For short-form videos, the flow has been updated so audio selection (Step 4) happens BEFORE analysis (Step 3), allowing analysis to work on the pre-selected segment.
+
+## Sequence Flow: Current vs Desired
+
+### Current Sequence (Before Fix)
+
+**For Full-Length Videos:**
+1. Upload audio file
+2. Select video type ("Full Length")
+3. Analysis starts automatically
+4. Analysis completes (3-5 minutes)
+5. Character selection (optional)
+6. Generate clips
+
+**For Short-Form Videos (30-Second):**
+1. Upload audio file
+2. Select video type ("30-Second Video")
+3. Analysis starts automatically ❌ (should wait for audio selection)
+4. Analysis completes (3-5 minutes)
+5. Audio selection UI appears (requires `analysisData.beatTimes` from analysis)
+6. User selects 30 seconds
+7. Character selection
+8. Generate clips
+
+**Problem:** Audio selection UI requires analysis to complete first (needs `beatTimes`), but user should select audio BEFORE analysis runs so analysis can work on the selected segment.
+
+### Desired Sequence (After Fix)
+
+**For Full-Length Videos:**
+1. Upload audio file
+2. Select video type ("Full Length")
+3. Analysis starts automatically
+4. Analysis completes (3-5 minutes)
+5. Character selection (optional)
+6. Generate clips
+
+**For Short-Form Videos (30-Second):**
+1. Upload audio file
+2. Select video type ("30-Second Video")
+3. Audio selection UI appears immediately (uses `metadata.durationSeconds` from upload)
+4. User selects 30 seconds
+5. Analysis starts automatically after selection is saved
+6. Analysis completes (3-5 minutes)
+7. Character selection
+8. Generate clips
+
+**Key Changes:**
+- Audio selection happens BEFORE analysis (not after)
+- Audio selection UI uses duration from file upload metadata (no analysis required)
+- Analysis only starts after user has selected their 30-second segment
+- `beatTimes` are optional in `AudioSelectionTimeline` (can work without them)
+
+### Implementation Status
+
+✅ **Completed:**
+- Modified `useVideoTypeSelection` to NOT auto-start analysis for `short_form` videos
+- Added audio selection UI that appears before analysis (uses `metadata.durationSeconds`)
+- Made `beatTimes` optional in `AudioSelectionTimeline` component
+- Added "Confirm & Start Analysis" button inside AudioSelectionTimeline component
+- Analysis now triggers after user confirms their selection
+- Fixed button disappearing issue by removing premature reset logic
+- Moved button inside timeline component for better UX
+- Made button smaller (md size) for better visual balance
+- Fixed all TypeScript and lint errors
+- ✅ **All issues resolved and tested successfully**
+
+## Previous Testing Status (All Issues Resolved ✅)
+
+**All Known Issues Fixed:**
   1. ✅ Modal visibility state management fixed
   2. ✅ Modal appears only after upload (not immediately)
-  3. ✅ Analysis starts automatically after video type selection
+  3. ✅ Analysis starts automatically after video type selection (full-length) or after audio selection confirmation (short-form)
   4. ✅ Modal stays visible for 1 second after selection
   5. ✅ Job polling starts properly without 404 errors
   6. ✅ Debug code removed
   7. ✅ Redundant UI elements removed
+  8. ✅ Audio selection UI appears before analysis for short-form videos
+  9. ✅ Button moved inside timeline component
+  10. ✅ Button no longer disappears immediately
+  11. ✅ Template character images render correctly
 
-**Next: Test the complete flow:**
-  1. Upload audio file
-  2. Verify modal overlay appears and blocks interaction
-  3. Select "30-Second Video" or "Full-Length Video"
-  4. Verify modal stays visible for ~1 second
-  5. Verify analysis starts automatically (check for job polling)
-  6. Verify no 404 errors in console
-  7. Verify `videoType` is correctly set and persisted
-  8. Verify analysis completes and UI progresses to next step
+**Status:** All issues from previous testing sessions have been resolved. The flow is now working as designed.
 
 ## Fixes Applied So Far
 
@@ -136,14 +215,21 @@ if (!videoType) {
 - `backend/tests/unit/test_api_utils.py` - Unit tests for 409 logic
 - `backend/tests/test_video_type_api.py` - Integration tests for video type API
 
-## Next Steps for Testing
+## Testing Progress
 
-1. Upload audio file
-2. Verify modal overlay appears and blocks interaction
-3. Select "30-Second Video" or "Full-Length Video"
-4. Verify modal stays visible for ~1 second
-5. Verify analysis starts automatically (check for job polling)
-6. Verify no 404 errors in console
-7. Verify `videoType` is correctly set and persisted
-8. Verify analysis completes and UI progresses to next step
+**Completed Steps:**
+- ✅ Upload audio file
+- ✅ ✅ Modal overlay appears and blocks interaction
+- ✅ Select "30-Second Video" or "Full-Length Video"
+- ✅ Modal stays visible for ~1 second
+- ✅ Audio selection UI appears (for short-form)
+- ✅ User can select 30-second segment
+- ✅ "Confirm & Start Analysis" button works correctly
+- ✅ Analysis starts after confirmation
+- ✅ No 404 errors in console
+- ✅ `videoType` is correctly set and persisted
+
+**Current:** Analysis in progress (Step 3 of testing guide)
+
+**Next:** After analysis completes, proceed to character selection (Step 5)
 

@@ -258,11 +258,12 @@ export const UploadCard: React.FC<UploadCardProps> = ({
                 >
                   Generate clips
                 </VCButton>
-              ) : (
+              ) : analysisState === 'queued' || analysisState === 'processing' ? (
                 <VCButton variant="primary" iconRight={<ArrowRightIcon />} disabled>
                   Analyzing…
                 </VCButton>
-              )}
+              ) : // Don't show button if analysis hasn't started yet
+              null}
             </div>
           </div>
         </div>

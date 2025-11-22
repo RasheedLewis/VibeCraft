@@ -49,8 +49,13 @@ export function useJobPolling<T>({
 
         onStatusUpdate?.(normalizedStatus, progress)
 
+        // Update result during processing, not just on completion
+        // This allows the UI to show individual clip statuses in real-time
+        if (response.result) {
+          onComplete?.(response.result)
+        }
+
         if (normalizedStatus === 'completed') {
-          onComplete?.(response.result ?? null)
           return
         }
 

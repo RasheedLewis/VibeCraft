@@ -6,7 +6,9 @@ flowchart LR
 
   %% BACKEND
   subgraph Backend["Python Backend (FastAPI + Workers)"]
-    API[REST API Layer\n/songs, /songs/{id}/analysis, /songs/{id}/clips/*, /jobs, /health]
+    API[REST API Layer\n/songs, /songs/{id}/analysis, /songs/{id}/clips/*, /jobs, /auth, /health]
+    AUTH[Authentication\nJWT-based, user management]
+    RL[Rate Limiting\nPer-user/IP limits]
 
     subgraph AudioPipeline["Audio & Music Intelligence"]
       APS[Audio Preprocess Service\n(ffmpeg + librosa)]
@@ -16,8 +18,8 @@ flowchart LR
     subgraph VideoPipeline["Video Planning & Generation"]
       CP[Clip Planner\n(beat-aligned boundaries)]
       SP[Scene Planner\n(builds prompts from analysis)]
-      VGE[Video Generation Engine\nReplicate wrappers]
-      CE[Composition Engine\nffmpeg concat + transitions + mux]
+      VGE[Video Generation Engine\nReplicate wrappers\n+ character consistency]
+      CE[Composition Engine\nffmpeg concat + transitions + mux\n+ beat-synced effects]
     end
 
     JS[Job Orchestrator / Workers\nRQ (Redis Queue)]
@@ -32,6 +34,12 @@ flowchart LR
   end
 
   %% FLOWS
+
+  %% Authentication
+  U -->|"0. Login/Register"| API --> AUTH
+  AUTH -->|"JWT token"| U
+  API -->|"validate token"| AUTH
+  API -->|"rate limit check"| RL
 
   %% Upload & Analysis
   U -->|"1. Upload audio file"| API

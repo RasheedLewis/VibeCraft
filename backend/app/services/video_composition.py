@@ -257,10 +257,21 @@ def concatenate_clips(
     song_duration_sec: float,
     ffmpeg_bin: str | None = None,
     job_id: str | None = None,
-    beat_times: Optional[list[float]] = None,  # NEW PARAMETER
-    filter_type: str = "flash",  # NEW PARAMETER
-    frame_rate: float = 24.0,  # NEW PARAMETER
+    beat_times: Optional[list[float]] = None,  # Beat timestamps for visual sync effects
+    filter_type: str = "flash",  # Effect type: flash, color_burst, zoom_pulse, brightness_pulse, glitch
+    frame_rate: float = 24.0,  # Video frame rate for effect timing
 ) -> CompositionResult:
+    """
+    Concatenate video clips with beat-synced visual effects.
+    
+    BEAT-SYNC IMPLEMENTATION:
+    - Applies visual effects (flash, color burst, zoom, brightness, glitch) synchronized to beat times
+    - Uses FFmpeg's time-based filters (between(t,start,end)) to trigger effects at precise beat moments
+    - Supports all beats in the song (no 50-beat limitation)
+    - Effects are chunked to prevent excessively long FFmpeg filter expressions
+    - Tolerance window configurable via BEAT_EFFECT_TOLERANCE_MS (default 50ms)
+    - Test mode available via BEAT_EFFECT_TEST_MODE env var for exaggerated effects
+    """
     """
     Concatenate normalized clips and mux with audio.
 

@@ -31,11 +31,19 @@ def _generate_image_to_video(
     """
     Generate video from image using image-to-video model.
     
-    Uses Minimax Hailuo 2.3 which supports image input for image-to-video generation.
+    CHARACTER CONSISTENCY IMPLEMENTATION:
+    - Uses Minimax Hailuo 2.3's image-to-video capability for character consistency
+    - Both reference image (first_frame_image) AND text prompt are used together:
+      * Image provides visual character reference (appearance, style, pose)
+      * Prompt describes scene, motion, and action
+      * They complement each other - image doesn't replace prompt
+    - The model generates video starting from the reference image, maintaining character appearance
+    - Seed parameter ensures reproducibility when regenerating the same scene
+    - Reference image should be a clear character image (uploaded via character-image endpoint)
     
     Args:
         scene_spec: SceneSpec object with prompt and parameters
-        reference_image_url: URL to reference character image
+        reference_image_url: URL to reference character image (S3 presigned URL)
         seed: Optional seed for reproducibility
         num_frames: Optional frame count override
         fps: Optional FPS override
@@ -65,11 +73,13 @@ def _generate_image_to_video(
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
 
-        # IMPORTANT: Both image AND prompt are used together - the image provides character reference,
-        # while the prompt describes the scene/motion. They complement each other, not replace each other.
+        # CHARACTER CONSISTENCY: Both image AND prompt are used together
+        # - Image provides visual character reference (appearance, style, pose)
+        # - Prompt describes scene, motion, and action
+        # - They complement each other - image doesn't replace prompt
         input_params = {
-            "first_frame_image": reference_image_url,  # Reference character image
-            "prompt": optimized_prompt,  # Scene prompt (used together with image, not replaced by it)
+            "first_frame_image": reference_image_url,  # Reference character image for consistency
+            "prompt": optimized_prompt,  # Scene prompt (used together with image)
             "num_frames": max(1, min(frame_count, 120)),
             "width": 576,
             "height": 320,
@@ -271,10 +281,10 @@ def generate_section_video(
             "fps": effective_fps,
         }
 
-        # Add image input if provided (for image-to-video)
-        # IMPORTANT: Both image AND prompt are used together - the image provides character reference,
-        # while the prompt describes the scene/motion. They complement each other, not replace each other.
-        # Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
+        # CHARACTER CONSISTENCY: Add image input if provided (for image-to-video)
+        # - Both image AND prompt are used together (image = character reference, prompt = scene/motion)
+        # - They complement each other - image doesn't replace prompt
+        # - Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
         if image_urls:
             # Use first image (model only supports single image)
             input_params["first_frame_image"] = image_urls[0]

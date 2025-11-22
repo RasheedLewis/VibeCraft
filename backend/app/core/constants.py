@@ -3,7 +3,7 @@
 from enum import Enum
 
 # Job configuration
-DEFAULT_MAX_CONCURRENCY = 2
+DEFAULT_MAX_CONCURRENCY = 4  # Increased from 2 to allow more parallel clip generation
 QUEUE_TIMEOUT_SEC = 20 * 60  # 20 minutes per clip generation
 ANALYSIS_QUEUE_TIMEOUT_SEC = 30 * 60  # 30 minutes for analysis
 COMPOSITION_QUEUE_TIMEOUT_SEC = 30 * 60  # 30 minutes for composition

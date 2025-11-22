@@ -704,6 +704,8 @@ def plan_clips_for_song(
             min_clip_sec=min_clip_sec,
             max_clip_sec=max_clip_sec,
             generator_fps=8,
+            selection_start_sec=song.selected_start_sec if song.selected_start_sec is not None else None,
+            selection_end_sec=song.selected_end_sec if song.selected_end_sec is not None else None,
         )
     except ClipPlanningError as exc:
         raise HTTPException(
@@ -711,6 +713,8 @@ def plan_clips_for_song(
         ) from exc
 
     # Adjust clip start/end times by time offset if selection is active
+    # (Note: if selection is used, plans are already relative to selection start,
+    # so we need to add the offset to get absolute times)
     if time_offset > 0:
         for plan in plans:
             plan.start_sec = round(plan.start_sec + time_offset, 4)

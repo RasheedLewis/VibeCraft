@@ -8,6 +8,7 @@ This document outlines the plan to alter the business logic of Prerequisites 1 a
 2. **30-Second Short-Form Video** - Disables sections, uses direct clip generation, and presents audio selection UI
 
 **Key Change**: Instead of a global feature flag, the user selects their use case **before analysis**, and this choice controls:
+
 - Whether sections are enabled/disabled for that song
 - Whether audio selection UI is shown
 - The overall generation workflow
@@ -19,17 +20,20 @@ This document outlines the plan to alter the business logic of Prerequisites 1 a
 ## Current State
 
 ### Prerequisite 1 (Feature Flag)
+
 - Global `ENABLE_SECTIONS` environment variable
 - Controls section-based vs clip-based generation system-wide
 - Default: `True` (sections enabled)
 
 ### Prerequisite 2 (Audio Selection)
+
 - Audio selection UI appears **after** analysis completes
 - User can select up to 30 seconds from their track
 - Selection stored in `selected_start_sec` and `selected_end_sec` fields
 
 ### Current Flow
-```
+
+```text
 1. User uploads audio
 2. Backend processes audio
 3. Analysis runs (sections detected)
@@ -42,7 +46,8 @@ This document outlines the plan to alter the business logic of Prerequisites 1 a
 ## Target State
 
 ### New Flow
-```
+
+```text
 1. User uploads audio
 2. **NEW: User selects video type (Full-Length OR 30-Second)**
 3. Backend stores choice and sets per-song sections flag
@@ -62,7 +67,8 @@ This document outlines the plan to alter the business logic of Prerequisites 1 a
 **Current**: Global `ENABLE_SECTIONS` flag affects all songs
 **Target**: Each song has its own `use_sections` field that controls behavior
 
-**Rationale**: 
+**Rationale**:
+
 - User choice is per-song, not global
 - Allows different songs to use different workflows
 - More flexible for future features
@@ -71,6 +77,7 @@ This document outlines the plan to alter the business logic of Prerequisites 1 a
 
 **Location**: Before analysis, after upload
 **Options**:
+
 - "Full-Length Video" (sections enabled)
 - "30-Second Video (Optimized for Short-Form Platforms)" (sections disabled)
 
@@ -92,15 +99,18 @@ This document outlines the plan to alter the business logic of Prerequisites 1 a
 #### File: `backend/app/models/song.py`
 
 Add new field:
+
 ```python
 video_type: Optional[str] = Field(default=None, max_length=32)
 ```
 
 **Possible Values**:
+
 - `"full_length"` - Full-length video with sections
 - `"short_form"` - 30-second video without sections
 
 **Alternative Approach** (Boolean):
+
 ```python
 use_sections: Optional[bool] = Field(default=None)
 ```
@@ -167,6 +177,7 @@ def migrate() -> None:
 #### File: `backend/app/schemas/song.py`
 
 Add field to `SongRead`:
+
 ```python
 video_type: Optional[str] = None
 ```
@@ -176,6 +187,7 @@ video_type: Optional[str] = None
 #### File: `backend/app/api/v1/routes_songs.py`
 
 Add new endpoint:
+
 ```python
 @router.patch(
     "/{song_id}/video-type",
@@ -226,6 +238,7 @@ def set_video_type(
 #### File: `backend/app/schemas/song.py`
 
 Add new schema:
+
 ```python
 class VideoTypeUpdate(BaseModel):
     video_type: str = Field(description="Video type: 'full_length' or 'short_form'")
@@ -242,6 +255,7 @@ class VideoTypeUpdate(BaseModel):
 #### File: `backend/app/core/config.py`
 
 Add helper function to check per-song sections:
+
 ```python
 def should_use_sections_for_song(song: Song) -> bool:
     """Determine if sections should be used for a specific song.
@@ -267,6 +281,7 @@ def should_use_sections_for_song(song: Song) -> bool:
 #### File: `backend/app/services/song_analysis.py`
 
 Modify analysis to respect video type:
+
 ```python
 def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, Any]:
     # ... existing code ...
@@ -299,6 +314,7 @@ def _execute_analysis_pipeline(song_id: UUID, job_id: str | None) -> dict[str, A
 #### Files: `backend/app/services/composition_execution.py`, `backend/app/services/composition_job.py`
 
 Update to use per-song sections check:
+
 ```python
 from app.core.config import should_use_sections_for_song
 
@@ -428,6 +444,7 @@ export const VideoTypeSelector: React.FC<VideoTypeSelectorProps> = ({
 ```
 
 **Design System Compliance**:
+
 - Uses `vc-*` color tokens
 - Uses spacing scale (`space-4`, `space-6`, etc.)
 - Uses border radius (`rounded-2xl`, `rounded-full`)
@@ -502,6 +519,7 @@ useEffect(() => {
 #### File: `frontend/src/pages/UploadPage.tsx`
 
 Update audio selection to only show for short-form:
+
 ```typescript
 // Only show audio selection if short-form is selected
 {analysisState === 'completed' && 
@@ -517,6 +535,7 @@ Update audio selection to only show for short-form:
 #### File: `frontend/src/types/song.ts`
 
 Add field to `SongRead`:
+
 ```typescript
 export interface SongRead {
   // ... existing fields ...
@@ -531,14 +550,17 @@ export interface SongRead {
 ### 1. Upload Flow Integration
 
 **Current Flow**:
+
 1. Upload → Analysis → Selection → Generation
 
 **New Flow**:
+
 1. Upload → **Video Type Selection** → Analysis → **(Selection if short-form)** → Generation
 
 ### 2. Analysis Integration
 
 The analysis service should:
+
 - Check `song.video_type` before running section inference
 - Skip section inference if `video_type === "short_form"`
 - Still run beat detection, mood analysis, etc. (needed for both types)
@@ -546,6 +568,7 @@ The analysis service should:
 ### 3. Composition Integration
 
 The composition service should:
+
 - Check `should_use_sections_for_song(song)` to determine workflow
 - Use `SectionVideo` model if sections enabled
 - Use `SongClip` model if sections disabled
@@ -553,10 +576,12 @@ The composition service should:
 ### 4. Backward Compatibility
 
 **Existing Songs**:
+
 - Songs without `video_type` set should use global `ENABLE_SECTIONS` flag
 - This maintains backward compatibility
 
 **Migration Strategy**:
+
 - New songs: Require video type selection before analysis
 - Old songs: Continue using global flag until user re-uploads
 
@@ -567,6 +592,7 @@ The composition service should:
 ### Design System Adherence
 
 The `VideoTypeSelector` component must follow:
+
 - **Color System**: Use `vc-accent-primary` for selection, `vc-border` for unselected
 - **Typography**: Use display font for headings, UI font for body
 - **Spacing**: Use spacing scale (16px, 24px, 32px)
@@ -577,18 +603,18 @@ The `VideoTypeSelector` component must follow:
 ### User Experience Flow
 
 1. **Upload Step**: User uploads audio file
-2. **Video Type Selection**: 
+2. **Video Type Selection**:
    - Clear, prominent choice between two options
    - Visual distinction between selected/unselected
    - Descriptive text for each option
    - No technical jargon (don't mention "sections")
-3. **Analysis Step**: 
+3. **Analysis Step**:
    - Show progress as before
    - User understands analysis is running
 4. **Audio Selection** (if short-form):
    - Only appears for short-form videos
    - Same UI as before
-5. **Generation Step**: 
+5. **Generation Step**:
    - Proceeds as normal
    - User doesn't need to know about sections vs clips
 
@@ -605,6 +631,7 @@ The `VideoTypeSelector` component must follow:
 ### Unit Tests
 
 #### Backend
+
 - `test_video_type_validation.py`
   - Test valid video types
   - Test invalid video types
@@ -616,6 +643,7 @@ The `VideoTypeSelector` component must follow:
   - Test analysis respects video type
 
 #### Frontend
+
 - `test_VideoTypeSelector.tsx`
   - Test selection interaction
   - Test visual states
@@ -648,6 +676,7 @@ The `VideoTypeSelector` component must follow:
 ## Implementation Checklist
 
 ### Phase 1: Database & Backend API
+
 - [ ] Add `video_type` field to Song model
 - [ ] Create migration file
 - [ ] Run migration
@@ -660,6 +689,7 @@ The `VideoTypeSelector` component must follow:
 - [ ] Add unit tests
 
 ### Phase 2: Frontend Component
+
 - [ ] Create `VideoTypeSelector` component
 - [ ] Follow design system guidelines
 - [ ] Add selection states and animations
@@ -667,6 +697,7 @@ The `VideoTypeSelector` component must follow:
 - [ ] Add unit tests
 
 ### Phase 3: Upload Flow Integration
+
 - [ ] Update `UploadPage` to show video type selector
 - [ ] Add video type state management
 - [ ] Add API call to set video type
@@ -675,11 +706,13 @@ The `VideoTypeSelector` component must follow:
 - [ ] Update TypeScript types
 
 ### Phase 4: Conditional Audio Selection
+
 - [ ] Update audio selection to only show for short-form
 - [ ] Hide audio selection for full-length videos
 - [ ] Test conditional rendering
 
 ### Phase 5: Testing & Polish
+
 - [ ] Write integration tests
 - [ ] Manual testing checklist
 - [ ] Fix edge cases
@@ -753,6 +786,7 @@ The `VideoTypeSelector` component must follow:
 ## Related Files Reference
 
 ### Backend Files
+
 - `backend/app/models/song.py` - Song model (add video_type)
 - `backend/app/schemas/song.py` - Song schemas (add VideoTypeUpdate)
 - `backend/app/api/v1/routes_songs.py` - Song API routes (add endpoint)
@@ -762,6 +796,7 @@ The `VideoTypeSelector` component must follow:
 - `backend/migrations/003_add_video_type_field.py` - Migration (new)
 
 ### Frontend Files
+
 - `frontend/src/components/upload/VideoTypeSelector.tsx` - Selector component (new)
 - `frontend/src/pages/UploadPage.tsx` - Upload page (add selection step)
 - `frontend/src/types/song.ts` - TypeScript types (add video_type)
@@ -776,4 +811,3 @@ The `VideoTypeSelector` component must follow:
 - Short-form videos are optimized for 30-second clips on social platforms
 - The audio selection UI is only relevant for short-form videos
 - This aligns with the Friday Plan's focus on 30-second use case while maintaining full-length capability
-

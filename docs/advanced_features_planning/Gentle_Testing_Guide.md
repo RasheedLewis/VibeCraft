@@ -31,11 +31,13 @@ A comprehensive guide to test all the new features and improvements added in thi
 
 ## 🎨 Feature 1: Beat-Sync Visual Effects (15-20 minutes)
 
-**What was added:** Five types of visual effects that sync to musical beats: flash, color_burst, zoom_pulse, brightness_pulse, and glitch.
+**What was added:** Five types of visual effects that sync to musical beats: flash,
+color_burst, zoom_pulse, brightness_pulse, and glitch.
 
 ### Testing Beat-Sync Effects
 
 **Prerequisites:**
+
 - Complete a full video generation (upload → analyze → generate clips → compose)
 - Use an audio file with clear, strong beats (electronic, hip-hop, or pop work well)
 
@@ -53,9 +55,11 @@ A comprehensive guide to test all the new features and improvements added in thi
 **To test specific effects, you can enable test mode:**
 
 1. **Set test mode environment variable:**
+
    ```bash
    export BEAT_EFFECT_TEST_MODE=true
    ```
+
    (This exaggerates effects for easier observation)
 
 2. **Restart backend** with test mode enabled
@@ -65,31 +69,37 @@ A comprehensive guide to test all the new features and improvements added in thi
 **Effect Types to Observe:**
 
 #### 1. Flash Effect (Default)
+
 - **What to look for:** Brief white/bright flashes on each beat
 - **How to verify:** Watch video frame-by-frame, flashes should occur at beat moments
 - **Test mode:** Flashes are 3x brighter and last 150ms (vs normal 50ms)
 
 #### 2. Color Burst
+
 - **What to look for:** Sudden increase in color saturation and brightness on beats
 - **How to verify:** Colors should "pop" more intensely at beat moments
 - **Test mode:** Saturation and brightness are 1.5-2x stronger
 
 #### 3. Zoom Pulse
+
 - **What to look for:** Subtle zoom-in effect on beats
 - **How to verify:** Video should slightly zoom in at beat moments
 - **Test mode:** Zoom is 1.15x (vs normal 1.05x)
 
 #### 4. Brightness Pulse
+
 - **What to look for:** Overall brightness increase on beats
 - **How to verify:** Video should get brighter at beat moments
 - **Test mode:** Brightness increase is 2x stronger
 
 #### 5. Glitch Effect
+
 - **What to look for:** Digital glitch effect with RGB channel shift on beats
 - **How to verify:** Red/blue channel separation visible at beat moments
 - **Test mode:** Glitch intensity is 2x stronger
 
 **Verification Checklist:**
+
 - [ ] Effects trigger on beats (not randomly)
 - [ ] Effects work for entire video duration (not just first 50 beats)
 - [ ] Effects are synchronized with music rhythm
@@ -99,7 +109,8 @@ A comprehensive guide to test all the new features and improvements added in thi
 
 ## 🎭 Feature 2: Character Consistency Improvements (10 minutes)
 
-**What was added:** Verified and improved that both reference image AND text prompt are used together (not replacement).
+**What was added:** Verified and improved that both reference image AND text prompt
+are used together (not replacement).
 
 ### Testing Character Consistency
 
@@ -117,12 +128,14 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Character should perform actions described in prompts
 
 **What to verify:**
+
 - [ ] Character looks consistent across all clips
 - [ ] Character matches reference image (template or custom)
 - [ ] Character performs actions from prompts (not just static image)
 - [ ] Both image and prompt are used together (character + motion)
 
 **Check logs:** Look for these log messages in backend:
+
 - `[VIDEO-GEN] Using reference image: <url>`
 - `[VIDEO-GEN] FULL PROMPT (optimized): <prompt>`
 - `[VIDEO-GEN] FULL PROMPT (original): <prompt>`
@@ -154,6 +167,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Pretty JSON formatting
 
 **What to verify:**
+
 - [ ] Prompts are logged in worker logs
 - [ ] Prompts are visible in UI via info button
 - [ ] Both optimized and original prompts are logged
@@ -163,7 +177,8 @@ A comprehensive guide to test all the new features and improvements added in thi
 
 ## 🎵 Feature 4: BPM-Aware Prompting (5 minutes)
 
-**What was added:** Enhanced prompts with tempo descriptors (slow/flowing, energetic/driving) based on BPM.
+**What was added:** Enhanced prompts with tempo descriptors (slow/flowing,
+energetic/driving) based on BPM.
 
 ### Testing BPM-Aware Prompts
 
@@ -180,6 +195,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Fast songs: "energetic, driving" motion
 
 **What to verify:**
+
 - [ ] Prompts include tempo-appropriate descriptors
 - [ ] Slow songs get "slow, flowing" descriptors
 - [ ] Fast songs get "energetic, driving" descriptors
@@ -203,6 +219,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Character should be more active/dynamic
 
 **What to verify:**
+
 - [ ] Dance-related genres trigger "dancing" motion type
 - [ ] Prompts include dancing descriptors
 - [ ] Generated videos show more dancing motion
@@ -226,6 +243,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - URL should still have songId parameter
 
 **What to verify:**
+
 - [ ] Page refresh doesn't lose progress
 - [ ] Song state is restored from localStorage
 - [ ] Can continue where you left off
@@ -256,6 +274,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Should redirect to `/projects` page
 
 **What to verify:**
+
 - [ ] Registration creates account and logs in automatically
 - [ ] Login works with correct credentials
 - [ ] Logout clears session and redirects to login
@@ -287,6 +306,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Warning message appears about 5-project limit
 
 **What to verify:**
+
 - [ ] Projects page lists your songs (max 5)
 - [ ] Each project shows correct metadata
 - [ ] Clicking a project opens it
@@ -311,6 +331,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Cost should be stored in database
 
 **What to verify:**
+
 - [ ] Cost is calculated for each clip generation
 - [ ] Total cost is stored in song record
 - [ ] Cost includes character consistency premium (if applicable)
@@ -335,6 +356,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Should work normally
 
 **What to verify:**
+
 - [ ] Large files are rejected with clear error message
 - [ ] Normal-sized files upload successfully
 - [ ] Error message shows the size limit
@@ -356,6 +378,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Clips should complete faster than before
 
 **What to verify:**
+
 - [ ] Multiple clips generate in parallel
 - [ ] Up to 4 clips can be processing simultaneously
 - [ ] Overall generation time is reduced
@@ -378,6 +401,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - This is expected behavior
 
 **What to verify:**
+
 - [ ] Rate limiting works (may not be easily testable without automation)
 - [ ] Health check endpoints (`/healthz`) are not rate limited
 - [ ] Limits are generous (60/min, 1000/hour, 10000/day) for normal use
@@ -395,11 +419,13 @@ A comprehensive guide to test all the new features and improvements added in thi
 **Steps:**
 
 1. **Navigate to video-api-testing directory:**
+
    ```bash
    cd video-api-testing
    ```
 
 2. **Run the interactive script:**
+
    ```bash
    python test_rapid_iteration.py
    ```
@@ -416,6 +442,7 @@ A comprehensive guide to test all the new features and improvements added in thi
    - Each generation logs the prompt used
 
 **What to verify:**
+
 - [ ] Script runs interactively
 - [ ] Can change prompts and models on the fly
 - [ ] Prompts are logged to file
@@ -448,6 +475,7 @@ A comprehensive guide to test all the new features and improvements added in thi
     - Can continue where you left off
 
 **What to verify:**
+
 - [ ] All steps work as before
 - [ ] New features don't break existing functionality
 - [ ] Video generation completes successfully
@@ -460,31 +488,37 @@ A comprehensive guide to test all the new features and improvements added in thi
 After testing, you should be able to say:
 
 **Beat-Sync Effects:**
+
 - [ ] Flash effects visible on beats throughout video
 - [ ] Effects work for entire duration (not just first 50 beats)
 - [ ] Test mode makes effects more visible
 
 **Character Consistency:**
+
 - [ ] Character matches reference image
 - [ ] Character appears consistently across clips
 - [ ] Both image and prompt are used together
 
 **Prompt Visibility:**
+
 - [ ] Prompts logged in worker logs
 - [ ] Prompts visible in UI via info button
 - [ ] BPM-aware descriptors in prompts
 
 **Authentication:**
+
 - [ ] Can register and login
 - [ ] Protected routes require authentication
 - [ ] Projects page shows user's songs (max 5)
 
 **State & UX:**
+
 - [ ] Page refresh maintains state
 - [ ] Can navigate between projects
 - [ ] File size validation works
 
 **Performance:**
+
 - [ ] Multiple clips generate in parallel (up to 4)
 - [ ] Overall generation time improved
 
@@ -521,6 +555,7 @@ After testing, you should be able to say:
 ## 📚 Reference
 
 For more detailed information:
+
 - **Beat-Sync Effects:** See `BEAT-SYNC-IMPLEMENTATION-PLAN.md`
 - **Full E2E Flow:** See `Old_Gentle_Testing_Guide.md`
 - **Architecture:** See `ARCH.md`
@@ -529,6 +564,8 @@ For more detailed information:
 
 ## That's It
 
-This guide covers all the new features added in this branch. Follow the steps in order, and you'll test everything. Keep it simple, take your time, and check each step before moving to the next.
+This guide covers all the new features added in this branch. Follow the steps in
+order, and you'll test everything. Keep it simple, take your time, and check each
+step before moving to the next.
 
 Good luck! 🎬

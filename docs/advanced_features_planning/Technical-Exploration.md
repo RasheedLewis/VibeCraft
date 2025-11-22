@@ -1,4 +1,5 @@
 # BeatDrop Post-MVP Technical Exploration
+
 ## Deep Dive: Beat Synchronization & Character Consistency Solutions
 
 ---
@@ -6,14 +7,17 @@
 ## Part 1: Beat Synchronization Approaches
 
 ### The Core Challenge
+
 AI video generation models (Runway, Pika, Kling, Luma, etc.) operate as black boxes that produce autonomous motion. They don't accept frame-level control signals or timing parameters. This means generated motion is inherently unsynchronized with audio beats, creating a fundamental disconnect for music videos.
 
 **What we have:**
+
 - `beat_times` array with precise beat timestamps (e.g., [0.5, 1.0, 1.5, 2.0...])
 - Generated video clips with arbitrary motion timing
 - No control over when motion peaks occur during generation
 
 **What we need:**
+
 - Visual events (motion peaks, transitions, effects) aligned to beat_times
 - Perception of rhythm and synchronization
 - Professional-feeling music video output
@@ -23,6 +27,7 @@ AI video generation models (Runway, Pika, Kling, Luma, etc.) operate as black bo
 ## Approach 1: OpenCV Motion Analysis + Selective Time-Stretching
 
 ### Overview
+
 This approach analyzes the generated video to identify when motion peaks occur, then uses time-stretching to shift those peaks to align with beat timestamps. This is the only method that achieves true motion synchronization without re-generation.
 
 ### Technical Implementation
@@ -442,6 +447,7 @@ def iterative_alignment(video_path, beat_times, max_iterations=3):
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Achieves true motion synchronization (not just cuts/effects)
 - ✅ Preserves video quality (no re-generation needed)
 - ✅ Works with any video generation API
@@ -450,6 +456,7 @@ def iterative_alignment(video_path, beat_times, max_iterations=3):
 - ✅ Handles arbitrary motion patterns
 
 **Cons:**
+
 - ❌ High technical complexity (OpenCV, FFmpeg, signal processing)
 - ❌ Only works if motion peaks exist near beats (< 300ms offset)
 - ❌ Max ~15% stretch to avoid visible artifacts
@@ -458,18 +465,21 @@ def iterative_alignment(video_path, beat_times, max_iterations=3):
 - ❌ Requires tuning (prominence thresholds, stretch limits)
 
 **When It Works Best:**
+
 - Generated video already has periodic motion (bouncing, dancing, pulsing)
 - Motion peaks are somewhat close to beat timing (< 500ms off)
 - BPM is moderate (80-140 BPM, not extremely fast)
 - Simple character with clear motion (not chaotic multi-element scenes)
 
 **When It Fails:**
+
 - Generated motion is smooth and continuous (no peaks)
 - Motion peaks are > 500ms off from beats
 - Very high BPM (>160) with beats every 375ms
 - Complex scenes with multiple motion sources
 
 ### Effort Estimate: **High**
+
 - OpenCV integration and tuning: ~2-3 days
 - FFmpeg variable time-stretching: ~2-3 days
 - Pipeline integration and testing: ~2 days
@@ -477,6 +487,7 @@ def iterative_alignment(video_path, beat_times, max_iterations=3):
 - **Total: ~8-11 days**
 
 ### Recommended as: **Primary Post-MVP Approach**
+
 This should be the foundation of the beat sync solution because it's the only method that actually aligns motion (not just cuts/effects).
 
 ---
@@ -484,6 +495,7 @@ This should be the foundation of the beat sync solution because it's the only me
 ## Approach 2: Multi-Shot Composition with Beat-Timed Cuts
 
 ### Overview
+
 Generate longer video clips (10-15 seconds), then cut them into shorter segments at beat boundaries. Combine segments with fast transitions (hard cuts, whip pans, flash cuts) that occur exactly on beats.
 
 ### Technical Implementation
@@ -805,6 +817,7 @@ def compose_beat_synced_video(clips, beat_times, song_analysis, audio_path, outp
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Perfect sync for cuts and transitions (frame-accurate)
 - ✅ Creates strong rhythmic feel through editing
 - ✅ Medium technical complexity (FFmpeg + video processing)
@@ -813,6 +826,7 @@ def compose_beat_synced_video(clips, beat_times, song_analysis, audio_path, outp
 - ✅ Highly controllable and predictable results
 
 **Cons:**
+
 - ❌ Motion within segments not synced (only cuts are synced)
 - ❌ Can feel choppy if cuts are too frequent
 - ❌ Requires longer generated clips (more generation time/cost)
@@ -820,12 +834,14 @@ def compose_beat_synced_video(clips, beat_times, song_analysis, audio_path, outp
 - ❌ Less "organic" feeling than true motion sync
 
 **When It Works Best:**
+
 - High BPM tracks (120-160 BPM) where fast cuts feel natural
 - EDM genres that embrace quick edits (hardstyle, drum & bass)
 - Generated footage has high visual variety
 - Complemented by beat-synced effects (see Approach 6)
 
 ### Effort Estimate: **Medium**
+
 - Beat-aligned cutting: ~1 day
 - Transition effects library: ~2-3 days
 - Smart segment selection: ~2 days
@@ -833,6 +849,7 @@ def compose_beat_synced_video(clips, beat_times, song_analysis, audio_path, outp
 - **Total: ~6-8 days**
 
 ### Recommended as: **Secondary/Complementary Approach**
+
 Should be used in combination with Approach 1 (motion stretching) and Approach 6 (effects). The trio provides: aligned motion + rhythmic cuts + synced effects.
 
 ---
@@ -840,6 +857,7 @@ Should be used in combination with Approach 1 (motion stretching) and Approach 6
 ## Approach 3: Prompt Engineering for Rhythmic Motion
 
 ### Overview
+
 Craft prompts that bias the video generation toward periodic, loopable, or rhythmic motion. The goal is to increase the likelihood that generated motion naturally aligns with beats, reducing the need for post-processing.
 
 ### Technical Implementation
@@ -1070,6 +1088,7 @@ Based on experimentation with various APIs:
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Very low technical complexity (just prompt engineering)
 - ✅ No post-processing required
 - ✅ Fast to test and iterate
@@ -1077,6 +1096,7 @@ Based on experimentation with various APIs:
 - ✅ Can improve results for other approaches (generates better base footage)
 
 **Cons:**
+
 - ❌ Unreliable (no guarantees of sync)
 - ❌ Requires extensive testing to find effective patterns
 - ❌ Results vary significantly between API providers
@@ -1084,24 +1104,28 @@ Based on experimentation with various APIs:
 - ❌ Cannot achieve precise sync (best case: ~70% alignment)
 
 **When It Works Best:**
+
 - Combined with other approaches (provides better starting footage)
 - Moderate BPM (100-140) where motion is naturally visible
 - Simple character designs
 - Used for initial clip generation before applying motion stretching
 
 **When It Fails:**
+
 - Very high BPM (>160) - motion too fast for models to capture periodicity
 - Very low BPM (<80) - long periods between beats make sync less critical
 - Complex prompts with many elements
 - APIs that don't respond well to motion descriptors
 
 ### Effort Estimate: **Low**
+
 - Prompt template development: ~1 day
 - API-specific testing: ~2-3 days
 - Iteration and refinement: ~1-2 days
 - **Total: ~4-6 days**
 
 ### Recommended as: **Supplementary Approach**
+
 Use as the starting point for all clip generation. Improves results for Approaches 1 and 2 by generating footage that's already somewhat rhythmic.
 
 ---
@@ -1109,6 +1133,7 @@ Use as the starting point for all clip generation. Improves results for Approach
 ## Approach 4: Frame Interpolation + Beat Injection
 
 ### Overview
+
 Generate video at slower speed (2x duration), then use frame interpolation and beat-synced frame injection to create emphasis on beats. This creates "beat markers" through visual punctuation rather than motion alignment.
 
 ### Technical Implementation
@@ -1384,6 +1409,7 @@ def check_near_drop(time, song_analysis, window=1.0):
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Perfect beat timing for effects (frame-accurate)
 - ✅ Creates strong visual emphasis on beats
 - ✅ Works with any generated footage
@@ -1391,6 +1417,7 @@ def check_near_drop(time, song_analysis, window=1.0):
 - ✅ Medium processing time (~20-30 seconds per clip)
 
 **Cons:**
+
 - ❌ Underlying motion still not synced
 - ❌ Can feel artificial if effects are too heavy-handed
 - ❌ Slow-motion generation doubles API costs
@@ -1398,11 +1425,13 @@ def check_near_drop(time, song_analysis, window=1.0):
 - ❌ Doesn't address fundamental motion sync issue
 
 **When It Works Best:**
+
 - Combined with other approaches (Approach 1 or 2)
 - High-energy tracks where visual effects feel natural
 - As a final "polish" layer on top of synced motion/cuts
 
 ### Effort Estimate: **Medium**
+
 - Slow-motion generation pipeline: ~1 day
 - Frame interpolation integration: ~1 day
 - Beat effect library: ~2-3 days
@@ -1410,6 +1439,7 @@ def check_near_drop(time, song_analysis, window=1.0):
 - **Total: ~5-7 days**
 
 ### Recommended as: **Tertiary/Polish Layer**
+
 Use after applying Approach 1 (motion stretch) and Approach 2 (beat cuts) to add an extra layer of beat emphasis.
 
 ---
@@ -1417,6 +1447,7 @@ Use after applying Approach 1 (motion stretch) and Approach 2 (beat cuts) to add
 ## Approach 5: Hybrid - Generated Characters + Programmatic Effects
 
 ### Overview
+
 Generate short character animation loops (2-3 seconds), repeat them throughout the video, then overlay programmatic beat-reactive effects (particles, color shifts, camera shake) that are perfectly synced to beats.
 
 ### Technical Implementation
@@ -1802,6 +1833,7 @@ def concatenate_timeline(timeline):
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Perfect sync for effects (100% programmatic control)
 - ✅ Character motion feels rhythmic through looping
 - ✅ Highly customizable effect library
@@ -1809,6 +1841,7 @@ def concatenate_timeline(timeline):
 - ✅ Can create very complex, layered effects
 
 **Cons:**
+
 - ❌ Very high technical complexity (custom rendering pipeline)
 - ❌ Loops may become repetitive/boring
 - ❌ Seamless looping is hard to achieve with AI generation
@@ -1816,12 +1849,14 @@ def concatenate_timeline(timeline):
 - ❌ Requires significant dev resources
 
 **When It Works Best:**
+
 - Minimalist aesthetic (simple repeating character is acceptable)
 - High-energy tracks where effects dominate
 - When consistency is more important than variety
 - For unique visual style (procedural effects as signature look)
 
 ### Effort Estimate: **Very High**
+
 - Loop generation and seamlessness: ~2-3 days
 - Particle system implementation: ~3-4 days
 - Additional effects (color shift, camera shake, etc.): ~2-3 days
@@ -1830,6 +1865,7 @@ def concatenate_timeline(timeline):
 - **Total: ~12-16 days**
 
 ### Recommended as: **Advanced/Future Feature**
+
 Too complex for MVP or immediate post-MVP. Consider for future major update if simpler approaches don't provide sufficient quality.
 
 ---
@@ -1837,6 +1873,7 @@ Too complex for MVP or immediate post-MVP. Consider for future major update if s
 ## Approach 6: Audio-Reactive Video Modulation
 
 ### Overview
+
 Apply beat-reactive visual filters and effects to generated video using precise timestamp control. This is the "lightest" approach that adds perfect beat sync on top of any footage.
 
 ### Technical Implementation
@@ -2099,6 +2136,7 @@ def generate_audio_reactive_color_overlay(audio_analysis, duration):
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Perfect beat synchronization (frame-accurate)
 - ✅ Easy to implement (especially FFmpeg filters)
 - ✅ Fast processing (~10-15 seconds for 30-second video)
@@ -2107,23 +2145,27 @@ def generate_audio_reactive_color_overlay(audio_analysis, duration):
 - ✅ Can be layered infinitely
 
 **Cons:**
+
 - ❌ Doesn't solve underlying motion sync issue
 - ❌ Can look "cheap" if overused or poorly choreographed
 - ❌ Effects are "on top of" rather than "part of" the video
 
 **When It Works Best:**
+
 - Combined with Approaches 1 & 2 (the trifecta)
 - As final polish on already-synced footage
 - For specific beat emphasis (drops, downbeats)
 - EDM genres where visual effects are expected
 
 ### Effort Estimate: **Low**
+
 - FFmpeg filter library: ~1-2 days
 - Frame-level effects (OpenCV): ~2 days
 - Effect choreography system: ~1 day
 - **Total: ~4-5 days**
 
 ### Recommended as: **Essential Complementary Approach**
+
 MUST be implemented alongside Approach 1 (motion stretch) or Approach 2 (beat cuts). This adds the final layer of perfect beat sync.
 
 ---
@@ -2131,6 +2173,7 @@ MUST be implemented alongside Approach 1 (motion stretch) or Approach 2 (beat cu
 ## Recommended Implementation Strategy
 
 ### Phase 1 (Post-MVP Priority): The Trifecta
+
 Implement all three of these approaches in combination:
 
 1. **Approach 3: Rhythmic Prompts** (Low effort, immediate)
@@ -2148,16 +2191,19 @@ Implement all three of these approaches in combination:
 **Total time**: ~4-5 weeks for fully synced videos
 
 ### Phase 2 (Later Enhancement): Editorial Polish
+
 4. **Approach 2: Multi-Shot Composition** (Medium effort)
    - Add editorial sophistication
    - Implement in 1-2 weeks
 
 ### Phase 3 (Advanced Feature): Procedural Effects
+
 5. **Approach 5: Hybrid Programmatic** (Very high effort)
    - Only if market demands more
    - Implement in 3-4 weeks
 
-### Don't Implement:
+### Don't Implement
+
 - **Approach 4: Frame Interpolation** - Too much complexity for marginal benefit. Covered better by other approaches.
 
 ---
@@ -2173,12 +2219,14 @@ Implement all three of these approaches in combination:
 ### The Core Challenge
 
 AI video generation models produce character designs that vary significantly between clips due to:
+
 - Stochastic generation process (different latent noise)
 - Model's lack of "memory" between generations
 - Prompt interpretation variance
 - No built-in character reference system (for most APIs)
 
 **What we need:**
+
 - Same character design across all 6 clips (for 30-second video)
 - Ability to use custom user-uploaded avatar
 - Consistent style, colors, proportions, features
@@ -2188,6 +2236,7 @@ AI video generation models produce character designs that vary significantly bet
 ## Approach 1: Reference Image + Prompting
 
 ### Overview
+
 Generate the first clip, extract a key frame showing the character clearly, then use that frame as a reference image for subsequent clip generation. Some APIs support image-to-video or reference image features.
 
 ### Technical Implementation
@@ -2428,6 +2477,7 @@ def calculate_character_similarity(img1, img2):
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Medium complexity (uses existing API features)
 - ✅ Works with some major APIs (Runway, Pika)
 - ✅ No custom ML training required
@@ -2435,18 +2485,21 @@ def calculate_character_similarity(img1, img2):
 - ✅ Reasonable consistency (70-85% with good APIs)
 
 **Cons:**
+
 - ❌ API-dependent (not all support it)
 - ❌ Still not perfect consistency (varies per generation)
 - ❌ Requires good reference frame extraction
 - ❌ Limited control over specific features
 
 **When It Works Best:**
+
 - Using Runway or Pika APIs
 - Simple, distinctive character designs
 - Geometric/stylized characters (not realistic humans)
 - When 70-85% consistency is acceptable
 
 ### Effort Estimate: **Medium**
+
 - Reference frame extraction: ~1 day
 - API integrations (Runway, Pika): ~2 days
 - GPT-4V description generation: ~1 day
@@ -2454,6 +2507,7 @@ def calculate_character_similarity(img1, img2):
 - **Total: ~5-6 days**
 
 ### Recommended as: **Primary Post-MVP Approach**
+
 Start here because it's the best balance of effort/results and works with top-tier APIs.
 
 ---
@@ -2461,6 +2515,7 @@ Start here because it's the best balance of effort/results and works with top-ti
 ## Approach 2: LoRA Fine-Tuning
 
 ### Overview
+
 Fine-tune a LoRA (Low-Rank Adaptation) model on the user's character design, then use that LoRA for all clip generations. This provides the highest consistency but requires ML infrastructure.
 
 ### Technical Implementation
@@ -2689,6 +2744,7 @@ def queue_lora_training(user_id, character_name, training_images):
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Highest consistency possible (95%+ with good training)
 - ✅ Full control over character design
 - ✅ Works with any base model
@@ -2696,6 +2752,7 @@ def queue_lora_training(user_id, character_name, training_images):
 - ✅ Reusable (train once, use many times)
 
 **Cons:**
+
 - ❌ Very high complexity (ML training infrastructure)
 - ❌ Expensive (GPU compute for training)
 - ❌ Slow (5-10 min training time per character)
@@ -2704,6 +2761,7 @@ def queue_lora_training(user_id, character_name, training_images):
 - ❌ Requires self-hosted video generation
 
 **When It Works Best:**
+
 - Premium feature (charge extra for custom characters)
 - Users willing to wait 5-10 minutes for training
 - Complex/realistic character designs
@@ -2711,11 +2769,13 @@ def queue_lora_training(user_id, character_name, training_images):
 - Self-hosted video generation infrastructure
 
 **When It Fails:**
+
 - User expects instant results
 - Limited GPU resources
 - Simple characters (where prompt-based works fine)
 
 ### Effort Estimate: **Very High**
+
 - Training pipeline setup: ~3-4 days
 - LoRA training integration: ~3-4 days
 - Training data preparation: ~2 days
@@ -2724,6 +2784,7 @@ def queue_lora_training(user_id, character_name, training_images):
 - **Total: ~12-15 days**
 
 ### Recommended as: **Premium Feature (Later)**
+
 Too complex for initial post-MVP. Offer as $9.99 add-on for "custom character guarantee" after validating demand.
 
 ---
@@ -2731,6 +2792,7 @@ Too complex for initial post-MVP. Offer as $9.99 add-on for "custom character gu
 ## Approach 3: Style Transfer + Masking
 
 ### Overview
+
 Generate dancing motion with any character, then use style transfer to apply the user's avatar appearance onto the generated character using pose estimation and compositing.
 
 ### Technical Implementation
@@ -2938,11 +3000,13 @@ def composite_with_mask(background, foreground, mask):
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Full control over character appearance
 - ✅ Can work with any user avatar
 - ✅ Separates motion quality from character design
 
 **Cons:**
+
 - ❌ Very high complexity (pose estimation + warping + compositing)
 - ❌ Often looks artificial/uncanny
 - ❌ Requires accurate pose detection (fails with occlusions)
@@ -2950,16 +3014,19 @@ def composite_with_mask(background, foreground, mask):
 - ❌ Difficult to make look professional
 
 **When It Works Best:**
+
 - Simple, cartoonish avatars (not realistic humans)
 - Clear, unoccluded poses
 - When motion quality is more important than visual seamlessness
 
 **When It Fails:**
+
 - Realistic human avatars (uncanny valley)
 - Complex poses or occlusions
 - Fast motion (pose tracking fails)
 
 ### Effort Estimate: **Very High**
+
 - Pose estimation integration: ~2-3 days
 - Character segmentation: ~2 days
 - Avatar warping system: ~4-5 days
@@ -2968,6 +3035,7 @@ def composite_with_mask(background, foreground, mask):
 - **Total: ~13-17 days**
 
 ### Recommended as: **Not Recommended**
+
 Too complex with poor results. Better to use Approach 1 (reference images) or Approach 2 (LoRA).
 
 ---
@@ -2975,6 +3043,7 @@ Too complex with poor results. Better to use Approach 1 (reference images) or Ap
 ## Approach 4: Template-Based Characters
 
 ### Overview
+
 Create a curated library of pre-designed character "packs" where each pack has multiple pre-generated animations that can be reliably combined. Users choose from templates rather than uploading custom avatars.
 
 ### Technical Implementation
@@ -3150,6 +3219,7 @@ function TemplateCard({ template, onClick }) {
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Guaranteed consistency (pre-validated)
 - ✅ Medium complexity (one-time setup effort)
 - ✅ Fast generation (use existing references)
@@ -3158,23 +3228,27 @@ function TemplateCard({ template, onClick }) {
 - ✅ Scalable (add more templates over time)
 
 **Cons:**
+
 - ❌ No custom avatars (limited personalization)
 - ❌ Upfront work (create 10+ templates)
 - ❌ Storage costs (store reference clips/frames)
 - ❌ Less unique (multiple users use same templates)
 
 **When It Works Best:**
+
 - MVP or early post-MVP (before custom avatar feature)
 - Users prioritize quality over customization
 - EDM aesthetic (where stylized characters are expected)
 - When consistency is critical
 
 **When It Fails:**
+
 - Users strongly want custom avatars
 - Market demands personalization
 - Templates don't match user's brand/style
 
 ### Effort Estimate: **High (One-Time)**
+
 - Template design and prompting: ~3-4 days
 - Reference generation and validation: ~2-3 days
 - Template library system: ~2 days
@@ -3182,6 +3256,7 @@ function TemplateCard({ template, onClick }) {
 - **Total: ~8-11 days (one-time), ~1 day per additional template**
 
 ### Recommended as: **Phase 1 Solution**
+
 Start with templates to guarantee consistency, then add custom avatar support (Approach 1 or 2) later based on user feedback.
 
 ---
@@ -3189,6 +3264,7 @@ Start with templates to guarantee consistency, then add custom avatar support (A
 ## Approach 5: Next-Gen Models with Native Character Control
 
 ### Overview
+
 Wait for or use emerging video generation models that have built-in character consistency features (like Sora, future Runway versions, or specialized animation models).
 
 ### Current Landscape
@@ -3257,28 +3333,33 @@ def use_best_available_model_for_character_consistency(user_requirements):
 ### Pros and Cons
 
 **Pros:**
+
 - ✅ Low effort (use API, no custom solutions)
 - ✅ Best possible quality (purpose-built features)
 - ✅ Future-proof (models will improve)
 - ✅ Fast generation (native model speed)
 
 **Cons:**
+
 - ❌ Dependent on model availability
 - ❌ API costs may be high
 - ❌ No control over model updates
 - ❌ May not meet timeline (waiting for model release)
 
 **When It Works Best:**
+
 - Can wait for model releases
 - Budget allows for premium API costs
 - Want best possible quality without custom dev
 
 ### Effort Estimate: **Low (When Available)**
+
 - API integration: ~2-3 days per new model
 - Testing and validation: ~1-2 days
 - **Total: ~3-5 days (per model)**
 
 ### Recommended as: **Ongoing Monitoring**
+
 Keep track of model releases and integrate best options as they become available. Don't block on this - use Approach 1 or 4 now.
 
 ---
@@ -3286,29 +3367,34 @@ Keep track of model releases and integrate best options as they become available
 ## Recommended Character Consistency Strategy
 
 ### Phase 1 (Launch): Template-Based (Approach 4)
+
 - Create 10 curated character templates
 - Guarantee consistency
 - Fast to market
 - **Timeline: 2 weeks**
 
 ### Phase 2 (Post-MVP): Reference Images (Approach 1)
+
 - Add "upload avatar" feature
 - Use Runway/Pika reference image capabilities
 - Achieve ~70-80% consistency
 - **Timeline: 1 week**
 
 ### Phase 3 (Premium Feature): LoRA Fine-Tuning (Approach 2)
+
 - Offer as $9.99 add-on
 - "Perfect Character Match" premium feature
 - 95%+ consistency guarantee
 - **Timeline: 3 weeks**
 
 ### Ongoing: Monitor New Models (Approach 5)
+
 - Integrate Sora when available
 - Evaluate new APIs quarterly
 - Always use best available tech
 
-### Never Implement:
+### Never Implement
+
 - **Approach 3: Style Transfer** - Too complex, poor results
 
 ---
@@ -3316,11 +3402,13 @@ Keep track of model releases and integrate best options as they become available
 ## Final Recommendations Summary
 
 ### Beat Synchronization - "The Trifecta"
+
 1. **Rhythmic Prompts** (Approach 3) - Week 1
 2. **OpenCV + Time-Stretching** (Approach 1) - Weeks 2-4  
 3. **Beat-Reactive Filters** (Approach 6) - Week 5
 
 ### Character Consistency - "Phased Approach"
+
 1. **Template Library** (Approach 4) - Weeks 1-2
 2. **Reference Images** (Approach 1) - Week 3
 3. **LoRA Premium** (Approach 2) - Weeks 6-8 (after validation)

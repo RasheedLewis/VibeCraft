@@ -3,6 +3,7 @@
 ## Debug Overlays for UI Testing
 
 **Note:** Debug overlays are available but commented out for character consistency UI testing:
+
 - **UploadPage.tsx** (line ~1116): Blue debug box showing `character_consistency_enabled`, `character_reference_image_s3_key`, and `character_pose_b_s3_key` from `songDetails`
 - **SelectedTemplateDisplay.tsx** (line ~77): Yellow debug box showing pose URL fetch status, loading state, and URL availability
 
@@ -12,7 +13,8 @@ To enable for testing, uncomment the debug overlay sections in both files. These
 
 ## Critical Issue: Character Consistency Not Working
 
-**Problem:** 
+**Problem:**
+
 - (a) Most clips do not show a dancing figure/character
 - (b) When a character does appear, it's not based on the provided reference image
 
@@ -22,6 +24,7 @@ Prior to all refactors and adding the character consistency option, we actually 
 **Status:** Needs investigation - will examine prompts in a new chat session.
 
 **Related Files:**
+
 - `backend/app/services/scene_planner.py` - Prompt generation
 - `backend/app/services/video_generation.py` - Video generation with character images
 - `backend/app/services/clip_generation.py` - Clip generation flow
@@ -35,11 +38,13 @@ Prior to all refactors and adding the character consistency option, we actually 
 ### Code Flow Analysis
 
 **Image Retrieval (`clip_generation.py`):**
+
 1. `_get_character_image_urls()` checks `song.character_consistency_enabled` (line 457)
 2. If enabled, generates presigned S3 URLs for character images
 3. Returns `(character_image_urls, character_image_url)` tuple
 
 **Image Passing (`clip_generation.py` → `video_generation.py`):**
+
 1. Images passed to `generate_section_video()` as:
    - `reference_image_url` (single, fallback)
    - `reference_image_urls` (list, prioritized)
@@ -47,15 +52,18 @@ Prior to all refactors and adding the character consistency option, we actually 
 **Image-to-Video Path (`video_generation.py`):**
 
 **Path 1: Single Image (lines 232-242)**
+
 - If single image exists, calls `_generate_image_to_video()`
 - In `_generate_image_to_video()` (line 69): `input_params["image"] = reference_image_url`
 - ✅ **Image IS added to input_params**
 
 **Path 2: Multiple Images or Fallback (lines 272-296)**
+
 - If multiple images or fallback path: `input_params["image"] = image_urls[0]` (line 295)
 - ✅ **Image IS added to input_params**
 
 **API Call (line 317-320):**
+
 ```python
 prediction = client.predictions.create(
     version=version,
@@ -138,6 +146,7 @@ According to the implementation plan, the following beat-sync features should be
 ### Current Implementation Status
 
 **Beat Alignment (Clip Boundaries):**
+
 - ✅ **Implemented:** `composition_execution.py` lines 198-273
 - ✅ **Feature Flag:** `beat_aligned = True` (hardcoded, line 199)
 - ✅ **Process:**
@@ -147,6 +156,7 @@ According to the implementation plan, the following beat-sync features should be
   4. Logs: `"Calculating beat-aligned clip boundaries"` and `"Completed beat-aligned clip adjustment"`
 
 **Beat Filters (Visual Effects):**
+
 - ✅ **Implemented:** `video_composition.py` lines 416-482
 - ⚠️ **Only Flash Effect:** Currently only `filter_type="flash"` is implemented (line 336, 432)
 - ⚠️ **Limited to 50 Beats:** Only processes first 50 beats (line 445: `beat_times[:50]`)
@@ -162,7 +172,8 @@ According to the implementation plan, the following beat-sync features should be
 **1. Check Logs During Composition:**
 
 Look for these log messages in the worker logs:
-```
+
+```text
 Found {N} beat times for beat alignment and filters
 Calculating beat-aligned clip boundaries
 Calculated {N} beat-aligned boundaries
@@ -232,6 +243,7 @@ Only 1 clip appears to be generating even though `DEFAULT_MAX_CONCURRENCY = 2` s
 ### Current Behavior
 
 **Expected:** With `max_parallel=2`, 2 clips should run concurrently:
+
 - Clip 0 (index 0): No dependency, runs immediately
 - Clip 1 (index 1): No dependency, runs immediately
 - Clip 2 (index 2): Depends on Clip 0, waits for Clip 0 to finish
@@ -242,16 +254,19 @@ Only 1 clip appears to be generating even though `DEFAULT_MAX_CONCURRENCY = 2` s
 ### Root Cause Analysis
 
 **RQ Dependency System:**
+
 - Jobs with dependencies are stored in RQ's "deferred" registry
 - When a dependency finishes, RQ should automatically move the dependent job to the main queue
 - However, there can be delays in RQ's dependency resolution
 
 **Current Status Check:**
+
 - Clip #1 (index 0): RQ job finished, but database may show "processing" (status mismatch)
 - Clip #2 (index 1): Currently started/processing
 - Clip #3 (index 2): Queued in main queue, dependency (Clip #1) is finished, but not starting
 
 **Issue:** Clip #3's dependency is finished, but RQ hasn't moved it to "started" status yet. This suggests:
+
 1. RQ dependency resolution may have a delay
 2. Worker may need to poll for ready jobs
 3. There may be a bug in RQ's dependency handling
@@ -259,6 +274,7 @@ Only 1 clip appears to be generating even though `DEFAULT_MAX_CONCURRENCY = 2` s
 ### How to Verify
 
 **Check RQ Job States:**
+
 ```python
 from app.core.queue import get_queue
 from rq.job import Job
@@ -274,6 +290,7 @@ print(f"Started: {len(list(started.get_job_ids()))} jobs")
 ```
 
 **Check Clip Statuses:**
+
 - Look for clips with `status="queued"` but their dependency jobs are finished
 - These should automatically move to "started" when the worker picks them up
 

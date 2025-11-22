@@ -2,13 +2,15 @@
 
 **Date**: After implementing Prerequisites 1 & 2 (Dual Use Case)
 
-This document assesses what foundation has been laid and what might be missing before implementing Character Consistency and Beat Sync features.
+This document assesses what foundation has been laid and what might be missing
+before implementing Character Consistency and Beat Sync features.
 
 ---
 
 ## What We've Implemented (Since Diverging from Main)
 
 ### ✅ Prerequisite 1: Feature Flag/Sections Logic
+
 - **Status**: ✅ Complete (evolved into per-song `video_type`)
 - **Implementation**:
   - Per-song `video_type` field (`full_length` vs `short_form`)
@@ -23,6 +25,7 @@ This document assesses what foundation has been laid and what might be missing b
   - `backend/app/services/song_analysis.py` - Skips sections for short-form
 
 ### ✅ Prerequisite 2: Audio Selection (30-Second)
+
 - **Status**: ✅ Complete
 - **Implementation**:
   - Audio selection API endpoint (`PATCH /songs/{id}/selection`)
@@ -37,6 +40,7 @@ This document assesses what foundation has been laid and what might be missing b
   - `backend/app/services/clip_planning.py` - Uses selection for planning
 
 ### ✅ Dual Use Case: Video Type Selection
+
 - **Status**: ✅ Complete
 - **Implementation**:
   - Video type selection UI (`VideoTypeSelector` component)
@@ -54,7 +58,8 @@ This document assesses what foundation has been laid and what might be missing b
 
 ### For Character Consistency
 
-#### ✅ What We Have:
+#### ✅ What We Have
+
 1. **Storage Service** (`backend/app/services/storage.py`)
    - S3 upload/download functions
    - Presigned URL generation
@@ -71,7 +76,8 @@ This document assesses what foundation has been laid and what might be missing b
    - Migration system in place
    - ✅ Ready to add character fields
 
-#### ❌ What's Missing:
+#### ❌ What's Missing
+
 1. **Image Upload/Storage**
    - ❌ No image upload endpoint
    - ❌ No image validation (format, size, dimensions)
@@ -106,7 +112,8 @@ This document assesses what foundation has been laid and what might be missing b
 
 ### For Beat Synchronization
 
-#### ✅ What We Have:
+#### ✅ What We Have
+
 1. **Beat Detection** (`backend/app/services/song_analysis.py`)
    - ✅ `beat_times` array in analysis
    - ✅ BPM calculation
@@ -129,9 +136,10 @@ This document assesses what foundation has been laid and what might be missing b
    - ✅ Prompt composition logic
    - ⚠️ **Missing**: BPM/rhythm enhancement
 
-#### ❌ What's Missing:
+#### ❌ What's Missing
 
 ##### Phase 3.1: Prompt Engineering
+
 1. **Rhythmic Prompt Enhancement**
    - ❌ No `prompt_enhancement.py` service
    - ❌ No BPM-to-motion-descriptor mapping
@@ -140,6 +148,7 @@ This document assesses what foundation has been laid and what might be missing b
    - ❌ No motion type selection (bouncing, pulsing, etc.)
 
 ##### Phase 3.2: Audio-Reactive FFmpeg Filters
+
 1. **Beat-Reactive Filter Service**
    - ❌ No `beat_filters.py` service
    - ❌ No FFmpeg filter generation from `beat_times`
@@ -148,6 +157,7 @@ This document assesses what foundation has been laid and what might be missing b
    - ⚠️ Composition pipeline exists but doesn't apply beat filters
 
 ##### Phase 3.3: Structural Sync
+
 1. **Beat-Aligned Transitions**
    - ✅ Beat alignment utilities exist (`beat_alignment.py`)
    - ✅ Clip boundaries can be beat-aligned
@@ -187,19 +197,19 @@ This document assesses what foundation has been laid and what might be missing b
 
 ### Medium Priority (Enhancement Features)
 
-5. **Character Image Interrogation** (Character Consistency)
+1. **Character Image Interrogation** (Character Consistency)
    - **Impact**: Required for character consistency workflow
    - **Effort**: Medium (2-3 days)
    - **Dependencies**: Image upload
    - **Action**: Create `image_interrogation.py`, integrate OpenAI GPT-4 Vision
 
-6. **Character Image Generation** (Character Consistency)
+2. **Character Image Generation** (Character Consistency)
    - **Impact**: Required for character consistency workflow
    - **Effort**: High (3-5 days)
    - **Dependencies**: Image interrogation
    - **Action**: Create `character_image_generation.py`, research Replicate models
 
-7. **Beat-Aligned Transition Verification** (Beat Sync Phase 3.3)
+3. **Beat-Aligned Transition Verification** (Beat Sync Phase 3.3)
    - **Impact**: Ensures transitions are on beats
    - **Effort**: Low (1 day)
    - **Dependencies**: Beat alignment utilities (already exist)
@@ -207,7 +217,7 @@ This document assesses what foundation has been laid and what might be missing b
 
 ### Low Priority (Nice to Have)
 
-8. **Motion Analysis** (Future Beat Sync Enhancement)
+1. **Motion Analysis** (Future Beat Sync Enhancement)
    - **Impact**: Advanced feature, not in quick-win plan
    - **Effort**: Very High (1-2 weeks)
    - **Dependencies**: OpenCV, scipy
@@ -218,6 +228,7 @@ This document assesses what foundation has been laid and what might be missing b
 ## Recommended Foundation Work (Before Advanced Features)
 
 ### Option A: Minimal Foundation (Quick Start)
+
 **Goal**: Enable both advanced features with minimal setup
 
 1. **Image Upload Infrastructure** (1-2 days)
@@ -236,6 +247,7 @@ This document assesses what foundation has been laid and what might be missing b
 **Total**: ~4-6 days of foundation work
 
 ### Option B: Complete Foundation (Robust Start)
+
 **Goal**: Full infrastructure for both features
 
 1. **Image Upload Infrastructure** (1-2 days)
@@ -253,12 +265,14 @@ This document assesses what foundation has been laid and what might be missing b
 ## Assessment: Are We Ready?
 
 ### For Character Consistency: ⚠️ **Partially Ready**
+
 - ✅ Storage infrastructure exists
 - ✅ Video generation pipeline exists
 - ❌ Missing: Image upload, interrogation, character generation, image-to-video
 - **Recommendation**: Need 4-6 days of foundation work before starting
 
 ### For Beat Sync: ✅ **Mostly Ready**
+
 - ✅ Beat detection exists
 - ✅ Composition pipeline exists
 - ✅ Beat alignment utilities exist
@@ -269,7 +283,7 @@ This document assesses what foundation has been laid and what might be missing b
 
 ## Recommended Next Steps
 
-### Immediate (Before Advanced Features):
+### Immediate (Before Advanced Features)
 
 1. **Image Upload Foundation** (Priority 1)
    - Create image upload endpoint
@@ -294,14 +308,14 @@ This document assesses what foundation has been laid and what might be missing b
    - Integrate into composition pipeline
    - **Why**: High visual impact, creates perception of sync
 
-### After Foundation (Advanced Features):
+### After Foundation (Advanced Features)
 
-5. **Character Consistency Implementation**
+1. **Character Consistency Implementation**
    - Image interrogation service
    - Character image generation
    - Full workflow integration
 
-6. **Beat Sync Phase 3.3**
+2. **Beat Sync Phase 3.3**
    - Transition verification
    - Beat-aligned cuts
 
@@ -315,7 +329,7 @@ This document assesses what foundation has been laid and what might be missing b
 
 **For Beat Sync**: Need prompt enhancement and beat-reactive filters (3-5 days).
 
-**Recommendation**: Implement the minimal foundation (Option A) before proceeding with advanced features. This ensures we can start both features without blockers.
+**Recommendation**: Implement the minimal foundation (Option A) before proceeding
+with advanced features. This ensures we can start both features without blockers.
 
 **Total Foundation Work**: ~4-6 days for minimal, ~11-17 days for complete.
-

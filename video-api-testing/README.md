@@ -328,6 +328,7 @@ python test_rapid_iteration.py
 **Log Format:**
 
 Each iteration is logged as a JSON object with:
+
 - `iteration`: Iteration number
 - `timestamp`: ISO timestamp
 - `model`: Model used

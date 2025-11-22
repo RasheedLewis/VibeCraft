@@ -2,14 +2,26 @@
 
 ## Current Testing Status
 
-**Where we're stuck:**
-- Testing the video type selection modal overlay flow
-- Need to verify that:
-  1. Modal appears after upload
-  2. Selecting video type triggers analysis correctly
-  3. Modal stays visible for 1 second after selection
-  4. Analysis polling starts properly without 404 errors
-  5. Video type is correctly persisted and displayed
+**Ready for Testing:**
+- Video type selection modal overlay flow has been fixed and is ready for testing
+- All known issues have been addressed:
+  1. ✅ Modal visibility state management fixed
+  2. ✅ Modal appears only after upload (not immediately)
+  3. ✅ Analysis starts automatically after video type selection
+  4. ✅ Modal stays visible for 1 second after selection
+  5. ✅ Job polling starts properly without 404 errors
+  6. ✅ Debug code removed
+  7. ✅ Redundant UI elements removed
+
+**Next: Test the complete flow:**
+  1. Upload audio file
+  2. Verify modal overlay appears and blocks interaction
+  3. Select "30-Second Video" or "Full-Length Video"
+  4. Verify modal stays visible for ~1 second
+  5. Verify analysis starts automatically (check for job polling)
+  6. Verify no 404 errors in console
+  7. Verify `videoType` is correctly set and persisted
+  8. Verify analysis completes and UI progresses to next step
 
 ## Fixes Applied So Far
 
@@ -93,6 +105,26 @@ if (!videoType) {
 ```
 
 **Note:** This might cause the modal to appear slightly delayed, or there may be edge cases where the visibility state doesn't sync properly with `videoType` changes. Consider if this is the right approach or if we should derive `videoTypeModalVisible` from `videoType` directly instead of managing it as separate state.
+
+### 8. Modal Visibility State Management Issues
+**Problem:** 
+- `videoTypeModalVisible` was initialized to `true`, causing modal to show immediately even when no file was uploaded
+- Modal visibility logic was convoluted and didn't properly handle all edge cases
+- Debug div was left in production code
+- Redundant "Start Analysis" button section existed (analysis should start automatically)
+
+**Fixes:**
+- Changed `videoTypeModalVisible` initial state from `true` to `false`
+- Improved `useEffect` logic to properly show/hide modal based on:
+  - `stage === 'uploaded'` (file has been uploaded)
+  - `!videoType` (no video type selected yet)
+  - `!analysisPolling.data` (no analysis exists)
+  - `analysisState === 'idle'` (analysis not running)
+- Modal now shows when file is uploaded and no video type is set
+- Modal hides with 1-second delay after video type is selected
+- Removed debug div from production code
+- Removed redundant "Start Analysis" button section (analysis starts automatically via `useVideoTypeSelection` hook)
+- Added `videoTypeModalVisible` reset to `resetState` function for clean state management
 
 ## Files Modified
 

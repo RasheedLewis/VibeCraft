@@ -6,9 +6,11 @@ endpoints including validation, error cases, and successful operations.
 
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import patch
 from uuid import uuid4
 
+from PIL import Image
 from fastapi.testclient import TestClient
 
 from app.core.database import init_db, session_scope
@@ -16,6 +18,14 @@ from app.main import create_app
 from app.models.song import DEFAULT_USER_ID, Song
 
 init_db()
+
+
+def _create_test_image(format: str = "JPEG", width: int = 512, height: int = 512) -> bytes:
+    """Helper to create a test image in memory."""
+    img = Image.new("RGB", (width, height), color=(128, 128, 128))
+    output = BytesIO()
+    img.save(output, format=format)
+    return output.getvalue()
 
 
 def _cleanup_song(song_id: uuid4) -> None:
@@ -126,7 +136,10 @@ class TestApplyTemplateCharacter:
             },
             "default_pose": "pose-a",
         }
-        mock_get_image.side_effect = [b"pose-a-bytes", b"pose-b-bytes"]
+        mock_get_image.side_effect = [
+            _create_test_image("PNG", 512, 512),  # pose-a
+            _create_test_image("PNG", 512, 512),  # pose-b
+        ]
         mock_to_thread.side_effect = lambda fn, *args, **kwargs: fn(*args, **kwargs)
         mock_presigned_url.return_value = "https://s3.example.com/presigned-url"
 
@@ -209,7 +222,10 @@ class TestApplyTemplateCharacter:
             },
             "default_pose": "pose-a",
         }
-        mock_get_image.side_effect = [b"pose-a-bytes", b"pose-b-bytes"]
+        mock_get_image.side_effect = [
+            _create_test_image("PNG", 512, 512),  # pose-a
+            _create_test_image("PNG", 512, 512),  # pose-b
+        ]
         mock_to_thread.side_effect = lambda fn, *args, **kwargs: fn(*args, **kwargs)
 
         with TestClient(create_app()) as client:

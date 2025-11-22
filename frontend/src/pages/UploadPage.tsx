@@ -68,7 +68,7 @@ export const UploadPage: React.FC = () => {
     useState<boolean>(false)
   const compositionCompleteHandledRef = useRef<string | null>(null)
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
-  const [videoTypeModalVisible, setVideoTypeModalVisible] = useState(true)
+  const [videoTypeSelectorVisible, setVideoTypeSelectorVisible] = useState(true)
 
   // Use custom hooks for video type and audio selection
   const videoTypeSelection = useVideoTypeSelection({
@@ -92,25 +92,26 @@ export const UploadPage: React.FC = () => {
 
   // Sync video type selection state
   const videoType = videoTypeSelection.videoType
-  const isSettingVideoType = videoTypeSelection.isSetting
+  // const isSettingVideoType = videoTypeSelection.isSetting
 
-  // Hide modal with 1-second delay after video type is selected
-  useEffect(() => {
-    if (videoType && videoTypeModalVisible) {
-      const timer = setTimeout(() => {
-        setVideoTypeModalVisible(false)
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
-    // Reset visibility when videoType becomes null (new upload)
-    if (!videoType) {
-      // Use setTimeout to avoid synchronous setState in effect
-      const timer = setTimeout(() => {
-        setVideoTypeModalVisible(true)
-      }, 0)
-      return () => clearTimeout(timer)
-    }
-  }, [videoType, videoTypeModalVisible])
+  // Hide video type selector 3 seconds after analysis begins (fade out)
+  // COMMENTED OUT: Timing logic for fade-out
+  // useEffect(() => {
+  //   if (
+  //     videoType &&
+  //     (analysisState === 'queued' || analysisState === 'processing') &&
+  //     videoTypeSelectorVisible
+  //   ) {
+  //     const timer = setTimeout(() => {
+  //       setVideoTypeSelectorVisible(false)
+  //     }, 3000)
+  //     return () => clearTimeout(timer)
+  //   }
+  //   // Reset visibility when videoType becomes null (new upload)
+  //   if (!videoType) {
+  //     setVideoTypeSelectorVisible(true)
+  //   }
+  // }, [videoType, analysisState, videoTypeSelectorVisible])
 
   // Sync audio selection state
   const audioSelectionValue = audioSelection.audioSelection
@@ -419,6 +420,7 @@ export const UploadPage: React.FC = () => {
     setComposeJobId(null)
     setPlayerActiveClipId(null)
     setPlayerClipSelectionLocked(false)
+    setVideoTypeSelectorVisible(true)
     videoTypeSelection.reset()
     audioSelection.reset()
     // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
@@ -740,25 +742,15 @@ export const UploadPage: React.FC = () => {
     </div>
   )
 
+  // Determine if video type selector should be shown
+  const showVideoTypeSelector =
+    stage === 'uploaded' &&
+    !analysisPolling.data &&
+    analysisState === 'idle' &&
+    !videoType
+
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#0C0C12] via-[#121224] to-[#0B0B16] px-4 py-16 text-white">
-      {/* Debug: Component is rendering */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          zIndex: 9999,
-          background: 'red',
-          color: 'white',
-          padding: '10px',
-          fontSize: '12px',
-        }}
-      >
-        Debug: stage={stage}, analysisState={analysisState}, videoType={String(videoType)}
-        , hasData={String(!!analysisData)}, hasSongDetails={String(!!songDetails)},
-        audioSelection={String(!!audioSelectionValue)}
-      </div>
       <BackgroundOrbs />
 
       {analysisState !== 'completed' && (
@@ -775,6 +767,27 @@ export const UploadPage: React.FC = () => {
               and structure — setting the stage for a cinematic video.
             </p>
           </div>
+
+          {/* Video Type Selection - shown between heading and upload card */}
+          {(showVideoTypeSelector || (videoType && videoTypeSelectorVisible)) && (
+            <div
+              className={clsx(
+                'w-full transition-opacity duration-500',
+                videoType &&
+                  (analysisState === 'queued' || analysisState === 'processing') &&
+                  !videoTypeSelectorVisible
+                  ? 'opacity-0'
+                  : 'opacity-100',
+              )}
+            >
+              <div className="rounded-2xl border-2 border-vc-accent-primary/50 bg-gradient-to-br from-vc-accent-primary/10 via-vc-surface-primary to-vc-surface-primary p-4 shadow-xl">
+                <VideoTypeSelector
+                  onSelect={videoTypeSelection.setVideoType}
+                  selectedType={videoType}
+                />
+              </div>
+            </div>
+          )}
 
           <input
             id={fileInputId}
@@ -808,7 +821,7 @@ export const UploadPage: React.FC = () => {
                     metadata={metadata}
                     progress={progress}
                     result={result}
-                    analysisState={analysisState}
+                    analysisState={videoType ? analysisState : 'idle'}
                     analysisProgress={analysisProgress}
                     analysisError={analysisError}
                     analysisData={analysisData}
@@ -835,33 +848,6 @@ export const UploadPage: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Video Type Selection Modal - shown after upload, before analysis */}
-      {/* 
-        !analysisPolling.data prevents showing the selector when analysis exists,
-        avoiding 409 errors from trying to change video_type after analysis completes.
-        Also check analysisState to prevent showing while analysis is running.
-        This is a modal overlay that blocks interaction until video type is selected.
-        videoTypeModalVisible adds a 1-second delay before hiding the overlay.
-      */}
-      {stage === 'uploaded' &&
-        !analysisPolling.data &&
-        analysisState === 'idle' &&
-        (!videoType || videoTypeModalVisible) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div className="relative w-full max-w-4xl mx-4 rounded-2xl bg-[rgba(20,20,32,0.95)] backdrop-blur-xl border border-vc-border/50 shadow-2xl p-8">
-              <VideoTypeSelector
-                onSelect={videoTypeSelection.setVideoType}
-                selectedType={videoType}
-              />
-              {isSettingVideoType && (
-                <div className="mt-4 text-sm text-vc-text-secondary text-center">
-                  Setting video type...
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
       {/* Trigger analysis automatically after video type is selected */}
       {stage === 'uploaded' &&
@@ -986,32 +972,34 @@ export const UploadPage: React.FC = () => {
 
           {/* Song Profile View - shown after selection is made (for short-form) or directly (for full-length) */}
           {(videoType === 'full_length' ||
-            (videoType === 'short_form' && audioSelectionValue)) && (
-            <SongProfileView
-              analysisData={analysisData}
-              songDetails={songDetails}
-              clipSummary={clipSummary}
-              clipJobId={clipJobId}
-              clipJobStatus={clipJobStatus}
-              clipJobProgress={clipJobProgress}
-              clipJobError={clipJobError}
-              isComposing={isComposing}
-              composeJobProgress={composeJobProgress}
-              playerActiveClipId={playerActiveClipId}
-              highlightedSectionId={highlightedSectionId}
-              metadata={metadata}
-              lyricsBySection={lyricsBySection}
-              audioUrl={result?.audioUrl ?? null}
-              onGenerateClips={handleGenerateClips}
-              onCancelClipJob={handleCancelClipJob}
-              onCompose={handleComposeClips}
-              onPreviewClip={handlePreviewClip}
-              onRegenerateClip={handleRegenerateClip}
-              onRetryClip={handleRetryClip}
-              onPlayerClipSelect={handlePlayerClipSelect}
-              onSectionSelect={handleSectionSelect}
-            />
-          )}
+            (videoType === 'short_form' && audioSelectionValue)) &&
+            analysisData &&
+            songDetails && (
+              <SongProfileView
+                analysisData={analysisData}
+                songDetails={songDetails}
+                clipSummary={clipSummary}
+                clipJobId={clipJobId}
+                clipJobStatus={clipJobStatus}
+                clipJobProgress={clipJobProgress}
+                clipJobError={clipJobError}
+                isComposing={isComposing}
+                composeJobProgress={composeJobProgress}
+                playerActiveClipId={playerActiveClipId}
+                highlightedSectionId={highlightedSectionId}
+                metadata={metadata}
+                lyricsBySection={lyricsBySection}
+                audioUrl={result?.audioUrl ?? null}
+                onGenerateClips={handleGenerateClips}
+                onCancelClipJob={handleCancelClipJob}
+                onCompose={handleComposeClips}
+                onPreviewClip={handlePreviewClip}
+                onRegenerateClip={handleRegenerateClip}
+                onRetryClip={handleRetryClip}
+                onPlayerClipSelect={handlePlayerClipSelect}
+                onSectionSelect={handleSectionSelect}
+              />
+            )}
         </div>
       )}
       {analysisState === 'completed' && (!analysisData || !songDetails) && (

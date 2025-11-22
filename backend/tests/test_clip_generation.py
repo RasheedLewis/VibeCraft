@@ -500,7 +500,7 @@ def test_start_clip_generation_job_and_status(monkeypatch):
 
 def test_clip_generation_with_character_pose_b(monkeypatch):
     """Test clip generation passes both poses when character_pose_b_s3_key is available."""
-    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=1)
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=1)
 
     # Set up song with both poses
     with session_scope() as session:
@@ -542,7 +542,7 @@ def test_clip_generation_with_character_pose_b(monkeypatch):
 
 def test_clip_generation_fallback_when_pose_b_missing(monkeypatch):
     """Test clip generation works with only pose-a when pose-b is not available."""
-    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=1)
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=1)
 
     # Set up song with only pose-a
     with session_scope() as session:
@@ -582,7 +582,7 @@ def test_clip_generation_fallback_when_pose_b_missing(monkeypatch):
 
 def test_clip_generation_character_consistency_priority(monkeypatch):
     """Test that generated image takes priority over reference, and reference over pose-b."""
-    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=1)
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=1)
 
     # Set up song with all three character image types
     with session_scope() as session:

@@ -66,7 +66,16 @@ async def _upload_template_pose_to_song(
         return False
     
     # Normalize to JPEG
-    normalized_bytes = normalize_image_format(pose_bytes, "JPEG")
+    try:
+        normalized_bytes = normalize_image_format(pose_bytes, "JPEG")
+    except ValueError as exc:
+        if require_success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid image format for {pose}: {str(exc)}"
+            ) from exc
+        logger.warning(f"Invalid image format for {pose}: {exc}")
+        return False
     
     # Upload to S3
     try:

@@ -403,7 +403,13 @@ async def upload_character_image(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
 
     # Normalize to JPEG
-    normalized_bytes = normalize_image_format(image_bytes, "JPEG")
+    try:
+        normalized_bytes = normalize_image_format(image_bytes, "JPEG")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid image format: {str(exc)}"
+        ) from exc
 
     # Generate S3 key
     s3_key = get_character_image_s3_key(str(song_id), "reference")
@@ -468,6 +474,7 @@ async def upload_character_image(
         "image_url": image_url,
         "metadata": metadata,
         "status": "uploaded",
+        "character_consistency_enabled": True,
     }
 
 

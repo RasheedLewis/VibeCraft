@@ -84,8 +84,14 @@ def normalize_image_format(image_bytes: bytes, target_format: str = "JPEG") -> b
         
     Returns:
         Normalized image bytes
+        
+    Raises:
+        ValueError: If image_bytes is not a valid image format
     """
-    image = Image.open(BytesIO(image_bytes))
+    try:
+        image = Image.open(BytesIO(image_bytes))
+    except Exception as e:
+        raise ValueError(f"Invalid image format: {str(e)}") from e
     
     # Convert RGBA to RGB for JPEG
     if target_format == "JPEG" and image.mode == "RGBA":
@@ -96,5 +102,6 @@ def normalize_image_format(image_bytes: bytes, target_format: str = "JPEG") -> b
     output = BytesIO()
     image.save(output, format=target_format, quality=95)
     return output.getvalue()
+
 
 

@@ -13,9 +13,11 @@ Run with: pytest backend/tests/test_character_consistency_integration.py -v
 
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+from PIL import Image
 from fastapi.testclient import TestClient
 
 import pytest
@@ -32,22 +34,12 @@ except Exception:
     DB_AVAILABLE = False
 
 
-def _create_test_image() -> bytes:
-    """Create a minimal test image in memory (valid JPEG)."""
-    # Minimal valid JPEG file - using hex literals to avoid syntax issues
-    jpeg_header = bytes.fromhex(
-        "FFD8FFE000104A46494600010101004800480000"
-        "FFDB004300080606070605080707070909080A0C"
-        "140D0C0B0B0C1912130F141D1A1F1E1D1A1C1C20"
-        "242E27201C1C2831272E2D2E2C2E2E2E2E2E2E2E"
-        "2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E"
-        "2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2EFFC00011"
-        "08000100010301002200021101031101FFC40014"
-        "000100000000000000000000000000000008FFC4"
-        "00141001000000000000000000000000000000FF"
-        "DA0008010100003F00AAFFD9"
-    )
-    return jpeg_header
+def _create_test_image(format: str = "JPEG", width: int = 512, height: int = 512) -> bytes:
+    """Create a test image in memory (valid image format)."""
+    img = Image.new("RGB", (width, height), color=(128, 128, 128))
+    output = BytesIO()
+    img.save(output, format=format)
+    return output.getvalue()
 
 
 def _cleanup_song(song_id: uuid4) -> None:
@@ -65,7 +57,7 @@ class TestCharacterImageUpload:
 
     @patch("app.api.v1.routes_songs.upload_bytes_to_s3")
     @patch("app.api.v1.routes_songs.generate_presigned_get_url")
-    @patch("app.api.v1.routes_songs.get_queue")
+    @patch("app.core.queue.get_queue")
     def test_upload_character_image_success(
         self, mock_get_queue, mock_presigned, mock_upload
     ):

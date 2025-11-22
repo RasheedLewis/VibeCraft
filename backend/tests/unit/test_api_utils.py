@@ -6,8 +6,9 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.utils import ensure_no_analysis, update_song_field
+from app.api.v1.utils import ensure_no_analysis, update_song_field, verify_song_ownership
 from app.models.song import Song
+from app.models.user import User
 
 
 class TestUpdateSongField:
@@ -67,3 +68,46 @@ class TestEnsureNoAnalysis:
         ) as mock_get:
             ensure_no_analysis(song_id)
             mock_get.assert_called_once_with(song_id)
+
+
+class TestVerifySongOwnership:
+    """Tests for verify_song_ownership function."""
+
+    def test_valid_ownership_passes(self):
+        """Test that same user_id passes verification."""
+        song = Mock(spec=Song)
+        song.user_id = "user_123"
+        
+        current_user = Mock(spec=User)
+        current_user.id = "user_123"
+        
+        # Should not raise any exception
+        verify_song_ownership(song, current_user)
+
+    def test_invalid_ownership_raises_403(self):
+        """Test that different user_id raises 403 Forbidden."""
+        song = Mock(spec=Song)
+        song.user_id = "user_123"
+        
+        current_user = Mock(spec=User)
+        current_user.id = "user_456"  # Different user
+        
+        with pytest.raises(HTTPException) as exc_info:
+            verify_song_ownership(song, current_user)
+        
+        assert exc_info.value.status_code == 403
+        assert "Access denied" in exc_info.value.detail
+
+    def test_ownership_check_uses_correct_error_message(self):
+        """Test error message is clear and helpful."""
+        song = Mock(spec=Song)
+        song.user_id = "user_123"
+        
+        current_user = Mock(spec=User)
+        current_user.id = "user_456"
+        
+        with pytest.raises(HTTPException) as exc_info:
+            verify_song_ownership(song, current_user)
+        
+        assert "Access denied" in exc_info.value.detail
+        assert "does not belong to you" in exc_info.value.detail

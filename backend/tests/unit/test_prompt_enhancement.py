@@ -20,6 +20,7 @@ from app.services.prompt_enhancement import (  # noqa: E402
     BPM_FAST,
     BPM_MEDIUM,
     BPM_SLOW,
+    TEMPO_DESCRIPTORS,
     enhance_prompt_with_rhythm,
     get_motion_descriptor,
     get_motion_type_from_genre,
@@ -347,6 +348,128 @@ class TestOptimizePromptForApi:
         assert "120 beats per minute" in result
         assert "rhythmic visual pattern" in result.lower()
         assert prompt in result
+
+
+class TestTempoDescriptors:
+    """Test tempo descriptor integration in prompt enhancement.
+    
+    Justification: New feature that adds descriptive tempo classifications
+    (e.g., "slow, flowing" vs "energetic, driving") to enhance prompts beyond
+    just BPM numbers. This improves video generation quality.
+    """
+
+    def test_tempo_descriptors_exist(self):
+        """Test that TEMPO_DESCRIPTORS dictionary exists and has all keys."""
+        assert "slow" in TEMPO_DESCRIPTORS
+        assert "medium" in TEMPO_DESCRIPTORS
+        assert "fast" in TEMPO_DESCRIPTORS
+        assert "very_fast" in TEMPO_DESCRIPTORS
+
+    def test_tempo_descriptors_are_descriptive(self):
+        """Test that tempo descriptors contain descriptive words."""
+        assert "flowing" in TEMPO_DESCRIPTORS["slow"] or "gentle" in TEMPO_DESCRIPTORS["slow"]
+        assert "energetic" in TEMPO_DESCRIPTORS["fast"] or "driving" in TEMPO_DESCRIPTORS["fast"]
+        assert "frenetic" in TEMPO_DESCRIPTORS["very_fast"] or "rapid" in TEMPO_DESCRIPTORS["very_fast"]
+
+    def test_enhance_prompt_includes_tempo_descriptor(self):
+        """Test that enhance_prompt_with_rhythm includes tempo descriptor."""
+        base_prompt = "Abstract visual style"
+        enhanced = enhance_prompt_with_rhythm(base_prompt, bpm=120.0, motion_type="bouncing")
+        
+        # Should include tempo descriptor for "fast" tempo (120 BPM)
+        tempo_descriptor = TEMPO_DESCRIPTORS["fast"]
+        assert any(word in enhanced for word in tempo_descriptor.split(", "))
+
+    def test_enhance_prompt_slow_tempo_descriptor(self):
+        """Test that slow BPM uses slow tempo descriptor."""
+        base_prompt = "Abstract visual style"
+        enhanced = enhance_prompt_with_rhythm(base_prompt, bpm=50.0, motion_type="bouncing")
+        
+        # Should include "slow, flowing" or similar
+        assert "slow" in enhanced.lower() or "flowing" in enhanced.lower() or "gentle" in enhanced.lower()
+
+    def test_enhance_prompt_fast_tempo_descriptor(self):
+        """Test that fast BPM uses fast tempo descriptor."""
+        base_prompt = "Abstract visual style"
+        enhanced = enhance_prompt_with_rhythm(base_prompt, bpm=150.0, motion_type="bouncing")
+        
+        # Should include "energetic" or "driving" or "frenetic"
+        assert "energetic" in enhanced.lower() or "driving" in enhanced.lower() or "frenetic" in enhanced.lower()
+
+    def test_rhythmic_phrase_includes_tempo_and_bpm(self):
+        """Test that rhythmic phrase includes both tempo descriptor and BPM."""
+        base_prompt = "Abstract visual style"
+        enhanced = enhance_prompt_with_rhythm(base_prompt, bpm=120.0, motion_type="bouncing")
+        
+        # Should include both tempo descriptor and BPM number
+        assert "120" in enhanced or "BPM" in enhanced
+        # Should include tempo descriptor words
+        assert any(word in enhanced for word in ["energetic", "driving", "dynamic", "upbeat"])
+
+
+class TestDancingMotionType:
+    """Test dancing motion type selection and descriptors.
+    
+    Justification: New feature that prioritizes "dancing" motion type for
+    dance-related genres and moods. This improves video quality for dance music.
+    """
+
+    def test_select_motion_type_dance_genre(self):
+        """Test that dance genre selects dancing motion type."""
+        result = select_motion_type(genre="dance")
+        assert result == "dancing"
+
+    def test_select_motion_type_hip_hop_genre(self):
+        """Test that hip-hop genre selects dancing motion type."""
+        result = select_motion_type(genre="hip-hop")
+        assert result == "dancing"
+
+    def test_select_motion_type_pop_genre(self):
+        """Test that pop genre selects dancing motion type."""
+        result = select_motion_type(genre="pop")
+        assert result == "dancing"
+
+    def test_select_motion_type_dance_mood_tag(self):
+        """Test that dance mood tag selects dancing motion type."""
+        result = select_motion_type(mood_tags=["dance", "energetic"])
+        assert result == "dancing"
+
+    def test_select_motion_type_danceable_mood_tag(self):
+        """Test that danceable mood tag selects dancing motion type."""
+        result = select_motion_type(mood_tags=["danceable", "upbeat"])
+        assert result == "dancing"
+
+    def test_select_motion_type_groovy_mood_tag(self):
+        """Test that groovy mood tag selects dancing motion type."""
+        result = select_motion_type(mood_tags=["groovy", "funky"])
+        assert result == "dancing"
+
+    def test_dancing_motion_descriptor_exists(self):
+        """Test that dancing motion descriptor exists for all tempos."""
+        slow_desc = get_motion_descriptor(50.0, "dancing")
+        medium_desc = get_motion_descriptor(80.0, "dancing")
+        fast_desc = get_motion_descriptor(120.0, "dancing")
+        
+        assert "dancing" in slow_desc.lower()
+        assert "dancing" in medium_desc.lower()
+        assert "dancing" in fast_desc.lower()
+
+    def test_dancing_motion_descriptor_contains_dance_keywords(self):
+        """Test that dancing descriptors contain dance-related keywords."""
+        slow_desc = get_motion_descriptor(50.0, "dancing")
+        fast_desc = get_motion_descriptor(120.0, "dancing")
+        
+        # Should contain dance-related words
+        assert any(word in slow_desc.lower() for word in ["dance", "step", "sway", "move"])
+        assert any(word in fast_desc.lower() for word in ["dance", "step", "move", "dynamic"])
+
+    def test_enhance_prompt_with_dancing_motion(self):
+        """Test that enhance_prompt_with_rhythm works with dancing motion type."""
+        base_prompt = "Abstract visual style"
+        enhanced = enhance_prompt_with_rhythm(base_prompt, bpm=120.0, motion_type="dancing")
+        
+        # Should include dancing-related descriptors
+        assert "dancing" in enhanced.lower() or "dance" in enhanced.lower()
 
     def test_optimize_for_unknown_api_generic(self):
         """Test that unknown APIs get generic optimization."""

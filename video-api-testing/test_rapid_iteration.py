@@ -197,14 +197,16 @@ def generate_video_4s(
 
 
 def main():
-    """Run 50 iterations of video generation."""
+    """Interactive rapid iteration testing - manually trigger each video."""
     parser = argparse.ArgumentParser(
-        description="Rapid iteration testing: Generate 50 videos with 4-second clips"
+        description="Interactive rapid iteration testing: Generate 4-second videos on demand"
     )
     parser.add_argument(
         "prompt",
         type=str,
-        help="Base prompt for video generation (can be modified per iteration)",
+        nargs="?",
+        default=None,
+        help="Base prompt for video generation (optional, can be set interactively)",
     )
     parser.add_argument(
         "--model",
@@ -212,31 +214,37 @@ def main():
         default=DEFAULT_MODEL,
         help=f"Replicate model identifier (default: {DEFAULT_MODEL})",
     )
-    parser.add_argument(
-        "--iterations",
-        type=int,
-        default=50,
-        help="Number of iterations to run (default: 50)",
-    )
-    parser.add_argument(
-        "--delay",
-        type=float,
-        default=2.0,
-        help="Delay between iterations in seconds (default: 2.0)",
-    )
     
     args = parser.parse_args()
     
     print("=" * 80)
-    print("🚀 RAPID ITERATION TESTING")
+    print("🚀 INTERACTIVE RAPID ITERATION TESTING")
     print("=" * 80)
-    print(f"📝 Base Prompt: {args.prompt}")
     print(f"🤖 Model: {args.model}")
     print(f"⏱️  Duration: 4 seconds per clip")
-    print(f"🔄 Iterations: {args.iterations}")
-    print(f"⏸️  Delay: {args.delay}s between iterations")
     print(f"📊 Log File: {LOG_FILE}")
     print("=" * 80)
+    print("\n📖 Commands:")
+    print("  - Press ENTER to generate another video")
+    print("  - Type 'prompt <text>' to change the prompt")
+    print("  - Type 'model <name>' to change the model")
+    print("  - Type 'show' to show current settings")
+    print("  - Type 'quit' or 'exit' to exit")
+    print("=" * 80)
+    
+    # Initialize settings
+    current_prompt = args.prompt
+    current_model = args.model
+    iteration = 0
+    successful = 0
+    failed = 0
+    
+    # Get initial prompt if not provided
+    if not current_prompt:
+        current_prompt = input("\n📝 Enter initial prompt: ").strip()
+        if not current_prompt:
+            print("❌ Prompt is required. Exiting.")
+            return
     
     # Clear or create log file
     if Path(LOG_FILE).exists():
@@ -244,35 +252,78 @@ def main():
     else:
         print(f"\n📝 Creating new log file: {LOG_FILE}")
     
-    # Run iterations
-    successful = 0
-    failed = 0
+    print(f"\n✅ Ready! Current prompt: {current_prompt}")
+    print("Press ENTER to generate a video, or type a command.\n")
     
-    for i in range(1, args.iterations + 1):
-        # Use the same prompt for all iterations (can be modified later)
-        result = generate_video_4s(
-            prompt=args.prompt,
-            model=args.model,
-            iteration=i,
-        )
-        
-        if result:
-            successful += 1
-        else:
-            failed += 1
-        
-        # Delay between iterations (except after last one)
-        if i < args.iterations:
-            print(f"⏸️  Waiting {args.delay}s before next iteration...")
-            time.sleep(args.delay)
+    # Interactive loop
+    while True:
+        try:
+            user_input = input("> ").strip()
+            
+            if not user_input:
+                # Empty input = generate video
+                iteration += 1
+                result = generate_video_4s(
+                    prompt=current_prompt,
+                    model=current_model,
+                    iteration=iteration,
+                )
+                
+                if result:
+                    successful += 1
+                else:
+                    failed += 1
+                
+                print(f"\n📊 Stats: {successful} successful, {failed} failed (iteration {iteration})")
+                print("Press ENTER for another video, or type a command.\n")
+                
+            elif user_input.lower() in ["quit", "exit", "q"]:
+                break
+                
+            elif user_input.lower().startswith("prompt "):
+                new_prompt = user_input[7:].strip()
+                if new_prompt:
+                    current_prompt = new_prompt
+                    print(f"✅ Prompt updated: {current_prompt}\n")
+                else:
+                    print("❌ Please provide a prompt: 'prompt <text>'\n")
+                    
+            elif user_input.lower().startswith("model "):
+                new_model = user_input[6:].strip()
+                if new_model:
+                    current_model = new_model
+                    print(f"✅ Model updated: {current_model}\n")
+                else:
+                    print("❌ Please provide a model: 'model <name>'\n")
+                    
+            elif user_input.lower() == "show":
+                print(f"\n📋 Current Settings:")
+                print(f"  Prompt: {current_prompt}")
+                print(f"  Model: {current_model}")
+                print(f"  Iteration: {iteration}")
+                print(f"  Successful: {successful}")
+                print(f"  Failed: {failed}")
+                print()
+                
+            else:
+                print("❌ Unknown command. Press ENTER to generate, or type 'quit' to exit.\n")
+                
+        except KeyboardInterrupt:
+            print("\n\n⚠️  Interrupted by user")
+            break
+        except EOFError:
+            print("\n\n⚠️  End of input")
+            break
     
     # Summary
     print("\n" + "=" * 80)
     print("📊 SUMMARY")
     print("=" * 80)
-    print(f"✅ Successful: {successful}/{args.iterations}")
-    print(f"❌ Failed: {failed}/{args.iterations}")
-    print(f"📊 Success Rate: {(successful/args.iterations)*100:.1f}%")
+    total = successful + failed
+    if total > 0:
+        print(f"✅ Successful: {successful}/{total}")
+        print(f"❌ Failed: {failed}/{total}")
+        print(f"📊 Success Rate: {(successful/total)*100:.1f}%")
     print(f"📝 Full logs saved to: {LOG_FILE}")
     print("=" * 80)
 

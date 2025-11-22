@@ -281,29 +281,48 @@ support seed parameters.
 
 ### test_rapid_iteration.py
 
-Rapid iteration testing for prompt experimentation. Generates multiple 4-second videos quickly.
+Interactive rapid iteration testing for prompt experimentation. Generate 4-second videos on demand.
 
 **Positional Arguments:**
 
-- `prompt` - Base prompt for video generation (required)
+- `prompt` - Base prompt for video generation (optional, can be set interactively)
 
 **Optional Flags:**
 
 - `--model` - Replicate model identifier (default: `minimax/hailuo-2.3`)
-- `--iterations` - Number of iterations to run (default: 50)
-- `--delay` - Delay between iterations in seconds (default: 2.0)
 
 **Features:**
 
+- Interactive mode: Press ENTER to generate another video
 - Generates 4-second clips for fast iteration
 - Logs full prompts (not truncated) to `rapid_iteration.log` in JSON format
 - Tracks success/failure rates
 - Optimized for speed (uses 768p resolution for minimax models)
+- Change prompt/model on the fly
+
+**Commands:**
+
+- Press **ENTER** - Generate another video
+- `prompt <text>` - Change the prompt
+- `model <name>` - Change the model
+- `show` - Show current settings
+- `quit` or `exit` - Exit
 
 **Example:**
 
 ```bash
-python test_rapid_iteration.py "A futuristic cityscape" --iterations 50 --delay 2.0
+# Start with a prompt
+python test_rapid_iteration.py "A futuristic cityscape"
+
+# Or start without a prompt (will prompt you)
+python test_rapid_iteration.py
+
+# Then interactively:
+> [Press ENTER to generate]
+> prompt A neon-lit Tokyo street at night
+> [Press ENTER to generate with new prompt]
+> show
+> quit
 ```
 
 **Log Format:**

@@ -383,7 +383,6 @@ def execute_composition_pipeline(
             # Step 9: Track total cost for this video (sum of all clip generation costs)
             # Note: Individual clip costs are already tracked during clip generation
             # This is just for logging the final total
-            from app.repositories import SongRepository
             final_song = SongRepository.get_by_id(song_id)
             if final_song and final_song.total_generation_cost_usd:
                 logger.info(

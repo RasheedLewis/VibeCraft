@@ -3,7 +3,6 @@
 import logging
 from uuid import UUID
 
-from app.core.database import session_scope
 from app.repositories import SongRepository
 
 logger = logging.getLogger(__name__)
@@ -88,18 +87,17 @@ def track_video_generation_cost(
     )
     
     # Store cost in database
+    # Note: SongRepository methods handle their own session_scope internally
     try:
-        with session_scope() as session:
-            song = SongRepository.get_by_id(song_id)
-            if song:
-                # Add to existing cost (if any)
-                current_cost = song.total_generation_cost_usd or 0.0
-                song.total_generation_cost_usd = current_cost + cost
-                SongRepository.update(song)
-                logger.info(
-                    f"[COST-TRACKING] Stored cost ${cost:.4f} for song {song_id} "
-                    f"(total: ${song.total_generation_cost_usd:.4f})"
-                )
+        song = SongRepository.get_by_id(song_id)
+        # Add to existing cost (if any)
+        current_cost = song.total_generation_cost_usd or 0.0
+        song.total_generation_cost_usd = current_cost + cost
+        SongRepository.update(song)
+        logger.info(
+            f"[COST-TRACKING] Stored cost ${cost:.4f} for song {song_id} "
+            f"(total: ${song.total_generation_cost_usd:.4f})"
+        )
     except Exception as e:
         logger.warning(f"Failed to store cost for song {song_id}: {e}")
     

@@ -67,6 +67,7 @@ export function useAuth() {
   }, [])
 
   // Get current user
+  const token = getToken()
   const { data: currentUser, isLoading: isLoadingUser } = useQuery<UserInfo>({
     queryKey: ['auth', 'me'],
     queryFn: async () => {
@@ -118,10 +119,11 @@ export function useAuth() {
     queryClient.clear()
   }
 
+  const currentToken = getToken()
   return {
     currentUser: currentUser || getUser(),
     isLoading: isLoadingUser,
-    isAuthenticated: !!token && !!currentUser,
+    isAuthenticated: !!currentToken && !!currentUser,
     login: loginMutation.mutate,
     register: registerMutation.mutate,
     logout,

@@ -49,7 +49,7 @@ export const ProjectsPage: React.FC = () => {
           </div>
           <div className="flex gap-4">
             <VCButton onClick={handleCreateNew}>Create New</VCButton>
-            <VCButton variant="outline" onClick={logout}>
+            <VCButton variant="secondary" onClick={logout}>
               Logout
             </VCButton>
           </div>

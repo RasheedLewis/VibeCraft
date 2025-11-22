@@ -9,7 +9,7 @@ Run with: pytest backend/tests/unit/test_auth.py -v
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import jwt
 import pytest
@@ -31,7 +31,7 @@ from app.core.auth import (  # noqa: E402
     hash_password,
     verify_password,
 )
-from app.models.user import User
+from app.models.user import User  # noqa: E402
 
 
 class TestHashPassword:
@@ -71,7 +71,6 @@ class TestHashPassword:
     def test_verify_password_different_hash(self):
         """Test verify_password returns False for different hash."""
         password = "test_password"
-        hashed1 = hash_password(password)
         hashed2 = hash_password("different_password")
         assert verify_password(password, hashed2) is False
 

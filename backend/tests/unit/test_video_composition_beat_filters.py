@@ -11,16 +11,14 @@ Run with: pytest backend/tests/unit/test_video_composition_beat_filters.py -v
 
 import sys
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 
-import pytest
 
 # Add backend directory to path for direct execution
 backend_dir = Path(__file__).parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from app.services.video_composition import concatenate_clips  # noqa: E402
 
 
 class TestBeatFilterIntegration:
@@ -117,7 +115,6 @@ class TestBeatFilterIntegration:
         # filter application failures and continues without filters
         # This tests that the error handling logic exists
         
-        from app.services.video_composition import concatenate_clips
         
         # Verify the code structure: there's a try/except around filter application
         # (This is verified by code inspection - the actual test would require full FFmpeg mocking)

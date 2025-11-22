@@ -9,7 +9,6 @@ Run with: pytest backend/tests/unit/test_beat_filter_applicator.py -v
 import os
 from unittest.mock import Mock, patch
 
-import pytest
 
 from app.core.config import BeatEffectConfig
 from app.services.beat_filter_applicator import BeatFilterApplicator
@@ -110,7 +109,7 @@ class TestFlashFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=False)
         mock_stream = Mock()
         
-        result = applicator.apply_flash_filter(mock_stream, "min(1,condition)")
+        applicator.apply_flash_filter(mock_stream, "min(1,condition)")
         
         mock_stream.filter.assert_called_once()
         call_args = mock_stream.filter.call_args
@@ -128,7 +127,7 @@ class TestFlashFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=True)
         mock_stream = Mock()
         
-        result = applicator.apply_flash_filter(mock_stream, "min(1,condition)")
+        applicator.apply_flash_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         # Should be 50 * 3 = 150
@@ -144,7 +143,7 @@ class TestGlitchFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=False)
         mock_stream = Mock()
         
-        result = applicator.apply_glitch_filter(mock_stream, "min(1,condition)")
+        applicator.apply_glitch_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         assert call_args[0][0] == "geq"
@@ -161,7 +160,7 @@ class TestGlitchFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=True)
         mock_stream = Mock()
         
-        result = applicator.apply_glitch_filter(mock_stream, "min(1,condition)")
+        applicator.apply_glitch_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         # shift_pixels = 0.8 * 10 = 8
@@ -181,7 +180,7 @@ class TestColorBurstFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=False)
         mock_stream = Mock()
         
-        result = applicator.apply_color_burst_filter(mock_stream, "min(1,condition)")
+        applicator.apply_color_burst_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         assert call_args[0][0] == "eq"
@@ -199,7 +198,7 @@ class TestColorBurstFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=True)
         mock_stream = Mock()
         
-        result = applicator.apply_color_burst_filter(mock_stream, "min(1,condition)")
+        applicator.apply_color_burst_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         assert "if(min(1,condition),2.0,1)" in call_args[1]["saturation"]
@@ -215,7 +214,7 @@ class TestBrightnessPulseFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=False)
         mock_stream = Mock()
         
-        result = applicator.apply_brightness_pulse_filter(mock_stream, "min(1,condition)")
+        applicator.apply_brightness_pulse_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         assert call_args[0][0] == "eq"
@@ -230,7 +229,7 @@ class TestBrightnessPulseFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=True)
         mock_stream = Mock()
         
-        result = applicator.apply_brightness_pulse_filter(mock_stream, "min(1,condition)")
+        applicator.apply_brightness_pulse_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         assert "if(min(1,condition),0.3,0)" in call_args[1]["brightness"]
@@ -245,7 +244,7 @@ class TestZoomPulseFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=False)
         mock_stream = Mock()
         
-        result = applicator.apply_zoom_pulse_filter(mock_stream, "min(1,condition)")
+        applicator.apply_zoom_pulse_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         assert call_args[0][0] == "scale"
@@ -261,7 +260,7 @@ class TestZoomPulseFilter:
         applicator = BeatFilterApplicator(effect_config=config, test_mode=True)
         mock_stream = Mock()
         
-        result = applicator.apply_zoom_pulse_filter(mock_stream, "min(1,condition)")
+        applicator.apply_zoom_pulse_filter(mock_stream, "min(1,condition)")
         
         call_args = mock_stream.filter.call_args
         assert "if(min(1,condition),1.15,1)" in call_args[1]["w"]
@@ -278,7 +277,7 @@ class TestApplyFilter:
         
         with patch.object(applicator, 'apply_flash_filter') as mock_flash:
             mock_flash.return_value = mock_stream
-            result = applicator.apply_filter(mock_stream, "condition", "flash")
+            applicator.apply_filter(mock_stream, "condition", "flash")
             
             mock_flash.assert_called_once_with(mock_stream, "condition")
 
@@ -290,7 +289,7 @@ class TestApplyFilter:
         
         with patch.object(applicator, 'apply_glitch_filter') as mock_glitch:
             mock_glitch.return_value = mock_stream
-            result = applicator.apply_filter(mock_stream, "condition", "glitch")
+            applicator.apply_filter(mock_stream, "condition", "glitch")
             
             mock_glitch.assert_called_once_with(mock_stream, "condition")
 
@@ -302,7 +301,7 @@ class TestApplyFilter:
         
         with patch.object(applicator, 'apply_color_burst_filter') as mock_color:
             mock_color.return_value = mock_stream
-            result = applicator.apply_filter(mock_stream, "condition", "color_burst")
+            applicator.apply_filter(mock_stream, "condition", "color_burst")
             
             mock_color.assert_called_once_with(mock_stream, "condition")
 
@@ -314,7 +313,7 @@ class TestApplyFilter:
         
         with patch.object(applicator, 'apply_brightness_pulse_filter') as mock_bright:
             mock_bright.return_value = mock_stream
-            result = applicator.apply_filter(mock_stream, "condition", "brightness_pulse")
+            applicator.apply_filter(mock_stream, "condition", "brightness_pulse")
             
             mock_bright.assert_called_once_with(mock_stream, "condition")
 
@@ -326,7 +325,7 @@ class TestApplyFilter:
         
         with patch.object(applicator, 'apply_zoom_pulse_filter') as mock_zoom:
             mock_zoom.return_value = mock_stream
-            result = applicator.apply_filter(mock_stream, "condition", "zoom_pulse")
+            applicator.apply_filter(mock_stream, "condition", "zoom_pulse")
             
             mock_zoom.assert_called_once_with(mock_stream, "condition")
 

@@ -115,3 +115,32 @@ def should_use_sections_for_song(song: HasVideoType | Any) -> bool:
     # Default to False if video_type is not set
     return False
 
+
+class BeatEffectConfig(BaseSettings):
+    """Configuration for beat-synced visual effects."""
+    
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILE_PATH,
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+    
+    enabled: bool = Field(default=True, alias="BEAT_EFFECTS_ENABLED")
+    effect_type: str = Field(default="flash", alias="BEAT_EFFECT_TYPE")  # flash, color_burst, zoom_pulse, glitch, brightness_pulse
+    flash_intensity: float = Field(default=50.0, alias="BEAT_FLASH_INTENSITY")  # 0-255 pixel value increase
+    flash_color: str = Field(default="white", alias="BEAT_FLASH_COLOR")  # white, red, blue, etc.
+    color_burst_hue: int = Field(default=0, alias="BEAT_COLOR_BURST_HUE")  # 0-360 degrees
+    color_burst_saturation: float = Field(default=1.5, alias="BEAT_COLOR_BURST_SATURATION")
+    color_burst_brightness: float = Field(default=0.1, alias="BEAT_COLOR_BURST_BRIGHTNESS")
+    zoom_pulse_amount: float = Field(default=1.05, alias="BEAT_ZOOM_PULSE_AMOUNT")  # 1.0 = no zoom, 1.05 = 5% zoom
+    zoom_pulse_duration_frames: int = Field(default=3, alias="BEAT_ZOOM_PULSE_DURATION_FRAMES")
+    glitch_intensity: float = Field(default=0.3, alias="BEAT_GLITCH_INTENSITY")  # 0.0-1.0
+    brightness_pulse_amount: float = Field(default=0.15, alias="BEAT_BRIGHTNESS_PULSE_AMOUNT")  # 0.0-1.0
+    tolerance_ms: float = Field(default=20.0, alias="BEAT_EFFECT_TOLERANCE_MS")  # Tolerance window in milliseconds
+
+
+@lru_cache
+def get_beat_effect_config() -> BeatEffectConfig:
+    """Get beat effect configuration."""
+    return BeatEffectConfig()  # type: ignore[call-arg]
+

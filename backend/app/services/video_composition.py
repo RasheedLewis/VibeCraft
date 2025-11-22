@@ -688,6 +688,119 @@ def trim_last_clip(
         raise RuntimeError(f"Failed to trim clip: {stderr}") from e
 
 
+def trim_clip_to_beat_boundary(
+    clip_path: str | Path,
+    output_path: str | Path,
+    target_start_time: float,
+    target_end_time: float,
+    beat_start_time: float,
+    beat_end_time: float,
+    fps: float = 24.0,
+    ffmpeg_bin: str | None = None,
+) -> None:
+    """
+    Trim clip to align with beat boundaries.
+    
+    Args:
+        clip_path: Path to input clip
+        output_path: Path to output clip
+        target_start_time: Desired start time (may not be on beat)
+        target_end_time: Desired end time (may not be on beat)
+        beat_start_time: Nearest beat-aligned start time
+        beat_end_time: Nearest beat-aligned end time
+        fps: Video frame rate
+        ffmpeg_bin: Path to ffmpeg binary
+    """
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+    
+    # Calculate trim parameters relative to clip start
+    # We need to trim from target_start to beat_start, and from beat_end to target_end
+    trim_start_offset = max(0, beat_start_time - target_start_time)
+    trim_end_offset = max(0, target_end_time - beat_end_time)
+    
+    # Calculate the actual trim start and end within the clip
+    clip_start = trim_start_offset
+    clip_end = (target_end_time - target_start_time) - trim_end_offset
+    
+    # Build trim filter
+    # Format: trim=start=X:end=Y,setpts=PTS-STARTPTS
+    video_filter = f"trim=start={clip_start:.3f}:end={clip_end:.3f},setpts=PTS-STARTPTS"
+    
+    try:
+        (
+            ffmpeg.input(str(clip_path))
+            .output(
+                str(output_path),
+                vf=video_filter,
+                vcodec=DEFAULT_VIDEO_CODEC,
+                preset="medium",
+                crf=DEFAULT_CRF,
+                **{"an": None},  # Remove audio
+            )
+            .overwrite_output()
+            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+        )
+    except ffmpeg.Error as e:  # type: ignore[attr-defined]
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+        raise RuntimeError(f"Failed to trim clip to beat boundary: {stderr}") from e
+
+
+def extend_clip_to_beat_boundary(
+    clip_path: str | Path,
+    output_path: str | Path,
+    target_duration: float,
+    beat_end_time: float,
+    fadeout_duration: float = 0.5,
+    ffmpeg_bin: str | None = None,
+) -> None:
+    """
+    Extend clip to align with beat boundary using frame freeze + fadeout.
+    
+    Args:
+        clip_path: Path to input clip
+        output_path: Path to output clip
+        target_duration: Current clip duration
+        beat_end_time: Target beat-aligned end time
+        fadeout_duration: Fadeout duration in seconds
+        ffmpeg_bin: Path to ffmpeg binary
+    """
+    extension_needed = beat_end_time - target_duration
+    
+    if extension_needed <= 0:
+        # No extension needed, just trim to beat boundary with fadeout
+        trim_last_clip(clip_path, output_path, beat_end_time, fadeout_duration, ffmpeg_bin)
+        return
+    
+    # Use tpad to extend by freezing last frame
+    # Then add fadeout
+    video_filter = (
+        f"tpad=stop_mode=clone:stop_duration={extension_needed:.3f},"
+        f"fade=t=out:st={beat_end_time - fadeout_duration:.3f}:d={fadeout_duration:.3f}"
+    )
+    
+    settings = get_settings()
+    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+    
+    try:
+        (
+            ffmpeg.input(str(clip_path))
+            .output(
+                str(output_path),
+                vf=video_filter,
+                vcodec=DEFAULT_VIDEO_CODEC,
+                preset="medium",
+                crf=DEFAULT_CRF,
+                **{"an": None},  # Remove audio
+            )
+            .overwrite_output()
+            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
+        )
+    except ffmpeg.Error as e:  # type: ignore[attr-defined]
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+        raise RuntimeError(f"Failed to extend clip to beat boundary: {stderr}") from e
+
+
 def verify_composed_video(
     video_path: str | Path,
     expected_resolution: tuple[int, int] = DEFAULT_TARGET_RESOLUTION,

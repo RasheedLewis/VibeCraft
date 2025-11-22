@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -186,7 +188,91 @@ def execute_composition_pipeline(
             # Sort normalized paths by original order
             normalized_paths.sort(key=lambda p: int(p.stem.split("_")[1]))
 
-            # Step 4: Handle duration mismatch
+            # Get beat times from analysis (used for both beat alignment and filters)
+            analysis = get_latest_analysis(song_id)
+            beat_times = None
+            if analysis and hasattr(analysis, 'beat_times') and analysis.beat_times:
+                beat_times = analysis.beat_times
+                logger.info(f"Found {len(beat_times)} beat times for beat alignment and filters")
+
+            # Step 4: Beat-aligned clip adjustment (if enabled)
+            beat_aligned = True  # Feature flag - can be made configurable
+            
+            if beat_aligned and beat_times and song.duration_sec:
+                logger.info("Calculating beat-aligned clip boundaries")
+                from app.services.beat_alignment import calculate_beat_aligned_clip_boundaries
+                from app.services.video_composition import (
+                    trim_clip_to_beat_boundary,
+                    extend_clip_to_beat_boundary,
+                )
+                
+                # Calculate beat-aligned boundaries
+                boundaries = calculate_beat_aligned_clip_boundaries(
+                    beat_times=beat_times,
+                    song_duration=song.duration_sec,
+                    num_clips=len(normalized_paths),
+                    fps=24.0,
+                )
+                
+                logger.info(f"Calculated {len(boundaries)} beat-aligned boundaries")
+                
+                # Trim/extend clips to match beat boundaries
+                aligned_paths = []
+                for i, (clip_path, boundary) in enumerate(zip(normalized_paths, boundaries)):
+                    # Get current clip duration
+                    try:
+                        probe_cmd = [
+                            settings.ffmpeg_bin.replace("ffmpeg", "ffprobe"),
+                            "-v", "error",
+                            "-show_entries", "format=duration",
+                            "-of", "json",
+                            str(clip_path),
+                        ]
+                        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True, timeout=10)
+                        probe_data = json.loads(result.stdout)
+                        current_duration = float(probe_data["format"]["duration"])
+                    except Exception as e:
+                        logger.warning(f"Failed to get clip {i} duration, skipping beat alignment: {e}")
+                        aligned_paths.append(clip_path)
+                        continue
+                    
+                    target_duration = boundary.duration_sec
+                    aligned_path = temp_path / f"aligned_clip_{i}.mp4"
+                    
+                    if abs(current_duration - target_duration) < 0.1:
+                        # Already aligned (within 100ms), no adjustment needed
+                        aligned_paths.append(clip_path)
+                    elif current_duration < target_duration:
+                        # Extend clip to beat boundary
+                        logger.debug(f"Extending clip {i} from {current_duration:.2f}s to {target_duration:.2f}s")
+                        extend_clip_to_beat_boundary(
+                            clip_path=clip_path,
+                            output_path=aligned_path,
+                            target_duration=current_duration,
+                            beat_end_time=target_duration,
+                            ffmpeg_bin=settings.ffmpeg_bin,
+                        )
+                        aligned_paths.append(aligned_path)
+                    else:
+                        # Trim clip to beat boundary
+                        logger.debug(f"Trimming clip {i} from {current_duration:.2f}s to {target_duration:.2f}s")
+                        trim_clip_to_beat_boundary(
+                            clip_path=clip_path,
+                            output_path=aligned_path,
+                            target_start_time=0.0,
+                            target_end_time=current_duration,
+                            beat_start_time=0.0,
+                            beat_end_time=target_duration,
+                            fps=24.0,
+                            ffmpeg_bin=settings.ffmpeg_bin,
+                        )
+                        aligned_paths.append(aligned_path)
+                
+                # Replace normalized paths with aligned paths
+                normalized_paths = aligned_paths
+                logger.info("Completed beat-aligned clip adjustment")
+
+            # Step 5: Handle duration mismatch
             total_clip_duration = sum(m.duration_sec for m in clip_metadata_list)
             song_duration = song.duration_sec or 0
 
@@ -238,12 +324,7 @@ def execute_composition_pipeline(
             logger.info(f"Stitching {len(normalized_paths)} clips for job {job_id}")
             update_job_progress(job_id, PROGRESS_STITCH, "processing")
 
-            # Get beat times from analysis for beat filters
-            beat_times = None
-            analysis = get_latest_analysis(song_id)
-            if analysis and hasattr(analysis, 'beat_times') and analysis.beat_times:
-                beat_times = analysis.beat_times
-                logger.info(f"Found {len(beat_times)} beat times for beat filter application")
+            # Beat times already retrieved above for beat alignment, reuse here for filters
             
             output_path = temp_path / "composed.mp4"
             composition_result = concatenate_clips(

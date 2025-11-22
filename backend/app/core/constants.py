@@ -10,6 +10,8 @@ COMPOSITION_QUEUE_TIMEOUT_SEC = 30 * 60  # 30 minutes for composition
 
 # Upload limits
 MAX_DURATION_SECONDS = 7 * 60  # 7 minutes
+MAX_AUDIO_FILE_SIZE_MB = 100  # 100 MB maximum file size for audio uploads
+MAX_AUDIO_FILE_SIZE_BYTES = MAX_AUDIO_FILE_SIZE_MB * 1024 * 1024
 
 ALLOWED_CONTENT_TYPES = {
     "audio/mpeg",

@@ -431,12 +431,27 @@ def concatenate_clips(
                     
                     if beat_filters and filter_type == "flash":
                         # Apply brightness pulse on beats using time-based filter
+                        # Get effect config for intensity and test mode
+                        from app.core.config import get_beat_effect_config
+                        effect_config = get_beat_effect_config()
+                        
+                        # Use config intensity, or exaggerate for testing if BEAT_EFFECT_TEST_MODE is enabled
+                        import os
+                        test_mode = os.getenv("BEAT_EFFECT_TEST_MODE", "false").lower() == "true"
+                        if test_mode:
+                            # Exaggerate effects for easier manual inspection
+                            flash_intensity = int(effect_config.flash_intensity * 3)  # 3x intensity
+                            tolerance_sec = 0.15  # 150ms tolerance (3x normal)
+                            logger.info(f"[TEST MODE] Exaggerating flash effect: intensity={flash_intensity}, tolerance={tolerance_sec*1000:.0f}ms")
+                        else:
+                            flash_intensity = int(effect_config.flash_intensity)
+                            tolerance_sec = effect_config.tolerance_ms / 1000.0
+                        
                         filtered_video_path = temp_video_path.parent / "temp_filtered.mp4"
                         filtered_input = ffmpeg.input(str(temp_video_path))
                         
                         # Build time-based condition for ALL beats (removed 50-beat limitation)
                         # FFmpeg's between(t,start,end) returns 1 if true, 0 if false
-                        tolerance_sec = 0.05  # 50ms tolerance
                         
                         # Create a filter expression that triggers on any beat
                         # We'll use a geq filter with a condition that checks if current time
@@ -457,9 +472,9 @@ def concatenate_clips(
                                 condition_expr = "+".join(beat_conditions)
                                 filtered_video = filtered_input["v"].filter(
                                     "geq",
-                                    r=f"r+if(min(1,{condition_expr}),30,0)",
-                                    g=f"g+if(min(1,{condition_expr}),30,0)",
-                                    b=f"b+if(min(1,{condition_expr}),30,0)",
+                                    r=f"r+if(min(1,{condition_expr}),{flash_intensity},0)",
+                                    g=f"g+if(min(1,{condition_expr}),{flash_intensity},0)",
+                                    b=f"b+if(min(1,{condition_expr}),{flash_intensity},0)",
                                 )
                             else:
                                 # Multiple passes for large number of beats
@@ -472,9 +487,9 @@ def concatenate_clips(
                                     condition_expr = "+".join(chunk)
                                     current_video = current_video.filter(
                                         "geq",
-                                        r=f"r+if(min(1,{condition_expr}),30,0)",
-                                        g=f"g+if(min(1,{condition_expr}),30,0)",
-                                        b=f"b+if(min(1,{condition_expr}),30,0)",
+                                        r=f"r+if(min(1,{condition_expr}),{flash_intensity},0)",
+                                        g=f"g+if(min(1,{condition_expr}),{flash_intensity},0)",
+                                        b=f"b+if(min(1,{condition_expr}),{flash_intensity},0)",
                                     )
                                 
                                 filtered_video = current_video

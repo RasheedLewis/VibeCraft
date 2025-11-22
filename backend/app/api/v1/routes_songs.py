@@ -40,6 +40,8 @@ from app.core.constants import (
     ACCEPTABLE_ALIGNMENT,
     ALLOWED_CONTENT_TYPES,
     DEFAULT_MAX_CONCURRENCY,
+    MAX_AUDIO_FILE_SIZE_BYTES,
+    MAX_AUDIO_FILE_SIZE_MB,
     MAX_DURATION_SECONDS,
 )
 from app.services.beat_alignment import (
@@ -134,6 +136,14 @@ async def upload_song(
     if not contents:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty"
+        )
+    
+    # Check file size
+    file_size_mb = len(contents) / (1024 * 1024)
+    if len(contents) > MAX_AUDIO_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Audio file size ({file_size_mb:.1f}MB) exceeds maximum ({MAX_AUDIO_FILE_SIZE_MB}MB).",
         )
 
     try:

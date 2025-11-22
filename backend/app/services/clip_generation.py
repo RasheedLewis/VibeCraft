@@ -268,6 +268,16 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
         reference_image_urls=character_image_urls if len(character_image_urls) > 0 else None,  # Try multiple
     )
     metadata = metadata or {}
+    
+    # Track estimated cost for this clip generation
+    from app.services.cost_tracking import track_video_generation_cost
+    from app.core.constants import VIDEO_MODEL
+    track_video_generation_cost(
+        song_id=song.id,
+        model_name=VIDEO_MODEL,
+        num_clips=1,
+        has_character_consistency=bool(character_image_url),
+    )
 
     try:
         clip = ClipRepository.get_by_id(clip_id)

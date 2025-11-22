@@ -48,7 +48,7 @@ export const CharacterPreview: React.FC<CharacterPreviewProps> = ({
                 setError('Character image URL not available')
                 onError?.('Character image URL not available')
               }
-            } catch (presignedErr) {
+            } catch {
               // If presigned URL endpoint doesn't exist, that's okay
               // The image might be accessible via S3 directly or through another method
               setError('Unable to load character image')
@@ -81,7 +81,9 @@ export const CharacterPreview: React.FC<CharacterPreviewProps> = ({
       <div className={`flex items-center justify-center p-8 ${className || ''}`}>
         <div className="text-center">
           <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-vc-accent-primary border-r-transparent"></div>
-          <p className="mt-2 text-sm text-vc-text-secondary">Loading character image...</p>
+          <p className="mt-2 text-sm text-vc-text-secondary">
+            Loading character image...
+          </p>
         </div>
       </div>
     )
@@ -89,7 +91,9 @@ export const CharacterPreview: React.FC<CharacterPreviewProps> = ({
 
   if (error) {
     return (
-      <div className={`rounded-lg border border-vc-border/30 bg-vc-border/10 p-4 ${className || ''}`}>
+      <div
+        className={`rounded-lg border border-vc-border/30 bg-vc-border/10 p-4 ${className || ''}`}
+      >
         <p className="text-sm text-red-400">{error}</p>
       </div>
     )
@@ -102,7 +106,9 @@ export const CharacterPreview: React.FC<CharacterPreviewProps> = ({
   return (
     <div className={`character-preview ${className || ''}`}>
       <div className="rounded-lg border border-vc-border/30 bg-vc-border/10 p-4">
-        <h3 className="mb-3 text-sm font-semibold text-white">Character Reference Image</h3>
+        <h3 className="mb-3 text-sm font-semibold text-white">
+          Character Reference Image
+        </h3>
         <div className="flex justify-center">
           <img
             src={imageUrl}
@@ -123,4 +129,3 @@ export const CharacterPreview: React.FC<CharacterPreviewProps> = ({
     </div>
   )
 }
-

@@ -47,7 +47,6 @@ def convert_beat_times_to_frames(
         List of frame indices where effects should trigger
     """
     frame_indices = []
-    frame_interval = 1.0 / video_fps
     
     for beat_time in beat_times:
         # Adjust beat time relative to video start
@@ -128,8 +127,6 @@ def generate_beat_filter_expression(
     elif filter_type == "zoom_pulse":
         # Zoom pulse: improved implementation using zoompan filter
         zoom_amount = params.get("zoom", 1.05)  # Default: 5% zoom
-        pulse_duration_frames = params.get("duration_frames", 3)
-        # Use zoompan for smooth zoom effect
         # Note: zoompan requires more complex setup, using scale as fallback
         zoom_factor = zoom_amount
         filter_expr = f"scale='if({beat_condition}, iw*{zoom_factor}, iw)':'if({beat_condition}, ih*{zoom_factor}, ih)'"

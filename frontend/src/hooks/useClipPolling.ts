@@ -41,6 +41,24 @@ export function useClipPolling(songId: string | null) {
           }
         }
       } catch (err) {
+        // Check if it's a 404 (song deleted) - stop polling silently
+        const is404 =
+          err &&
+          typeof err === 'object' &&
+          'response' in err &&
+          err.response &&
+          typeof err.response === 'object' &&
+          'status' in err.response &&
+          err.response.status === 404
+
+        if (is404) {
+          // Song was deleted - clear state and stop polling
+          setSummary(null)
+          setJobId(null)
+          setStatus('idle')
+          return
+        }
+
         const message = extractErrorMessage(err, 'Unable to load clip status.')
         if (jobId) {
           setError((prev) => prev ?? message)
@@ -182,8 +200,27 @@ export function useClipPolling(songId: string | null) {
         if (hasActiveClips && !jobId) {
           timeoutId = window.setTimeout(pollClipSummary, 5000)
         }
-      } catch {
+      } catch (err) {
         if (cancelled) return
+
+        // Check if it's a 404 (song deleted) - stop polling
+        const is404 =
+          err &&
+          typeof err === 'object' &&
+          'response' in err &&
+          err.response &&
+          typeof err.response === 'object' &&
+          'status' in err.response &&
+          err.response.status === 404
+
+        if (is404) {
+          // Song was deleted - clear state and stop polling
+          setSummary(null)
+          setJobId(null)
+          setStatus('idle')
+          return
+        }
+
         // On error, only retry if no active job and clips exist
         // Use current summary from closure, not from dependency
         const currentSummary = summary

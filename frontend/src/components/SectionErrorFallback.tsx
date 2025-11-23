@@ -1,4 +1,3 @@
-import React from 'react'
 import { VCButton } from './vibecraft'
 
 interface ErrorFallbackProps {

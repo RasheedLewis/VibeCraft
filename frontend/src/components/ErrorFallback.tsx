@@ -1,4 +1,3 @@
-import React from 'react'
 import { VCButton } from './vibecraft'
 
 interface ErrorFallbackProps {
@@ -7,6 +6,8 @@ interface ErrorFallbackProps {
 }
 
 export function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps) {
+  const isDev = import.meta.env.DEV
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-vc-surface-primary p-4">
       <div className="max-w-md w-full bg-vc-surface-secondary rounded-lg p-6 text-center">
@@ -16,7 +17,7 @@ export function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps)
         <p className="text-vc-text-secondary mb-6">
           We encountered an unexpected error. Please try reloading the page.
         </p>
-        {process.env.NODE_ENV === 'development' && (
+        {isDev && (
           <details className="mb-4 text-left">
             <summary className="cursor-pointer text-vc-text-muted">
               Error details (dev only)

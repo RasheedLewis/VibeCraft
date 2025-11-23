@@ -396,7 +396,9 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
         <WaveformDisplay
           waveform={waveformValues}
           beatTimes={analysisData.beatTimes}
-          duration={durationValue || 1}
+          duration={songDetails.duration_sec || durationValue || 1}
+          selectedStartSec={songDetails.selected_start_sec}
+          selectedEndSec={songDetails.selected_end_sec}
         />
       </section>
 

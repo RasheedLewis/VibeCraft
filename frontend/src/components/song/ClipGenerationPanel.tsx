@@ -133,7 +133,7 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
     total === 0
       ? 'Clip generation queued'
       : completed >= total
-        ? 'All clips generated ✅'
+        ? 'All clips generated'
         : referenceClip && referenceIndex >= 0
           ? `Generating clip ${referenceIndex + 1} of ${total}…`
           : `Generating clips…`

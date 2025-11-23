@@ -18,7 +18,7 @@ export interface AudioSelectionTimelineProps {
 }
 
 const MAX_SELECTION_DURATION = 30.0
-const MIN_SELECTION_DURATION = 1.0
+const MIN_SELECTION_DURATION = 9.0
 const MARKER_HANDLE_WIDTH = 24 // Increased from 20 for easier grabbing
 
 export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
@@ -52,6 +52,9 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
   const [playheadSec, setPlayheadSec] = useState<number>(startSec)
   const [hoverSec, setHoverSec] = useState<number | null>(null)
   const playheadIntervalRef = useRef<number | null>(null)
+  const hasShownMinDurationAlertRef = useRef<boolean>(false)
+  const [showMinDurationMessage, setShowMinDurationMessage] = useState(false)
+  const minDurationMessageTimeoutRef = useRef<number | null>(null)
 
   // Validate and constrain selection
   useEffect(() => {
@@ -102,9 +105,45 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
       const time = percent * durationSec
 
       if (isDragging === 'start') {
+        const attemptedDuration = endSec - time
+        // Check if user is trying to select less than minimum duration
+        if (
+          attemptedDuration < MIN_SELECTION_DURATION &&
+          !hasShownMinDurationAlertRef.current
+        ) {
+          setShowMinDurationMessage(true)
+          hasShownMinDurationAlertRef.current = true
+          // Clear any existing timeout
+          if (minDurationMessageTimeoutRef.current) {
+            clearTimeout(minDurationMessageTimeoutRef.current)
+          }
+          // Auto-dismiss after 4 seconds
+          minDurationMessageTimeoutRef.current = window.setTimeout(() => {
+            setShowMinDurationMessage(false)
+            minDurationMessageTimeoutRef.current = null
+          }, 4000)
+        }
         const newStart = Math.max(0, Math.min(time, endSec - MIN_SELECTION_DURATION))
         setStartSec(newStart)
       } else if (isDragging === 'end') {
+        const attemptedDuration = time - startSec
+        // Check if user is trying to select less than minimum duration
+        if (
+          attemptedDuration < MIN_SELECTION_DURATION &&
+          !hasShownMinDurationAlertRef.current
+        ) {
+          setShowMinDurationMessage(true)
+          hasShownMinDurationAlertRef.current = true
+          // Clear any existing timeout
+          if (minDurationMessageTimeoutRef.current) {
+            clearTimeout(minDurationMessageTimeoutRef.current)
+          }
+          // Auto-dismiss after 4 seconds
+          minDurationMessageTimeoutRef.current = window.setTimeout(() => {
+            setShowMinDurationMessage(false)
+            minDurationMessageTimeoutRef.current = null
+          }, 4000)
+        }
         const newEnd = Math.max(time, startSec + MIN_SELECTION_DURATION)
         const constrainedEnd = Math.min(durationSec, newEnd)
         // Ensure duration doesn't exceed max
@@ -210,6 +249,9 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
     return () => {
       if (playheadIntervalRef.current) {
         clearInterval(playheadIntervalRef.current)
+      }
+      if (minDurationMessageTimeoutRef.current) {
+        clearTimeout(minDurationMessageTimeoutRef.current)
       }
     }
   }, [])
@@ -428,6 +470,13 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
           {formatTime(startSec)} → {formatTime(endSec)}
         </div>
       </div>
+
+      {/* Minimum duration message */}
+      {showMinDurationMessage && (
+        <div className="mt-2 rounded-lg border border-yellow-500/40 bg-[rgba(234,179,8,0.12)] px-3 py-2 text-xs text-yellow-400 transition-opacity duration-300">
+          Minimum is 9 seconds
+        </div>
+      )}
 
       {/* Confirm button - shown at bottom when onConfirm is provided */}
       {onConfirm && (

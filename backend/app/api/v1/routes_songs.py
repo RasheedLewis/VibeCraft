@@ -1070,13 +1070,8 @@ def get_clip_generation_status(
             status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
         )
 
-    try:
-        return get_clip_generation_summary(song_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clip plans found for this song.",
-        ) from exc
+    # get_clip_generation_summary now returns empty summary instead of raising error
+    return get_clip_generation_summary(song_id)
 
 
 @router.get(
@@ -1192,13 +1187,7 @@ async def compose_completed_clips(
             status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
         )
 
-    try:
-        summary = get_clip_generation_summary(song_id)
-    except (ValueError, ClipGenerationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clip plans found for this song.",
-        ) from exc
+    summary = get_clip_generation_summary(song_id)
 
     if summary.total_clips == 0:
         raise HTTPException(
@@ -1263,13 +1252,7 @@ def compose_song_clips_async(
             status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
         )
 
-    try:
-        summary = get_clip_generation_summary(song_id)
-    except (ValueError, ClipGenerationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clip plans found for this song.",
-        ) from exc
+    summary = get_clip_generation_summary(song_id)
 
     if summary.total_clips == 0:
         raise HTTPException(

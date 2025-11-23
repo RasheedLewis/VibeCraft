@@ -348,8 +348,53 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
     song = SongRepository.get_by_id(song_id)
     clips = ClipRepository.get_by_song_id(song_id)
 
+    # Return empty summary if no clips exist yet (instead of raising error)
     if not clips:
-        raise ValueError("No planned clips found for song.")
+        song_duration = float(song.duration_sec) if song and song.duration_sec is not None else None
+        composed_video_url: Optional[str] = None
+        composed_video_poster_url: Optional[str] = None
+
+        if song:
+            settings = get_settings()
+            bucket = settings.s3_bucket_name
+            if song.composed_video_s3_key and bucket:
+                if check_s3_object_exists(bucket_name=bucket, key=song.composed_video_s3_key):
+                    try:
+                        composed_video_url = generate_presigned_get_url(
+                            bucket_name=bucket,
+                            key=song.composed_video_s3_key,
+                            expires_in=3600 * 24,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error(
+                            "Failed to generate composed video URL for song %s: %s", song_id, exc
+                        )
+            if song.composed_video_poster_s3_key and bucket:
+                try:
+                    composed_video_poster_url = generate_presigned_get_url(
+                        bucket_name=bucket,
+                        key=song.composed_video_poster_s3_key,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        "Failed to generate composed poster URL for song %s: %s", song_id, exc
+                    )
+
+        return ClipGenerationSummary(
+            songId=song_id,
+            songDurationSec=song_duration,
+            totalClips=0,
+            completedClips=0,
+            failedClips=0,
+            processingClips=0,
+            queuedClips=0,
+            progressCompleted=0,
+            progressTotal=0,
+            clips=[],
+            analysis=None,
+            composedVideoUrl=composed_video_url,
+            composedVideoPosterUrl=composed_video_poster_url,
+        )
 
     status_counts = Counter(clip.status for clip in clips)
     total = len(clips)
@@ -1053,10 +1098,7 @@ def start_clip_generation_job(
     *,
     max_parallel: int = DEFAULT_MAX_CONCURRENCY,
 ) -> ClipGenerationJobResponse:
-    try:
-        summary = get_clip_generation_summary(song_id)
-    except ValueError as exc:
-        raise ValueError("No planned clips available for this song.") from exc
+    summary = get_clip_generation_summary(song_id)
 
     if summary.total_clips == 0:
         raise ValueError("No clips to generate for this song.")

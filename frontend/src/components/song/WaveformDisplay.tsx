@@ -53,7 +53,7 @@ export const WaveformDisplay: React.FC<WaveformDisplayProps> = ({
       {hasSelection && (
         <div className="relative mb-2 h-4 w-full">
           <div
-            className="absolute h-full border-y border-vc-accent-primary/60 bg-vc-accent-primary/10"
+            className="absolute h-full border-y border-vc-accent-primary/30 bg-vc-accent-primary/5"
             style={{
               left: `${(selectedStartSec! / duration) * 100}%`,
               width: `${((selectedEndSec! - selectedStartSec!) / duration) * 100}%`,
@@ -61,12 +61,12 @@ export const WaveformDisplay: React.FC<WaveformDisplayProps> = ({
           >
             {/* Left marker */}
             <div
-              className="absolute -left-0.5 top-0 h-full w-0.5 bg-vc-accent-primary"
+              className="absolute -left-0.5 top-0 h-full w-0.5 bg-vc-accent-primary/40"
               style={{ left: 0 }}
             />
             {/* Right marker */}
             <div
-              className="absolute -right-0.5 top-0 h-full w-0.5 bg-vc-accent-primary"
+              className="absolute -right-0.5 top-0 h-full w-0.5 bg-vc-accent-primary/40"
               style={{ right: 0 }}
             />
           </div>

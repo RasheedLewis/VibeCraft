@@ -177,7 +177,7 @@ const DownloadIcon = ({ className, ...props }: IconProps) => (
   </svg>
 )
 
-const SettingsIcon = ({ className, ...props }: IconProps) => (
+const KeyboardIcon = ({ className, ...props }: IconProps) => (
   <svg
     viewBox="0 0 24 24"
     className={iconClass(className)}
@@ -188,8 +188,8 @@ const SettingsIcon = ({ className, ...props }: IconProps) => (
     strokeLinejoin="round"
     {...props}
   >
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V22a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 20.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3.17 14H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 7 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 3.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.52.2 1.09 0 1.6a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    <rect x="2" y="6" width="20" height="12" rx="2" />
+    <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12" />
   </svg>
 )
 
@@ -302,8 +302,20 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   const [loopAB, setLoopAB] = useState(false)
 
   const [showLyrics, setShowLyrics] = useState(true)
+  const [showSettings, setShowSettings] = useState(false)
 
   const usingExternalAudio = Boolean(audioUrl)
+
+  // Close settings modal on Escape key
+  useEffect(() => {
+    const handleEscape = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape' && showSettings) {
+        setShowSettings(false)
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [showSettings])
 
   // Shared function to handle time clamping and stopping at end
   const handleTimeClamp = useCallback(
@@ -729,10 +741,13 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           }}
         />
         <div className="pointer-events-none absolute inset-0 flex items-end justify-between p-3">
+          {/* Left side playback controls */}
           <div className="pointer-events-auto flex items-center gap-2">
+            {/* Skip Back: Jump backward 5 seconds (J key) */}
             <TransportButton onClick={() => jump(-5)} title="Back 5s (J)">
               <SkipBackIcon className="h-4 w-4" />
             </TransportButton>
+            {/* Play/Pause: Toggle playback (Space/K key) */}
             <TransportButton onClick={togglePlay} title="Play/Pause (Space/K)">
               {isPlaying ? (
                 <PauseIcon className="h-5 w-5" />
@@ -740,15 +755,19 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
                 <PlayIcon className="h-5 w-5" />
               )}
             </TransportButton>
+            {/* Skip Forward: Jump forward 5 seconds (L key) */}
             <TransportButton onClick={() => jump(5)} title="Forward 5s (L)">
               <SkipForwardIcon className="h-4 w-4" />
             </TransportButton>
+            {/* Time Display: Shows current time / total duration */}
             <span className="ml-2 text-[11px] text-white/90 bg-black/40 rounded px-1 py-0.5">
               {fmtTime(current)} / {fmtTime(durationSec)}
             </span>
           </div>
 
+          {/* Right side utility controls */}
           <div className="pointer-events-auto flex items-center gap-2">
+            {/* Repeat/Loop Toggle: Toggle A/B loop mode (\ key) */}
             <TransportButton
               onClick={() => setLoopAB((v) => !v)}
               title="Toggle A/B Loop (\\)"
@@ -756,6 +775,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
             >
               <RepeatIcon className="h-4 w-4" />
             </TransportButton>
+            {/* Captions Toggle: Show/hide lyrics/captions overlay (C key) */}
             <TransportButton
               onClick={() => setShowLyrics((v) => !v)}
               title="Toggle Captions (C)"
@@ -764,6 +784,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
               <CaptionsIcon className="h-4 w-4" />
             </TransportButton>
 
+            {/* Playback Speed Control: Adjust playback rate ([-] slower, []] faster) */}
             <div className="flex items-center gap-1 bg-black/40 rounded px-1.5 py-0.5">
               <button
                 className="text-[11px] text-white/90 hover:text-white"
@@ -784,6 +805,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
               </button>
             </div>
 
+            {/* Volume/Mute Toggle: Mute or unmute audio (M key) */}
             <TransportButton
               onClick={() => setMuted((m) => !m)}
               title={muted ? 'Unmute (M)' : 'Mute (M)'}
@@ -795,6 +817,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
               )}
             </TransportButton>
 
+            {/* Picture-in-Picture: Enter/exit PiP mode (only shown if browser supports it) */}
             {pipSupported && Boolean(videoUrl) && (
               <TransportButton
                 onClick={async () => {
@@ -814,16 +837,22 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
               </TransportButton>
             )}
 
+            {/* Download: Download the video file */}
             <TransportButton onClick={onDownload} title="Download">
               <DownloadIcon className="h-4 w-4" />
             </TransportButton>
 
-            <TransportButton title="Settings">
-              <SettingsIcon className="h-4 w-4" />
+            {/* Help: Open keyboard shortcuts help menu */}
+            <TransportButton
+              onClick={() => setShowSettings(true)}
+              title="Keyboard Shortcuts"
+            >
+              <KeyboardIcon className="h-4 w-4" />
             </TransportButton>
           </div>
         </div>
 
+        {/* A/B Loop Markers: Vertical lines on video showing A and B loop point positions */}
         {(aMark != null || bMark != null) && (
           <div className="pointer-events-none absolute inset-x-0 bottom-20 h-0">
             {aMark != null && (
@@ -839,6 +868,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           </div>
         )}
 
+        {/* Lyrics Overlay: Displays current lyric line when captions are enabled */}
         {showLyrics && currentLyric && (
           <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center">
             <div className="px-3 py-1.5 rounded-md bg-black/50 text-white text-sm font-medium">
@@ -848,6 +878,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         )}
       </div>
 
+      {/* Timeline/Waveform Section: Interactive timeline for seeking and viewing clips */}
       <div
         ref={railRef}
         className="relative px-3 py-3 border-t border-vc-border bg-[rgba(255,255,255,0.02)]"
@@ -856,10 +887,13 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         onClick={(e) => setTimeFromRail(e.clientX)}
       >
         <div className="h-10 rounded bg-[rgba(255,255,255,0.03)] relative overflow-hidden">
+          {/* Waveform Bars: Visual representation of audio waveform */}
           <WaveBars duration={durationSec} waveform={waveform} />
+          {/* Beat Ticks: Vertical lines marking beat positions */}
           {beatGrid.map((beat, index) => (
             <BeatTick key={`beat-${index}-${beat.t}`} t={beat.t} duration={durationSec} />
           ))}
+          {/* Clip Spans: Visual segments representing individual video clips */}
           {clips.map((clip) => (
             <ClipSpan
               key={clip.id}
@@ -870,12 +904,16 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
               onSelect={() => handleClipSelection(clip)}
             />
           ))}
+          {/* Playhead: White vertical line showing current playback position */}
           <Playhead t={current} duration={durationSec} />
+          {/* Hover Time Indicator: Shows time when hovering over timeline */}
           {hoverSec != null && <HoverTime t={hoverSec} duration={durationSec} />}
         </div>
 
+        {/* A/B Loop Controls: Set loop points and toggle looping between A and B markers */}
         <div className="mt-2 flex items-center gap-2">
           <span className="vc-badge">A/B Loop</span>
+          {/* Set A: Mark current position as loop start point (A key) */}
           <button
             className="vc-btn-secondary vc-btn-sm"
             onClick={() => setAMark(current)}
@@ -883,6 +921,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           >
             <ScissorsIcon className="mr-1 h-3.5 w-3.5" /> Set A
           </button>
+          {/* Set B: Mark current position as loop end point (B key) */}
           <button
             className="vc-btn-secondary vc-btn-sm"
             onClick={() => setBMark(current)}
@@ -890,12 +929,14 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           >
             <ScissorsIcon className="mr-1 h-3.5 w-3.5" /> Set B
           </button>
+          {/* Loop Toggle: Enable/disable looping between A and B markers (\ key) */}
           <button
             className={clsx('vc-btn-sm', loopAB ? 'vc-btn-primary' : 'vc-btn-secondary')}
             onClick={() => setLoopAB((v) => !v)}
           >
             {loopAB ? 'Loop A↔B On' : 'Loop A↔B Off'}
           </button>
+          {/* A/B Time Display: Shows the time positions of A and B markers */}
           {(aMark != null || bMark != null) && (
             <span className="ml-2 text-[11px] text-vc-text-muted">
               A: {aMark != null ? fmtTime(aMark) : '--:--'} • B:{' '}
@@ -904,6 +945,163 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           )}
         </div>
       </div>
+
+      {/* Settings Modal: Shows keyboard shortcuts and player information */}
+      {showSettings && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            className="relative w-full max-w-2xl rounded-2xl bg-[rgba(20,20,32,0.95)] backdrop-blur-xl border border-vc-border/50 shadow-2xl p-6 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-white">Keyboard Shortcuts</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-vc-text-secondary hover:text-white transition-colors p-2 hover:bg-vc-border/30 rounded-lg"
+                aria-label="Close"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* Keyboard Shortcuts List */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Playback</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Play/Pause</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      Space
+                    </kbd>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      K
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Jump Back 5s</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      J
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Jump Forward 5s</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      L
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Seek Back 1s</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      ←
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Seek Forward 1s</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      →
+                    </kbd>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Volume</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Mute/Unmute</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      M
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Volume Up</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      ↑
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Volume Down</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      ↓
+                    </kbd>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Playback Speed</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Slower</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      [
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Faster</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      ]
+                    </kbd>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">A/B Loop</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Set A Marker</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      A
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Set B Marker</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      B
+                    </kbd>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Toggle Loop</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      \
+                    </kbd>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Other</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between items-center py-1 border-b border-vc-border/30">
+                    <span className="text-vc-text-secondary">Toggle Captions</span>
+                    <kbd className="px-2 py-1 bg-vc-border/30 rounded text-white font-mono text-xs">
+                      C
+                    </kbd>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

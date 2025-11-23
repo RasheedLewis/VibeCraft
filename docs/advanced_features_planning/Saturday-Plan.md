@@ -1,5 +1,41 @@
 # Saturday Plan
 
+## 💭 My Thoughts During Testing
+
+### Beat-Sync Limitations with 8fps Model
+
+**Issue:** With an 8fps model, we can't do much to beat-sync unless we actually trim the clips. However, we can't trim clips if there's no slack — i.e., if the total clip duration isn't greater than the video duration.
+
+**Implications:**
+- Need to ensure clips have extra duration (slack) to allow trimming for beat alignment
+- May need to generate clips slightly longer than needed, then trim to align with beats
+- This requires careful planning in clip generation to account for trimming overhead
+
+### Visual Effects Not Visible
+
+**Observation:** Visual effects (beat-sync effects) are not visible in the final composed video.
+
+**Possible causes:**
+- Effects may be too subtle at 8fps
+- Effects may not be applying correctly
+- May need to increase effect intensity or duration
+- Test mode (`BEAT_EFFECT_TEST_MODE=true`) should make effects more visible but may still need adjustment
+
+### Dancing Figure During Silence
+
+**New Feature Idea:** The dancing figure should stop dancing if the music stops (or effectively stops). During silence, we should post-process to keep the frame still.
+
+**Initial thoughts:**
+- Need to detect silence/quiet sections in audio
+- Apply post-processing to freeze/hold frames during silence
+- This would make the video more natural and responsive to the music
+- Requires audio analysis to detect silence vs. quiet but still present music
+- May need to integrate with existing beat detection or add separate silence detection
+
+**Note:** This is a new feature needing breakdown — will flesh out in another chat.
+
+---
+
 ## 🎯 What's Left
 
 **Completed:**

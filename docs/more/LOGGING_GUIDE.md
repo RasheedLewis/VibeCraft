@@ -69,7 +69,15 @@ logs/
 - **Log Level:** Controlled by `API_LOG_LEVEL` env var (default: "info")
 - **SQLAlchemy:** Set to WARNING level to reduce noise
 
-## Worker Logs (`logs/worker.log`)
+## Worker Logs (`logs/worker.log` or `logs/worker.log.1`, `logs/worker.log.2`, etc.)
+
+**Note:** With multiple RQ workers (for parallel clip generation), logs are split into separate files:
+- `logs/worker.log.1` - Worker 1
+- `logs/worker.log.2` - Worker 2
+- `logs/worker.log.3` - Worker 3
+- `logs/worker.log.4` - Worker 4
+
+To monitor all workers at once, use: `tail -f logs/worker.log.*`
 
 ### What's Logged
 
@@ -135,11 +143,11 @@ All output from RQ worker processes, including:
 # Watch backend logs
 tail -f logs/backend.log
 
-# Watch worker logs
-tail -f logs/worker.log
+# Watch worker logs (all workers if multiple)
+tail -f logs/worker.log.* 2>/dev/null || tail -f logs/worker.log
 
 # Watch both simultaneously
-tail -f logs/backend.log logs/worker.log
+tail -f logs/backend.log logs/worker.log.* 2>/dev/null || tail -f logs/backend.log logs/worker.log
 
 # Watch all logs
 tail -f logs/*.log
@@ -152,16 +160,16 @@ tail -f logs/*.log
 grep -i error logs/backend.log
 
 # Find exceptions with tracebacks
-grep -A 10 "Traceback" logs/backend.log logs/worker.log
+grep -A 10 "Traceback" logs/backend.log logs/worker.log.* 2>/dev/null || grep -A 10 "Traceback" logs/backend.log logs/worker.log
 
 # Find specific song_id
-grep "song_id=<uuid>" logs/backend.log logs/worker.log
+grep "song_id=<uuid>" logs/backend.log logs/worker.log.* 2>/dev/null || grep "song_id=<uuid>" logs/backend.log logs/worker.log
 
 # Find analysis job issues
-grep "\[ANALYSIS\]" logs/worker.log
+grep "\[ANALYSIS\]" logs/worker.log.* 2>/dev/null || grep "\[ANALYSIS\]" logs/worker.log
 
 # Find clip retry issues
-grep "retry" logs/backend.log logs/worker.log -i
+grep "retry" logs/backend.log logs/worker.log.* -i 2>/dev/null || grep "retry" logs/backend.log logs/worker.log -i
 ```
 
 ### Common Error Patterns to Look For

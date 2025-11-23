@@ -4,10 +4,32 @@ This checklist helps you systematically test all features implemented in this br
 
 ## ✅ Pre-Testing Setup
 
-- [ ] Backend is running (`cd backend && source venv/bin/activate && python -m uvicorn app.main:app --reload`)
-- [ ] Frontend is running (`cd frontend && npm run dev`)
-- [ ] Browser open at `http://localhost:5173`
-- [ ] Have a test audio file ready (30-60 seconds, with clear beats - electronic/hip-hop work best)
+**What You Need First:**
+
+1. **Backend running**: Open terminal, go to `backend` folder, run:
+   ```bash
+   source venv/bin/activate
+   python -m uvicorn app.main:app --reload
+   ```
+   Wait until you see "Uvicorn running on http://127.0.0.1:8000"
+
+2. **Worker running**: In another terminal, go to `backend` folder, run:
+   ```bash
+   source venv/bin/activate
+   rq worker ai_music_video
+   ```
+
+3. **Frontend running**: Open another terminal, go to `frontend` folder, run:
+   ```bash
+   npm run dev
+   ```
+   Wait until you see the frontend URL (usually http://localhost:5173)
+
+4. **Test audio file**: Have an audio file ready (30-60 seconds is good, with clear beats - electronic/hip-hop work best)
+
+5. **Browser**: Open http://localhost:5173 in your browser
+
+**Or use `make start` to start all services at once.**
 
 ---
 
@@ -137,6 +159,15 @@ This checklist helps you systematically test all features implemented in this br
   - Model used
   - Pretty JSON formatting
 
+### Test Prompt Logging to File
+- [ ] Generate clips for a song
+- [ ] Check `video-api-testing/prompts.log` file
+- [ ] **Expected:** Each clip generation logs a JSON line with:
+  - `prompt`: Full optimized prompt
+  - `songId`: Song UUID
+  - `clipId`: Clip UUID
+  - `optimized`: true
+
 **Status:** ✅ Passed
 
 ---
@@ -238,18 +269,38 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] **Expected:** Effects align with music rhythm
 
 ### Test with Test Mode (Exaggerated Effects)
-- [ ] Set environment variable: `export BEAT_EFFECT_TEST_MODE=true`
-- [ ] Restart backend
+- [ ] Set environment variable: `BEAT_EFFECT_TEST_MODE=true make start` (or `export BEAT_EFFECT_TEST_MODE=true` then restart backend/worker)
 - [ ] Generate a new video
-- [ ] **Expected:** Effects are more visible/exaggerated
+- [ ] **Expected:** Effects are more visible/exaggerated (3x intensity, 3x tolerance duration)
 - [ ] **Expected:** Logs show: `[TEST MODE] Exaggerating flash effect`
+- [ ] **Note:** Test mode makes effects easier to observe for verification
 
 ### Test Effect Types
-- [ ] Flash Effect: Brief white/bright flashes on beats
-- [ ] Color Burst: Sudden increase in color saturation on beats
-- [ ] Zoom Pulse: Subtle zoom-in effect on beats
-- [ ] Brightness Pulse: Overall brightness increase on beats
-- [ ] Glitch Effect: Digital glitch with RGB channel shift on beats
+
+**1. Flash Effect (Default)**
+- **What to look for:** Brief white/bright flashes on each beat
+- **How to verify:** Watch video frame-by-frame, flashes should occur at beat moments
+- **Test mode:** Flashes are 3x brighter and last 150ms (vs normal 50ms)
+
+**2. Color Burst**
+- **What to look for:** Sudden increase in color saturation and brightness on beats
+- **How to verify:** Colors should "pop" more intensely at beat moments
+- **Test mode:** Saturation and brightness are 1.5-2x stronger
+
+**3. Zoom Pulse**
+- **What to look for:** Subtle zoom-in effect on beats
+- **How to verify:** Video should slightly zoom in at beat moments
+- **Test mode:** Zoom is 1.15x (vs normal 1.05x)
+
+**4. Brightness Pulse**
+- **What to look for:** Overall brightness increase on beats
+- **How to verify:** Video should get brighter at beat moments
+- **Test mode:** Brightness increase is 2x stronger
+
+**5. Glitch Effect**
+- **What to look for:** Digital glitch effect with RGB channel shift on beats
+- **How to verify:** Red/blue channel separation visible at beat moments
+- **Test mode:** Glitch intensity is 2x stronger
 
 **Status:** ✅ Passed
 
@@ -389,15 +440,62 @@ After completing all tests, fill in this summary:
 - Watch the final composed video (not individual clips)
 
 ### Character doesn't match
-- Check backend logs for "Using reference image: <url>"
-- Verify character was selected before generating clips
-- Use high-quality character image
+- **Check:** Did you select a character before generating clips?
+- **Check:** Backend logs show "Using reference image: <url>"?
+- **Try:** Use a clear, high-quality character image
+- **Check:** Both image AND text prompt are used together (not replacement)
+
+### Prompts not visible in UI
+- **Check:** Clips must be completed (not just queued)
+- **Try:** Hover over completed clip card, click info button (ⓘ)
+- **Check:** Browser console for errors
+
+### Can't see projects
+- **Check:** Are you logged in?
+- **Try:** Create a new project first, then check projects page
+- **Check:** Browser console for API errors
+
+---
+
+## 🎯 Quick Test Summary
+
+After testing, you should be able to verify:
+
+**Beat-Sync Effects:**
+- [ ] Flash effects visible on beats throughout video
+- [ ] Effects work for entire duration (not just first 50 beats)
+- [ ] Test mode makes effects more visible
+
+**Character Consistency:**
+- [ ] Character matches reference image
+- [ ] Character appears consistently across clips
+- [ ] Both image and prompt are used together
+
+**Prompt Visibility:**
+- [ ] Prompts logged in worker logs
+- [ ] Prompts visible in UI via info button
+- [ ] Prompts logged to `video-api-testing/prompts.log`
+- [ ] BPM-aware descriptors in prompts
+
+**Authentication:**
+- [ ] Can register and login
+- [ ] Protected routes require authentication
+- [ ] Projects page shows user's songs (max 5)
+
+**State & UX:**
+- [ ] Page refresh maintains state
+- [ ] Can navigate between projects
+- [ ] File size validation works
+
+**Performance:**
+- [ ] Multiple clips generate in parallel (up to 4)
+- [ ] Overall generation time improved
 
 ---
 
 **Last Updated:** Based on Saturday Plan implementation
 **Related Docs:**
-- `Gentle_Testing_Guide.md` - Detailed testing procedures
+- `TEST_FEATURES_8_11.md` - Combined testing guide for features 8-11
 - `Saturday-Plan.md` - Implementation plan
 - `BEAT-SYNC-IMPLEMENTATION-PLAN.md` - Beat-sync effects details
 

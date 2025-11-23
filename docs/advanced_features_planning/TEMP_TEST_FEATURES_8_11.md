@@ -8,17 +8,6 @@ This guide helps you test all four features in a single video generation flow:
 
 ---
 
-## 🎯 Combined Testing Flow
-
-### Prerequisites
-
-1. **Backend running**: `cd backend && source ../.venv/bin/activate && python -m uvicorn app.main:app --reload`
-2. **Worker running**: `cd backend && rq worker ai_music_video`
-3. **Frontend running**: `cd frontend && npm run dev`
-4. **Test audio**: Use a song with clear, strong beats (electronic/hip-hop work best)
-
----
-
 ## 📋 Step-by-Step Test
 
 ### Step 1: Generate a Complete Video

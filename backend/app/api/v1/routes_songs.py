@@ -460,6 +460,16 @@ def get_song(
     return song
 
 
+@router.get("/{song_id}/public", response_model=SongRead, summary="Get song (public, read-only)")
+def get_song_public(
+    song_id: UUID,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Get a song by ID for public viewing. No authentication required, read-only access."""
+    song = get_song_or_404(song_id, db)
+    return song
+
+
 @router.delete(
     "/{song_id}",
     status_code=status.HTTP_204_NO_CONTENT,

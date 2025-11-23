@@ -456,7 +456,7 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
                     composed_video_url = generate_presigned_get_url(
                         bucket_name=bucket,
                         key=song.composed_video_s3_key,
-                        expires_in=3600 * 24,  # 24 hours for composed videos
+                        expires_in=3600 * 24 * 7,  # 7 days for composed videos
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.error(

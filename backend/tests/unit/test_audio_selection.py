@@ -67,8 +67,8 @@ class TestValidateAudioSelection:
 
     def test_short_song_valid_selection(self):
         """Test that valid selection works for short songs."""
-        # Song is only 5 seconds, selection is 3 seconds
-        validate_audio_selection(start_sec=1.0, end_sec=4.0, song_duration_sec=5.0)
+        # Song is 15 seconds, selection is 9 seconds (minimum)
+        validate_audio_selection(start_sec=1.0, end_sec=10.0, song_duration_sec=15.0)
 
     def test_short_song_exceeds_duration_raises_error(self):
         """Test that selection cannot exceed short song duration."""

@@ -94,7 +94,8 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
     } catch (error: unknown) {
       console.error('Failed to delete all songs:', error)
       const errorMessage =
-        (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail ||
+        (error as { response?: { data?: { detail?: string } }; message?: string })
+          ?.response?.data?.detail ||
         (error as { message?: string })?.message ||
         'Failed to delete all songs. Please try again.'
       await queryClient.invalidateQueries({ queryKey: ['songs'] })

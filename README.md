@@ -185,7 +185,7 @@ vibecraft/
 
 # 🛠 **Installation & Local Development**
 
-### **Prerequisites**
+## **Prerequisites**
 
 * Python 3.10+
 * Node 18+

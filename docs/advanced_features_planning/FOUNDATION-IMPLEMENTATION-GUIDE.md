@@ -31,7 +31,7 @@ This foundation work can be done in parallel by two different developers/agents.
 ### Foundation Work Summary
 
 | Stream | Tasks | Estimated Time | Developer |
-|--------|-------|----------------|-----------|
+| ------ | ----- | -------------- | --------- |
 | **Character Consistency Foundation** | Image upload, image-to-video support | 4-6 days | Agent 1 |
 | **Beat Sync Foundation** | Prompt enhancement, beat-reactive filters | 3-5 days | Agent 2 |
 
@@ -1324,7 +1324,7 @@ def test_beat_filter_integration():
 ### Character Consistency Foundation Timeline
 
 | Task | Duration | Dependencies |
-|------|----------|--------------|
+| ---- | -------- | ----------- |
 | Image Upload Infrastructure | 1-2 days | None |
 | Image-to-Video Support | 2-3 days | Image Upload |
 | **Total** | **4-6 days** | |
@@ -1332,7 +1332,7 @@ def test_beat_filter_integration():
 ### Beat Sync Foundation Timeline
 
 | Task | Duration | Dependencies |
-|------|----------|--------------|
+| ---- | -------- | ----------- |
 | Prompt Enhancement | 1 day | None |
 | Beat-Reactive Filters | 2-3 days | None |
 | **Total** | **3-5 days** | |

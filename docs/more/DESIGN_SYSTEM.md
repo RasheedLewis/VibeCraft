@@ -324,7 +324,7 @@ These become your presets for music creators.
 
 I can create:
 
-### ✔ Full Tailwind config for this design system
+## ✔ Full Tailwind config for this design system
 
 ### ✔ SVG logo concepts for VibeCraft
 

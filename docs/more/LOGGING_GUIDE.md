@@ -72,6 +72,7 @@ logs/
 ## Worker Logs (`logs/worker.log` or `logs/worker.log.1`, `logs/worker.log.2`, etc.)
 
 **Note:** With multiple RQ workers (for parallel clip generation), logs are split into separate files:
+
 - `logs/worker.log.1` - Worker 1
 - `logs/worker.log.2` - Worker 2
 - `logs/worker.log.3` - Worker 3

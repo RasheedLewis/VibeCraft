@@ -2,7 +2,10 @@
 
 ## Overview
 
-This document outlines the plan and implementation details for adding a feature flag to control section-based video generation. When the flag is disabled, the system will operate with a simplified 1-level hierarchy (vid→clips) instead of the current 2-level hierarchy (vid→sections→clips).
+This document outlines the plan and implementation details for adding a feature
+flag to control section-based video generation. When the flag is disabled, the
+system will operate with a simplified 1-level hierarchy (vid→clips) instead of
+the current 2-level hierarchy (vid→sections→clips).
 
 **Goal**: Enable/disable all section-related functionality at the flip of a switch, allowing the system to work directly with clips when sections are disabled.
 

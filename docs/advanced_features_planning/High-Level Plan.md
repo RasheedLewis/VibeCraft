@@ -199,7 +199,8 @@ proper coordination and use of Git worktrees.
 - Comprehensive unit tests: 414 tests total (all passing)
   - Phase 3.1: 61 tests in `test_prompt_enhancement.py`
   - Phase 3.2: Tests in `test_beat_filters.py` (frame conversion, effect params, glitch)
-  - Phase 3.3: Tests in `test_beat_alignment.py` and `test_video_composition.py` (boundaries, transitions, trim/extend)
+  - Phase 3.3: Tests in `test_beat_alignment.py` and `test_video_composition.py`
+    (boundaries, transitions, trim/extend)
 - 3 comprehensive test scripts: `test-beat-sync-3.1.sh`, `test-beat-sync-3.2.sh`, `test-beat-sync-3.3.sh`
 - Zero linting issues
 
@@ -214,7 +215,8 @@ proper coordination and use of Git worktrees.
 
 **Medium Risk** (Requires Coordination):
 
-- Both features may need to update `backend/app/core/config.py` for feature flags (coordinate to avoid merge conflicts)
+- Both features may need to update `backend/app/core/config.py` for feature flags
+  (coordinate to avoid merge conflicts)
 - Both features may need database migrations (coordinate migration numbering)
 
 **No Conflicts**:
@@ -447,15 +449,22 @@ This signal is then smoothed and normalized to highlight significant movements.
   the most prominent motion peaks.
 - **Alignment:** For each motion peak, find the closest beat timestamp in the
   `beat_times` array.
-- **Calculation:** Calculate the required `stretch_factor` (speed change) to move the motion peak to the target beat timestamp.
+- **Calculation:** Calculate the required `stretch_factor` (speed change) to move
+  the motion peak to the target beat timestamp.
 
 $$
-\text{Stretch Factor} = \frac{\text{Original Duration}}{\text{Target Duration}} = \frac{\text{Motion Peak Time}}{\text{Target Beat Time}}
+\text{Stretch Factor} = \frac{\text{Original Duration}}{\text{Target Duration}} =
+\frac{\text{Motion Peak Time}}{\text{Target Beat Time}}
 $$
 
 #### Stage 3: Video Manipulation with FFmpeg
 
-- **Filter:** Use FFmpeg's `setpts` filter to apply variable speed changes to the video segments that require adjustment.
-- **Process:** The video is split into segments, each segment is processed with the appropriate `setpts` value, and all segments are then concatenated back together.
+- **Filter:** Use FFmpeg's `setpts` filter to apply variable speed changes to
+  the video segments that require adjustment.
+- **Process:** The video is split into segments, each segment is processed with
+  the appropriate `setpts` value, and all segments are then concatenated back
+  together.
 
-This method offers the highest quality synchronization but requires significant development time, testing, and computational resources. It is the ultimate goal for beat-sync precision.
+This method offers the highest quality synchronization but requires significant
+development time, testing, and computational resources. It is the ultimate goal
+for beat-sync precision.

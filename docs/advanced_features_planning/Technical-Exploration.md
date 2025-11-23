@@ -2192,13 +2192,13 @@ Implement all three of these approaches in combination:
 
 ### Phase 2 (Later Enhancement): Editorial Polish
 
-4. **Approach 2: Multi-Shot Composition** (Medium effort)
+1. **Approach 2: Multi-Shot Composition** (Medium effort)
    - Add editorial sophistication
    - Implement in 1-2 weeks
 
 ### Phase 3 (Advanced Feature): Procedural Effects
 
-5. **Approach 5: Hybrid Programmatic** (Very high effort)
+1. **Approach 5: Hybrid Programmatic** (Very high effort)
    - Only if market demands more
    - Implement in 3-4 weeks
 

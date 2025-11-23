@@ -1,6 +1,7 @@
 # Testing Features 8-11 Simultaneously
 
 This guide helps you test all four features in a single video generation flow:
+
 - **Feature 8**: Character Consistency
 - **Feature 9**: Beat-Sync Visual Effects
 - **Feature 10**: Cost Tracking  
@@ -58,9 +59,10 @@ BEAT_EFFECT_TEST_MODE=true make start
 ```
 
 What happens:
-- Backend starts on http://localhost:8000
+
+- Backend starts on <http://localhost:8000>
 - Worker starts (processes video generation)
-- Frontend starts on http://localhost:5173
+- Frontend starts on <http://localhost:5173>
 - Logs are written to `logs/` directory
 
 Wait until you see: "All services started!"
@@ -70,7 +72,7 @@ Wait until you see: "All services started!"
 ### Step 4: Open the app
 
 1. Open your browser
-2. Go to: http://localhost:5173
+2. Go to: <http://localhost:5173>
 3. You should see the login page (or be redirected there)
 
 ---
@@ -128,6 +130,7 @@ This tests Feature 8 — the character should appear consistently across all cli
 While waiting, you can check logs:
 
 Open a new terminal and run:
+
 ```bash
 # Watch worker logs for cost tracking
 tail -f logs/worker.log | grep -E "COST|cost"
@@ -140,6 +143,7 @@ tail -f logs/worker.log | grep -E "PROMPT|prompt"
 ```
 
 What to look for:
+
 - `[COST-TRACKING] Stored cost $X.XXXX for song ...` (Feature 10: Cost Tracking)
 - `[VIDEO-GEN] Using reference image: <url>` (Feature 8: Character Consistency)
 - `[VIDEO-GEN] FULL PROMPT (optimized): ...` (Feature 5: Prompt Logging)
@@ -155,6 +159,7 @@ cat video-api-testing/prompts.log
 ```
 
 You should see JSON lines like:
+
 ```json
 {"prompt": "...", "songId": "...", "clipId": "...", "optimized": true}
 ```
@@ -174,6 +179,7 @@ tail -f logs/worker.log | grep -E "beat|BEAT|flash|effect|TEST MODE"
 ```
 
 What to look for:
+
 - `[VIDEO-COMPOSE] Applying flash beat filters for {N} beats`
 - `[VIDEO-COMPOSE] Beat filters applied successfully`
 - If test mode: `[TEST MODE] Exaggerating flash effect`
@@ -213,11 +219,13 @@ grep "COST-TRACKING.*Final cost" logs/worker.log
 ```
 
 You should see something like:
-```
+
+```text
 [COST-TRACKING] Final cost for song {song_id}: $0.3000
 ```
 
 Expected costs:
+
 - ~$0.05 per clip (minimax/hailuo-2.3)
 - +$0.03 if character consistency enabled (one-time)
 - Example: 6 clips = ~$0.30, with character = ~$0.33
@@ -230,6 +238,7 @@ This is harder to test manually, but you can try:
 
 1. Open browser console (F12)
 2. Run this (replace YOUR_TOKEN with your actual token):
+
 ```javascript
 for(let i=0; i<70; i++) {
   fetch('http://localhost:8000/api/v1/songs/', {
@@ -238,9 +247,10 @@ for(let i=0; i<70; i++) {
 }
 ```
 
-3. After 60+ requests in a minute, you might see 429 (Too Many Requests) errors
+1. After 60+ requests in a minute, you might see 429 (Too Many Requests) errors
 
 Or test health check exemption:
+
 ```bash
 for i in {1..100}; do curl http://localhost:8000/healthz; done
 ```
@@ -252,6 +262,7 @@ All should return 200 (health checks aren't rate limited).
 ## 📊 Testing Findings
 
 ### Prompt Logging (Feature 5)
+
 **Status:** ✅ Working
 
 - **Total prompts logged:** 102 entries in `video-api-testing/prompts.log`
@@ -263,18 +274,20 @@ All should return 200 (health checks aren't rate limited).
 **Note:** Some test prompts with `songId: null` appear in the log (likely from earlier testing).
 
 ### Cost Tracking (Feature 10)
+
 **Status:** ⚠️ Needs Investigation
 
 - **Expected behavior:** Cost tracking logs should appear with `[COST-TRACKING]` prefix in worker logs
 - **Current status:** No cost tracking logs found in recent worker logs, even after successful composition
 - **Bug Found:** `song.id` was used instead of `song_id` in `clip_generation.py` line 289, causing NameError when song retrieval failed silently
-- **Fix Applied:** 
+- **Fix Applied:**
   - Changed to use `song_id` directly instead of `song.id`
   - Added check to only track cost if `song` was successfully retrieved
   - Added error handling with try-except around cost tracking
 - **Action needed:** Re-test after fix to verify cost tracking logs appear during clip generation
 
 ### Clip Generation Concurrency
+
 **Status:** ✅ Working
 
 - **Workers:** 4 RQ workers running (worker.log.1 through worker.log.4)
@@ -402,6 +415,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "character|CHARACTER|reference.*
 ```
 
 **Look for:**
+
 - `[VIDEO-GEN] Using reference image: <url>`
 - `[CLIP-GEN] character_consistency_enabled=True`
 - `[CLIP-GEN] character_image_url={'set' if character_image_url else 'none'}`
@@ -416,11 +430,13 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "character|CHARACTER|reference.*
    - Both image AND text prompt are used together
 
 **Test Template Character:**
+
 - Select a template character (see both poses displayed)
 - Generate clips
 - Verify character matches template image
 
 **Test Custom Image Upload:**
+
 - Upload a custom character image
 - Generate clips
 - Verify character matches your uploaded image
@@ -435,6 +451,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "beat|BEAT|flash|effect" || tail
 ```
 
 **Look for:**
+
 - `[VIDEO-COMPOSE] Applying flash beat filters for {N} beats`
 - `[VIDEO-COMPOSE] Beat filters applied successfully`
 - `Found {N} beat times for beat alignment and filters`
@@ -465,6 +482,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 ```
 
 **Look for:**
+
 - `[COST] Estimated cost for 1 clips using minimax/hailuo-2.3: $X.XXXX`
 - `[COST-TRACKING] Stored cost $X.XXXX for song {song_id} (total: $X.XXXX)`
 - `[COST-TRACKING] Final cost for song {song_id}: $X.XXXX`
@@ -472,6 +490,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 **After video completes:**
 
 1. **Check database or API response:**
+
    ```bash
    # Query the song via API or database
    # Look for `total_generation_cost_usd` field
@@ -483,6 +502,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
    - If character consistency is enabled, should include character costs
 
 **Expected Costs:**
+
 - Base: ~$0.05 per clip (minimax/hailuo-2.3)
 - Character consistency: +$0.03 per song (one-time)
 - Example: 6 clips = ~$0.30, with character = ~$0.33
@@ -494,6 +514,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 1. **Make rapid API requests:**
    - Refresh projects page many times quickly
    - Or use browser console:
+
    ```javascript
    for(let i=0; i<70; i++) {
      fetch('http://localhost:8000/api/v1/songs/', {
@@ -510,9 +531,11 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 **Test Health Check Exemption:**
 
 1. Make many requests to `/healthz`:
+
    ```bash
    for i in {1..100}; do curl http://localhost:8000/healthz; done
    ```
+
 2. **Expected:** All requests return 200 (health checks are not rate limited)
 
 ---
@@ -520,6 +543,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 ## ✅ Verification Checklist
 
 ### Feature 8: Character Consistency
+
 - [ ] Same character appears in all clips
 - [ ] Character matches reference image (template or custom)
 - [ ] Character performs actions from prompts (not just static)
@@ -527,6 +551,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 - [ ] Logs show reference image usage
 
 ### Feature 9: Beat-Sync Visual Effects
+
 - [ ] Effects trigger on beats (not randomly)
 - [ ] Effects work for entire video duration (not just first 50 beats)
 - [ ] Effects are synchronized with music rhythm
@@ -534,6 +559,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 - [ ] Test mode makes effects more visible (if tested)
 
 ### Feature 10: Cost Tracking
+
 - [ ] Cost is calculated for each clip generation
 - [ ] Total cost is accumulated for the song
 - [ ] Cost is stored in database (`total_generation_cost_usd`)
@@ -541,6 +567,7 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 - [ ] Character consistency adds to cost (if enabled)
 
 ### Feature 11: Rate Limiting
+
 - [ ] Rate limiting works (may not be easily testable without automation)
 - [ ] Health check endpoints are not rate limited
 - [ ] Limits are generous (60/min, 1000/hour, 10000/day) for normal use
@@ -551,22 +578,26 @@ tail -f logs/worker.log.* 2>/dev/null | grep -E "COST|cost" || tail -f logs/work
 ## 🐛 Troubleshooting
 
 ### Character doesn't match reference
+
 - **Check:** Did you select a character before generating clips?
 - **Check:** Backend logs show "Using reference image: <url>"?
 - **Try:** Use a clear, high-quality character image
 - **Check:** Both image AND text prompt are used together (not replacement)
 
 ### Beat effects not visible
+
 - **Check:** Are you watching the final composed video? (Effects are in composition, not individual clips)
 - **Try:** Enable test mode: `BEAT_EFFECT_TEST_MODE=true make start` (or restart backend with env var)
 - **Check:** Audio has clear beats? (Electronic/hip-hop work best)
 
 ### Cost not showing
+
 - **Check:** Worker logs for cost tracking messages
 - **Check:** Database for `total_generation_cost_usd` field
 - **Note:** Cost is stored but not displayed in UI yet (backend only)
 
 ### Rate limiting not working
+
 - **Check:** Middleware is enabled in `app/main.py`
 - **Check:** Health checks are exempt (should always return 200)
 - **Note:** Limits are generous, may not hit them during normal testing
@@ -583,4 +614,3 @@ After completing the test, you should have:
 4. **Rate limiting active** - Middleware protecting API endpoints
 
 All four features should work simultaneously without conflicts!
-

@@ -481,12 +481,14 @@ def create_glitch_filter(beat_frames: list[int], params: dict) -> str:
 **Current Implementation**:
 
 The beat filters are integrated into video composition:
+
 - ✅ `concatenate_clips()` accepts `beat_times`, `filter_type`, `frame_rate` parameters
 - ✅ Beat filters are applied before audio muxing
 - ✅ Uses `generate_beat_filter_complex()` from `beat_filters.py`
 - ✅ Basic flash effect implementation using time-based FFmpeg filters
 
 **Integration Flow**:
+
 - ✅ `composition_execution.py` → Gets `beat_times` from analysis via `get_latest_analysis()`
 - ✅ Passes `beat_times` to `concatenate_clips()`
 - ✅ `concatenate_clips()` applies filters to concatenated video before muxing
@@ -504,7 +506,7 @@ The beat filters are integrated into video composition:
    - Add support for more complex filter chains (zoom_pulse, glitch)
     """
     Concatenate normalized clips, apply beat effects, and mux with audio.
-    
+
     Args:
         ... existing args ...
         beat_times: List of beat timestamps for effect synchronization
@@ -515,6 +517,7 @@ The beat filters are integrated into video composition:
                 "effect_params": dict
             }
     """
+
 ```python
     # ... existing concatenation logic ...
     

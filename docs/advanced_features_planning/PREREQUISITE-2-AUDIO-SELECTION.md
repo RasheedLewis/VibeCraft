@@ -2,7 +2,11 @@
 
 ## Overview
 
-This document outlines the plan and implementation details for adding a new UI step that allows users to select up to 30 seconds from their uploaded audio track. The selection interface will include draggable start and end markers on a waveform visualization, with audio preview starting from the playhead (start marker position).
+This document outlines the plan and implementation details for adding a new UI
+step that allows users to select up to 30 seconds from their uploaded audio
+track. The selection interface will include draggable start and end markers on a
+waveform visualization, with audio preview starting from the playhead (start
+marker position).
 
 **Goal**: Enable users to select a specific 30-second segment from their uploaded audio before proceeding with clip generation, improving control over which portion of their track gets processed into video.
 

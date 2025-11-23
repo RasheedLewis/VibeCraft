@@ -906,6 +906,7 @@ interface CharacterImageUploadProps {
 ```
 
 **Note**: Character preview component (for viewing uploaded images) is still TODO
+
 - can be added when needed.
 
 ---

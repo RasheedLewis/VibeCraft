@@ -134,17 +134,20 @@ uploading a different image file or selecting a different template.
 **What to do:**
 
 - After selecting a character (template or custom), click "Generate Clips" button
-- OR if you didn't select a character, you'll see a confirmation dialog asking if you want to proceed without a character image
+- OR if you didn't select a character, you'll see a confirmation dialog asking
+  if you want to proceed without a character image
 - If you confirm without a character, the character selection UI will be hidden
 - Wait (this takes several minutes)
 
 **What should happen:**
 
 - You see a loading indicator showing "Generating clip X of 8..."
-- Individual clip statuses update in real-time (showing "Generating…" for active clips, "Awaiting generation" for queued clips)
+- Individual clip statuses update in real-time (showing "Generating…" for
+  active clips, "Awaiting generation" for queued clips)
 - After several minutes, all clips are generated
 - You see 8 video clips appear (for short-form videos)
-- Character consistency is applied (same character appears in all clips if template/custom image was selected)
+- Character consistency is applied (same character appears in all clips if
+  template/custom image was selected)
 
 **If it doesn't work:** This step takes the longest. Wait at least 5-10 minutes.
 Check backend terminal for progress. The UI should show real-time progress for each clip.

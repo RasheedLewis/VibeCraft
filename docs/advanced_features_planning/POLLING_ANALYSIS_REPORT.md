@@ -148,4 +148,7 @@ Then restore the check to prevent duplicate polling.
 
 ## Conclusion
 
-The original design was sound but had a gap: `useJobPolling` doesn't update the `summary` state during processing, only on completion. The fix works but creates duplicate polling. The best long-term solution would be Option 2 or 3 to optimize the polling strategy.
+The original design was sound but had a gap: `useJobPolling` doesn't update the
+`summary` state during processing, only on completion. The fix works but creates
+duplicate polling. The best long-term solution would be Option 2 or 3 to optimize
+the polling strategy.

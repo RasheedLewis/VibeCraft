@@ -8,6 +8,7 @@
 ## 🎯 Implementation Decisions
 
 **Selected for Implementation:**
+
 - ✅ **#1** - Parallel clip downloads in composition pipeline
 - ✅ **#2** - Fix N+1 query pattern in `get_clips_for_composition`
 - ✅ **#3** - Reduce session creation in loops
@@ -15,6 +16,7 @@
 - ✅ **#8** - Fix sequential normalization in legacy code path ⭐ **HIGHEST PRIORITY**
 
 **Not Implementing:**
+
 - All other items (#4, #6, #7, #9-20) - deferred for now
 
 ---
@@ -31,6 +33,7 @@
 6. **Verify:** Final video plays correctly with all clips included
 
 **What to Watch For:**
+
 - ✅ Composition should be **3-4x faster** with multiple clips (most noticeable improvement)
 - ✅ Status updates should feel **snappier** (index on status field helps)
 - ✅ Final video should be complete and playable
@@ -43,7 +46,10 @@
 
 ## Executive Summary
 
-This report identifies **8 critical performance issues** and **12 optimization opportunities** across database queries, file I/O, network operations, and code structure. Estimated impact: **30-60% reduction in response times** for key operations.
+This report identifies **8 critical performance issues** and **12 optimization
+opportunities** across database queries, file I/O, network operations, and code
+structure. Estimated impact: **30-60% reduction in response times** for key
+operations.
 
 ---
 
@@ -54,6 +60,7 @@ This report identifies **8 critical performance issues** and **12 optimization o
 **Location:** `backend/app/services/composition_execution.py:124-144`
 
 **High-Level Flow:** Composition pipeline flow:
+
 1. **Validate inputs** - Check song, get clips from DB
 2. **Download clips and audio** - Download from S3/URLs to temp directory ← **BOTTLENECK HERE**
 3. **Normalize clips** - Convert to consistent format (already parallelized)
@@ -64,13 +71,15 @@ This report identifies **8 critical performance issues** and **12 optimization o
 8. **Create DB record** - Save metadata
 
 **Issue:** Clips are downloaded sequentially in a loop, creating a bottleneck:
+
 ```python
 for i, (clip_url, clip) in enumerate(zip(clip_urls, clips)):
     response = httpx.get(clip_url, timeout=60.0, follow_redirects=True)
     clip_path.write_bytes(response.content)
 ```
 
-**Impact:** 
+**Impact:**
+
 - For 4 clips at 10MB each: ~40 seconds sequential vs ~10 seconds parallel
 - Blocks composition pipeline unnecessarily
 - This is Step 2 of the pipeline, so it delays all subsequent steps
@@ -86,12 +95,14 @@ for i, (clip_url, clip) in enumerate(zip(clip_urls, clips)):
 **Location:** `backend/app/services/clip_model_selector.py:82-115`
 
 **High-Level Purpose:** Clip validation ensures:
+
 - Clip exists in database
 - Clip belongs to the correct song (security check)
 - Clip status is "completed" (ready for composition)
 - Clip has a `video_url` (has been generated)
 
 **Issue:** Loops through clip_ids and calls `get_and_validate_clip` for each:
+
 ```python
 for clip_id in clip_ids:
     clip = get_and_validate_clip(session, clip_id, song.id, use_sections)
@@ -100,6 +111,7 @@ for clip_id in clip_ids:
 Each call creates a separate database query (`session.get(model_class, clip_id)`). For 4 clips, this results in 4 queries instead of 1.
 
 **Impact:**
+
 - 4x database round trips
 - Slower response times under load
 - Each query also validates ownership and status, which could be done in memory after bulk fetch
@@ -115,6 +127,7 @@ Each call creates a separate database query (`session.get(model_class, clip_id)`
 **Location:** `backend/app/services/composition_execution.py:124-130`
 
 **Issue:** Creates a new database session for each iteration to check cancellation:
+
 ```python
 for i, (clip_url, clip) in enumerate(zip(clip_urls, clips)):
     with session_scope() as session:  # New session each iteration!
@@ -122,6 +135,7 @@ for i, (clip_url, clip) in enumerate(zip(clip_urls, clips)):
 ```
 
 **Impact:**
+
 - Unnecessary connection overhead
 - Database connection pool exhaustion under load
 
@@ -136,6 +150,7 @@ for i, (clip_url, clip) in enumerate(zip(clip_urls, clips)):
 **Location:** `backend/app/services/clip_generation.py:760-766`
 
 **Issue:** Loops through possible S3 keys and checks each sequentially:
+
 ```python
 for key in possible_keys:
     if check_s3_object_exists(bucket_name=bucket, key=key):
@@ -144,6 +159,7 @@ for key in possible_keys:
 ```
 
 **Impact:**
+
 - Up to 4 sequential S3 API calls (each ~100-200ms)
 - Blocks composition startup
 
@@ -158,16 +174,19 @@ for key in possible_keys:
 **Location:** `backend/app/models/clip.py:27`
 
 **Issue:** `status` field is used in WHERE clauses but has no index:
+
 ```python
 status: str = Field(default="queued", max_length=32)  # No index!
 ```
 
 **Query:** `ClipRepository.get_completed_by_song_id()` filters by status:
+
 ```python
 .where(SongClip.status == "completed")
 ```
 
 **Impact:**
+
 - Full table scans for status queries
 - Degrades with large clip counts
 
@@ -182,6 +201,7 @@ status: str = Field(default="queued", max_length=32)  # No index!
 **Location:** `backend/app/services/clip_generation.py:347-464`
 
 **Issue:** In `get_clip_generation_summary`, presigned URLs are generated sequentially:
+
 ```python
 if song.composed_video_s3_key and bucket:
     composed_video_url = generate_presigned_get_url(...)
@@ -190,6 +210,7 @@ if song.composed_video_poster_s3_key and bucket:
 ```
 
 **Impact:**
+
 - Each presigned URL generation is a synchronous S3 API call (~50-100ms)
 - Blocks summary generation
 
@@ -204,6 +225,7 @@ if song.composed_video_poster_s3_key and bucket:
 **Location:** `backend/app/services/clip_generation.py:347-349`
 
 **High-Level Purpose:** `get_clip_generation_summary` is the main status endpoint used by the frontend to:
+
 - Show progress (completed/failed/processing/queued counts)
 - Display list of all clips with their status
 - Get composed video URL (if available)
@@ -211,6 +233,7 @@ if song.composed_video_poster_s3_key and bucket:
 - Called frequently during polling (every few seconds while clips are generating)
 
 **Issue:** `get_clip_generation_summary` loads song and clips separately, then later loads analysis:
+
 ```python
 song = SongRepository.get_by_id(song_id)  # Query 1
 clips = ClipRepository.get_by_song_id(song_id)  # Query 2
@@ -219,6 +242,7 @@ analysis = get_latest_analysis(song_id)  # Query 3
 ```
 
 **Impact:**
+
 - 3 separate database round trips
 - Called frequently during polling, so this multiplies the overhead
 - Could be optimized with a single query using JOINs
@@ -248,17 +272,20 @@ analysis = get_latest_analysis(song_id)  # Query 3
    - Normalizes clips **in parallel** using ThreadPoolExecutor
 
 **Issue:** Legacy path (`compose_song_video`) normalizes clips sequentially:
+
 ```python
 for idx, clip in enumerate(completed_clips):
     normalize_clip(str(source_path), str(normalized_path))
 ```
 
 **Impact:**
+
 - Legacy path is 3-4x slower than new path for normalization
 - Since frontend uses legacy path, users experience slower composition
 - Code duplication - both paths do similar work
 
-**Solution:** 
+**Solution:**
+
 - Option A: Update `compose_song_video` to use parallel normalization (copy from new path)
 - Option B: Migrate frontend to use new path (requires refactoring)
 - Option C: Consolidate both paths into one unified pipeline
@@ -274,17 +301,20 @@ for idx, clip in enumerate(completed_clips):
 **Location:** `backend/app/models/song.py:45`
 
 **Issue:** `created_at` is used in ORDER BY but may not have an index:
+
 ```python
 created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 ```
 
 **Query:** `list_songs()` orders by `created_at DESC`:
+
 ```python
 .order_by(Song.created_at.desc())
 .limit(5)  # Limited to 5 songs per user
 ```
 
 **Impact:**
+
 - Users are limited to 5 songs, so table size per user is small
 - **However:** With many users, total table size grows, and ORDER BY without index can still be slow
 - PostgreSQL may use index for ORDER BY even with LIMIT
@@ -300,12 +330,14 @@ created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 **Location:** `backend/app/services/clip_generation.py:414-416`
 
 **Issue:** Checks if S3 object exists before generating presigned URL:
+
 ```python
 if check_s3_object_exists(bucket_name=bucket, key=song.composed_video_s3_key):
     composed_video_url = generate_presigned_get_url(...)
 ```
 
 **Impact:**
+
 - Extra S3 API call (~100-200ms)
 - Presigned URLs work even if object doesn't exist (client gets 404)
 
@@ -320,6 +352,7 @@ if check_s3_object_exists(bucket_name=bucket, key=song.composed_video_s3_key):
 **Location:** `backend/app/services/clip_generation.py:1157-1178`
 
 **Issue:** Opens multiple sessions:
+
 ```python
 with session_scope() as session:
     job_record = session.get(ClipGenerationJob, job_id)
@@ -329,6 +362,7 @@ with session_scope() as session:
 ```
 
 **Impact:**
+
 - Unnecessary connection overhead
 - Could use a single session
 
@@ -343,11 +377,13 @@ with session_scope() as session:
 **Location:** `backend/app/services/clip_generation.py:445-448`
 
 **Issue:** `get_clip_generation_summary` calls `get_latest_analysis()` every time:
+
 ```python
 analysis = get_latest_analysis(song_id)
 ```
 
 **Impact:**
+
 - Analysis data rarely changes but is fetched on every summary request
 - Could be cached for 5-10 minutes
 
@@ -364,6 +400,7 @@ analysis = get_latest_analysis(song_id)
 **Current State:** Most I/O operations are synchronous (S3, HTTP, database).
 
 **Opportunity:** Migrate to async/await for better concurrency:
+
 - FastAPI supports async endpoints
 - `httpx.AsyncClient` for async HTTP
 - `aioboto3` for async S3 operations
@@ -380,11 +417,13 @@ analysis = get_latest_analysis(song_id)
 **Location:** `backend/app/core/database.py:25`
 
 **Issue:** Default connection pool settings may not be optimal:
+
 ```python
 engine = create_engine(database_url, echo=False, connect_args=connect_args)
 ```
 
 **Opportunity:** Configure pool size, max overflow, pool timeout based on load:
+
 ```python
 engine = create_engine(
     database_url,
@@ -416,6 +455,7 @@ engine = create_engine(
 **Location:** `backend/app/repositories/song_repository.py:36-45`
 
 **Issue:** `get_all()` loads all songs without pagination:
+
 ```python
 def get_all() -> list[Song]:
     statement = select(Song).order_by(Song.created_at.desc())
@@ -455,11 +495,13 @@ def get_all() -> list[Song]:
 **Location:** `backend/app/services/composition_execution.py:135`
 
 **Issue:** Creates new HTTP connection for each download:
+
 ```python
 response = httpx.get(clip_url, timeout=60.0, follow_redirects=True)
 ```
 
 **Opportunity:** Use a shared `httpx.Client` with connection pooling:
+
 ```python
 client = httpx.Client(timeout=60.0, follow_redirects=True)
 response = client.get(clip_url)
@@ -503,6 +545,7 @@ response = client.get(clip_url)
 ## 🎯 Recommended Implementation Order
 
 ### Phase 1: Quick Wins (1-2 days)
+
 1. Add index on `SongClip.status` (5 minutes)
 2. Add index on `Song.created_at` (5 minutes)
 3. Remove unnecessary S3 existence checks (30 minutes)
@@ -510,28 +553,32 @@ response = client.get(clip_url)
 5. Parallel presigned URL generation (1 hour)
 
 ### Phase 2: High Impact (2-3 days)
+
 6. Fix N+1 in `get_clips_for_composition` (2 hours)
-7. Parallel clip downloads (3-4 hours)
-8. Parallel S3 existence checks (1 hour)
-9. Single session in `get_clip_generation_job_status` (30 minutes)
+2. Parallel clip downloads (3-4 hours)
+3. Parallel S3 existence checks (1 hour)
+4. Single session in `get_clip_generation_job_status` (30 minutes)
 
 ### Phase 3: Medium Impact (3-5 days)
+
 10. Eager loading for summaries (4-6 hours)
-11. Analysis data caching (4-6 hours)
-12. HTTP client connection pooling (2 hours)
-13. Deprecate legacy sequential normalization (1 hour)
+2. Analysis data caching (4-6 hours)
+3. HTTP client connection pooling (2 hours)
+4. Deprecate legacy sequential normalization (1 hour)
 
 ### Phase 4: Future (1-2 weeks)
+
 14. Async/await migration (major refactor)
-15. Database connection pool tuning
-16. Batch database updates
-17. Query pagination
+2. Database connection pool tuning
+3. Batch database updates
+4. Query pagination
 
 ---
 
 ## 🔍 Monitoring & Validation
 
 ### Metrics to Track
+
 - Database query count per request
 - Database query duration
 - S3 API call count and duration
@@ -542,6 +589,7 @@ response = client.get(clip_url)
   - `GET /songs/` (list_songs)
 
 ### Tools
+
 - SQLAlchemy query logging
 - Application Performance Monitoring (APM)
 - Database query analysis (EXPLAIN ANALYZE)
@@ -561,6 +609,7 @@ response = client.get(clip_url)
 ## ✅ Verification Checklist
 
 After implementing optimizations, verify:
+
 - [ ] Database query count reduced (use query logging)
 - [ ] Response times improved (benchmark before/after)
 - [ ] No regressions in functionality (E2E tests)
@@ -568,4 +617,3 @@ After implementing optimizations, verify:
 - [ ] Parallel operations actually run in parallel (check logs)
 - [ ] Memory usage is acceptable (no leaks from parallel operations)
 - [ ] Error handling works correctly (test failure scenarios)
-

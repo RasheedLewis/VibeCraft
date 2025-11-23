@@ -7,16 +7,19 @@
 **Issue:** Analysis of prompt logs shows we may have gone overboard with "rhythmic motion" and motion descriptors generally. The figures are dancing less than they used to.
 
 **Evidence from Prompt Logs:**
+
 - Heavy emphasis on motion descriptors: 67+ occurrences of "dance/dancing" across 19 prompts
 - Multiple overlapping rhythmic phrases: "rhythmic motion matching the beat", "synchronized to tempo", "dynamic dancing synchronized to BPM"
 - All prompts include extensive motion descriptors: "energetic, driving, dynamic, upbeat energetic dancing, rapid rhythmic dance motion, quick dance steps synchronized to tempo"
 
 **Hypothesis:**
+
 - Too many motion descriptors may be confusing the model or diluting the core "dancing" instruction
 - The model might be interpreting the complex prompt as abstract motion rather than clear dancing
 - Simpler, more direct prompts may produce better dancing results
 
 **Action Items:**
+
 - Consider simplifying prompts to focus on clear, direct dancing instructions
 - Test with fewer motion descriptors to see if dance quality improves
 - Compare current prompts with earlier versions that produced better dancing
@@ -31,6 +34,7 @@
 **Issue:** With an 8fps model, we can't do much to beat-sync unless we actually trim the clips. However, we can't trim clips if there's no slack — i.e., if the total clip duration isn't greater than the video duration.
 
 **Implications:**
+
 - Need to ensure clips have extra duration (slack) to allow trimming for beat alignment
 - May need to generate clips slightly longer than needed, then trim to align with beats
 - This requires careful planning in clip generation to account for trimming overhead
@@ -40,6 +44,7 @@
 **Observation:** Visual effects (beat-sync effects) are not visible in the final composed video.
 
 **Possible causes:**
+
 - Effects may be too subtle at 8fps
 - Effects may not be applying correctly
 - May need to increase effect intensity or duration
@@ -50,6 +55,7 @@
 **New Feature Idea:** The dancing figure should stop dancing if the music stops (or effectively stops). During silence, we should post-process to keep the frame still.
 
 **Initial thoughts:**
+
 - Need to detect silence/quiet sections in audio
 - Apply post-processing to freeze/hold frames during silence
 - This would make the video more natural and responsive to the music
@@ -63,20 +69,25 @@
 ## 📋 Summary: What's Not Implemented (Excluding Beat-Sync Effects & Prompt Engineering)
 
 **Missing Infrastructure:**
+
 - **CloudFront/CDN Setup** (Line 96, Phase 7.6) - Currently using presigned S3 URLs directly. Need CloudFront distribution for character images and final videos. No detailed implementation plan found.
 
 **User Experience Enhancements:**
+
 - **Transition Effects** (Line 118, Phase 7.1) - No crossfades/dissolves between clips (only fadeout for trim/extend). Listed as future spike.
 - **Multiple Reference Images UX** (Line 106, Phase 7.4) - Code supports pose-a/pose-b, but no UX to choose "pose 2" from templates.
 
 **Advanced Features (Future Spikes):**
+
 - **Advanced Dancing Sync** (Line 100, Phase 7.2) - OpenCV motion detection + time stretching approach
 - **Veo Model Testing** (Line 102, Phase 7.3) - Spike on Veo/Veo3 model
 
 **Needs Verification:**
+
 - **Performance Optimizations** (Line 92, Phase 7.5) - Check for N+1 queries, missing indexes, eager loading opportunities, sync processes that should be async
 
 **Already Implemented ✅:**
+
 - Concurrent clip generation (4 clips) - `DEFAULT_MAX_CONCURRENCY = 4`
 - Actual beat detection - Using `librosa.beat.beat_track()` for real beats
 - BPM-aware prompting - `TEMPO_DESCRIPTORS` in `prompt_enhancement.py`

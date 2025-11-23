@@ -92,6 +92,9 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   const titleInputRef = useRef<HTMLInputElement>(null)
   const [isSavingTitle, setIsSavingTitle] = useState(false)
   const [showTitleHint, setShowTitleHint] = useState(false)
+  const [showCelebration, setShowCelebration] = useState(false)
+  const [celebrationFading, setCelebrationFading] = useState(false)
+  const celebrationShownRef = useRef(false)
 
   // Update title value when songDetails changes
   useEffect(() => {
@@ -167,6 +170,33 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       (clip) => normalizeClipStatus(clip.status) === 'completed' && !!clip.videoUrl,
     ) ?? []
   const composedVideoUrl = clipSummary?.composedVideoUrl ?? null
+
+  // Show celebration animation once when composition completes
+  useEffect(() => {
+    if (composedVideoUrl && !celebrationShownRef.current) {
+      celebrationShownRef.current = true
+      setShowCelebration(true)
+      setCelebrationFading(false)
+      // Start fade-out right after pulse completes (2s pulse + 0.3s buffer = 2.3s)
+      const fadeTimer = setTimeout(() => {
+        setCelebrationFading(true)
+      }, 2300)
+      // Fully hide after fade-out completes (1.2 seconds for fade)
+      const hideTimer = setTimeout(() => {
+        setShowCelebration(false)
+        setCelebrationFading(false)
+      }, 3500) // 2.3s display + 1.2s fade
+      return () => {
+        clearTimeout(fadeTimer)
+        clearTimeout(hideTimer)
+      }
+    } else if (!composedVideoUrl) {
+      // Reset when composed video is removed (e.g., new project)
+      celebrationShownRef.current = false
+      setShowCelebration(false)
+      setCelebrationFading(false)
+    }
+  }, [composedVideoUrl])
   const composedPosterUrl = clipSummary?.composedVideoPosterUrl ?? null
   const activePlayerClip =
     completedClipEntries.find((clip) => clip.id === playerActiveClipId) ??
@@ -272,16 +302,6 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
 
   return (
     <>
-      {composedVideoUrl && (
-        <div className="w-full flex justify-center py-12">
-          <VCButton
-            onClick={() => navigate('/')}
-            className="bg-vc-accent-primary/60 hover:bg-vc-accent-primary/70 border border-vc-accent-primary/40 text-white px-8 py-4 text-lg font-medium"
-          >
-            Start new project
-          </VCButton>
-        </div>
-      )}
       <section className="mt-4 w-full space-y-8 pb-0">
         <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-start">
           <div className="space-y-2 relative md:flex-shrink-0">
@@ -434,6 +454,76 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
             </ErrorBoundary>
           </section>
         ) : null}
+
+        {/* Celebration animation - fires once when composition completes */}
+        {showCelebration && (
+          <div
+            className="relative w-full flex flex-col items-center overflow-hidden"
+            style={{
+              opacity: celebrationFading ? 0 : 1,
+              transform: celebrationFading ? 'scaleY(0)' : 'scaleY(1)',
+              transformOrigin: 'top',
+              maxHeight: celebrationFading ? '0' : '400px',
+              paddingTop: celebrationFading ? '0' : '24px',
+              paddingBottom: celebrationFading ? '0' : '24px',
+              transition: 'opacity 1200ms ease-in-out, transform 1200ms ease-in-out, max-height 1200ms ease-in-out, padding 1200ms ease-in-out',
+              willChange: celebrationFading ? 'opacity, transform, max-height' : 'auto',
+            }}
+          >
+            {/* Pulsing success message */}
+            <div className="relative z-10 text-center space-y-3">
+              <div className="animate-celebration-pulse-once">
+                <div
+                  className="text-4xl mb-2 inline-block"
+                  style={{
+                    filter: 'hue-rotate(240deg) saturate(0.7) brightness(0.9)',
+                  }}
+                >
+                  🎉
+                </div>
+                <h2 className="text-2xl md:text-3xl font-display text-white font-bold">
+                  Your video is ready!
+                </h2>
+                <p className="text-sm text-vc-text-secondary">
+                  Composition complete • Ready to share
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action buttons - between video player and clip generation */}
+        {composedVideoUrl && (
+          <div className="w-full flex justify-center items-center gap-4 py-4">
+            <VCButton
+              onClick={() => {
+                const shareUrl = `${window.location.origin}/?songId=${songDetails.id}`
+                // Try to copy to clipboard (gracefully fail if it doesn't work)
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(shareUrl).catch(() => {
+                    // Gracefully fail - do nothing
+                  })
+                }
+                // Open in new tab
+                window.open(shareUrl, '_blank', 'noopener,noreferrer')
+              }}
+              className="bg-vc-accent-primary/60 hover:bg-vc-accent-primary/70 border border-vc-accent-primary/40 text-white px-6 py-3 text-base font-medium"
+            >
+              Share project
+            </VCButton>
+            <VCButton
+              onClick={() => {
+                // Clear localStorage to prevent reloading the song
+                localStorage.removeItem('vibecraft_current_song_id')
+                // Force a full page reload to reset all state and show upload area
+                window.location.href = '/'
+              }}
+              className="bg-vc-accent-primary/60 hover:bg-vc-accent-primary/70 border border-vc-accent-primary/40 text-white px-6 py-3 text-base font-medium"
+            >
+              Start new project
+            </VCButton>
+          </div>
+        )}
 
         {/* Show ClipGenerationPanel if we have clips OR if there's an active job */}
         <ErrorBoundary FallbackComponent={SectionErrorFallback}>

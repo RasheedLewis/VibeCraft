@@ -59,3 +59,68 @@
     pointer-events: none;
   }
 }
+
+/* Celebration sparkle animation - draws attention with floating sparkles */
+@keyframes celebration-sparkle {
+  0% {
+    opacity: 0;
+    transform: translateY(0) translateX(0) scale(0);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(-10px) translateX(5px) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-30px) translateX(15px) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-60px) translateX(30px) scale(0.5);
+  }
+}
+
+/* Celebration pulse animation - makes the success message pulse */
+@keyframes celebration-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.95;
+  }
+}
+
+.animate-celebration-sparkle {
+  animation: celebration-sparkle 3s ease-out infinite;
+}
+
+.animate-celebration-pulse {
+  animation: celebration-pulse 2s ease-in-out infinite;
+}
+
+.animate-celebration-pulse-once {
+  animation: celebration-pulse 2s ease-in-out 1;
+}
+
+/* Fade in animation for toast notifications */
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Duration utility for longer transitions */
+.duration-2000 {
+  transition-duration: 2000ms;
+}

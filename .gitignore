@@ -63,3 +63,4 @@ samples/audio/**/*.flac
 # Test composition outputs (large files)
 samples/compTest/testComp*.mp4
 logs/
+backend/comparison_videos/*

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { apiClient } from '../lib/apiClient'
 import type { ClipGenerationSummary, JobStatusResponse } from '../types/song'
 import { useJobPolling } from './useJobPolling'
@@ -14,6 +14,8 @@ export function useClipPolling(songId: string | null) {
   const [progress, setProgress] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<ClipGenerationSummary | null>(null)
+  // Poll counter for debugging (temporary)
+  const pollCountRef = useRef(0)
 
   const fetchClipSummary = useCallback(
     async (songId: string) => {
@@ -39,6 +41,24 @@ export function useClipPolling(songId: string | null) {
           }
         }
       } catch (err) {
+        // Check if it's a 404 (song deleted) - stop polling silently
+        const is404 =
+          err &&
+          typeof err === 'object' &&
+          'response' in err &&
+          err.response &&
+          typeof err.response === 'object' &&
+          'status' in err.response &&
+          err.response.status === 404
+
+        if (is404) {
+          // Song was deleted - clear state and stop polling
+          setSummary(null)
+          setJobId(null)
+          setStatus('idle')
+          return
+        }
+
         const message = extractErrorMessage(err, 'Unable to load clip status.')
         if (jobId) {
           setError((prev) => prev ?? message)
@@ -143,8 +163,18 @@ export function useClipPolling(songId: string | null) {
     let cancelled = false
     let timeoutId: number | undefined
 
+    // Reset poll count for new song
+    pollCountRef.current = 0
+
     const pollClipSummary = async () => {
       try {
+        pollCountRef.current += 1
+        if (import.meta.env.DEV) {
+          console.log(
+            `[POLL-COUNT] useClipPolling pollClipSummary #${pollCountRef.current} for songId: ${songId}`,
+          )
+        }
+
         const { data } = await apiClient.get<ClipGenerationSummary>(
           `/songs/${songId}/clips/status`,
         )
@@ -158,16 +188,48 @@ export function useClipPolling(songId: string | null) {
 
         setSummary(data)
 
+        // CRITICAL: Don't poll at all if there's an active job - useJobPolling handles that
+        // useJobPolling now updates summary during processing via onComplete callback
+        if (jobId && (status === 'queued' || status === 'processing')) {
+          return
+        }
+
         // Only continue polling if there are still active clips and no jobId
         const hasActiveClips =
           data.totalClips > 0 && data.completedClips < data.totalClips
         if (hasActiveClips && !jobId) {
           timeoutId = window.setTimeout(pollClipSummary, 5000)
         }
-      } catch {
+      } catch (err) {
         if (cancelled) return
+
+        // Check if it's a 404 (song deleted) - stop polling
+        const is404 =
+          err &&
+          typeof err === 'object' &&
+          'response' in err &&
+          err.response &&
+          typeof err.response === 'object' &&
+          'status' in err.response &&
+          err.response.status === 404
+
+        if (is404) {
+          // Song was deleted - clear state and stop polling
+          setSummary(null)
+          setJobId(null)
+          setStatus('idle')
+          return
+        }
+
         // On error, only retry if no active job and clips exist
-        if (!jobId && summary && summary.clips && summary.clips.length > 0) {
+        // Use current summary from closure, not from dependency
+        const currentSummary = summary
+        if (
+          !jobId &&
+          currentSummary &&
+          currentSummary.clips &&
+          currentSummary.clips.length > 0
+        ) {
           timeoutId = window.setTimeout(pollClipSummary, 10000)
         }
       }
@@ -182,7 +244,10 @@ export function useClipPolling(songId: string | null) {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [songId, jobId, status, summary, fetchClipSummary])
+    // Remove summary from dependencies to prevent infinite loop
+    // Summary is only used for initial checks, not as a dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songId, jobId, status, fetchClipSummary])
 
   return {
     jobId,

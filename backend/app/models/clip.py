@@ -24,7 +24,7 @@ class SongClip(SQLModel, table=True):
     num_frames: int = Field(default=0, ge=0)
     fps: int = Field(default=8, ge=1)
 
-    status: str = Field(default="queued", max_length=32)
+    status: str = Field(default="queued", max_length=32, index=True)
     source: str = Field(default="auto", max_length=32)
 
     video_url: Optional[str] = Field(default=None, max_length=2048)

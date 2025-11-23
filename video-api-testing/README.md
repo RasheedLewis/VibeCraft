@@ -279,12 +279,72 @@ If you find a result you like, save the seed to regenerate it later.
 **Note:** Seed only works with Zeroscope/Luma-style models. Minimax/Hailuo models do not
 support seed parameters.
 
+### test_rapid_iteration.py
+
+Interactive rapid iteration testing for prompt experimentation. Generate 4-second videos on demand.
+
+**Positional Arguments:**
+
+- `prompt` - Base prompt for video generation (optional, can be set interactively)
+
+**Optional Flags:**
+
+- `--model` - Replicate model identifier (default: `minimax/hailuo-2.3`)
+
+**Features:**
+
+- Interactive mode: Press ENTER to generate another video
+- Generates 4-second clips for fast iteration
+- Logs full prompts (not truncated) to `rapid_iteration.log` in JSON format
+- Tracks success/failure rates
+- Optimized for speed (uses 768p resolution for minimax models)
+- Change prompt/model on the fly
+
+**Commands:**
+
+- Press **ENTER** - Generate another video
+- `prompt <text>` - Change the prompt
+- `model <name>` - Change the model
+- `show` - Show current settings
+- `quit` or `exit` - Exit
+
+**Example:**
+
+```bash
+# Start with a prompt
+python test_rapid_iteration.py "A futuristic cityscape"
+
+# Or start without a prompt (will prompt you)
+python test_rapid_iteration.py
+
+# Then interactively:
+> [Press ENTER to generate]
+> prompt A neon-lit Tokyo street at night
+> [Press ENTER to generate with new prompt]
+> show
+> quit
+```
+
+**Log Format:**
+
+Each iteration is logged as a JSON object with:
+
+- `iteration`: Iteration number
+- `timestamp`: ISO timestamp
+- `model`: Model used
+- `prompt`: Full prompt (not truncated)
+- `parameters`: Full parameter dict
+- `result`: Video URL or error message
+- `duration_sec`: Generation duration
+
 ## File Structure
 
 - `test_video.py` - Single video generation script
 - `test_batch.py` - Batch testing from file
 - `test_interactive.py` - Interactive prompt testing
 - `test_seed_variations.py` - Test same prompt with multiple seeds
+- `test_rapid_iteration.py` - Rapid iteration testing (50 iterations, 4s clips, full prompt logging)
 - `requirements.txt` - Python dependencies
 - `output/` - Generated videos metadata (gitignored)
 - `api_calls.log` - Automatic log of all API calls with timing (gitignored)
+- `rapid_iteration.log` - Full prompt logs for rapid iteration testing (gitignored)

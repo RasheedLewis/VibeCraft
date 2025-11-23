@@ -2,7 +2,9 @@
 
 **Section 3 from High-Level Plan: Beat Synchronization**
 
-This document provides a comprehensive implementation plan for the three-phase Beat Synchronization feature, which ensures video clips are rhythmically synchronized with the musical beats of the song.
+This document provides a comprehensive implementation plan for the three-phase Beat
+Synchronization feature, which ensures video clips are rhythmically synchronized with
+the musical beats of the song.
 
 ---
 
@@ -24,6 +26,7 @@ This document provides a comprehensive implementation plan for the three-phase B
 ### Goal
 
 Implement a three-phase beat synchronization system that:
+
 1. **Biases video generation** toward rhythmic motion through prompt engineering
 2. **Adds visual beat cues** through post-processing FFmpeg filters
 3. **Aligns clip transitions** to occur precisely on musical beats
@@ -50,18 +53,21 @@ Implement a three-phase beat synchronization system that:
   - `generate_beat_filter_expression()` - Generates FFmpeg filter expressions
   - `generate_beat_filter_complex()` - Generates filter_complex expressions
   - Supports: flash, color_burst, zoom_pulse, brightness_pulse filter types
-  - Integrated into `video_composition.py` - `concatenate_clips()` now accepts `beat_times`, `filter_type`, `frame_rate` parameters
+  - Integrated into `video_composition.py` - `concatenate_clips()` now accepts
+    `beat_times`, `filter_type`, `frame_rate` parameters
 
 - ✅ **Integration**:
   - BPM flows from analysis → scene planning → prompt enhancement
   - Beat times flow from analysis → composition execution → video composition → beat filters
   - All changes are backward compatible (optional parameters)
 
-**Next Steps**: The foundation enables Phase 3.1 and Phase 3.2 full implementation. See sections below for remaining work.
+**Next Steps**: The foundation enables Phase 3.1 and Phase 3.2 full implementation.
+See sections below for remaining work.
 
 ### Target State
 
 After implementation:
+
 - Generated clips have natural rhythmic motion (Phase 3.1)
 - Visual effects flash/pulse on every major beat (Phase 3.2)
 - All clip transitions occur exactly on beat boundaries (Phase 3.3)
@@ -69,7 +75,8 @@ After implementation:
 
 ### Success Criteria
 
-- **Phase 3.1**: 40%+ of generated clips show periodic motion aligned with beats (measured via motion analysis)
+- **Phase 3.1**: 40%+ of generated clips show periodic motion aligned with beats
+  (measured via motion analysis)
 - **Phase 3.2**: Visual effects trigger within ±20ms of beat timestamps (frame-accurate)
 - **Phase 3.3**: 100% of clip transitions occur within ±50ms of beat boundaries
 - **Combined**: User perception of strong beat sync in 80%+ of generated videos
@@ -80,11 +87,13 @@ After implementation:
 
 ### Objective
 
-Modify video generation prompts to bias AI models toward producing rhythmic, periodic motion that naturally aligns with musical beats.
+Modify video generation prompts to bias AI models toward producing rhythmic, periodic
+motion that naturally aligns with musical beats.
 
 ### Technical Approach
 
 Enhance the base prompt template with rhythmic motion descriptors based on:
+
 - Song BPM (beats per minute)
 - Motion type selection (bouncing, pulsing, rotating, etc.)
 - Tempo-appropriate motion descriptors
@@ -100,12 +109,17 @@ Enhance the base prompt template with rhythmic motion descriptors based on:
 **Current Implementation** (Foundation):
 
 The service has been implemented with the following functions:
-- ✅ `get_tempo_classification(bpm)` - Classifies BPM into "slow", "medium", "fast", "very_fast" (boundaries: 60, 100, 140 BPM)
-- ✅ `get_motion_descriptor(bpm, motion_type)` - Gets motion descriptors based on BPM and motion type
-- ✅ `enhance_prompt_with_rhythm(base_prompt, bpm, motion_type)` - Enhances prompts with rhythmic motion cues
+
+- ✅ `get_tempo_classification(bpm)` - Classifies BPM into "slow", "medium", "fast",
+  "very_fast" (boundaries: 60, 100, 140 BPM)
+- ✅ `get_motion_descriptor(bpm, motion_type)` - Gets motion descriptors based on BPM
+  and motion type
+- ✅ `enhance_prompt_with_rhythm(base_prompt, bpm, motion_type)` - Enhances prompts
+  with rhythmic motion cues
 - ✅ `get_motion_type_from_genre(genre)` - Suggests motion type based on genre
 
 **Integration Status**:
+
 - ✅ Integrated into `scene_planner.py` - `build_prompt()` accepts `bpm` and `motion_type` parameters
 - ✅ BPM flows from `SongAnalysis` → `build_scene_spec()` → `build_prompt()` → `enhance_prompt_with_rhythm()`
 
@@ -160,6 +174,7 @@ RHYTHMIC_MOTION_TEMPLATES = {
 **Current Implementation**:
 
 The prompt enhancement is integrated at the scene planning level:
+
 - ✅ `scene_planner.py` → `build_scene_spec()` passes BPM from analysis to `build_prompt()`
 - ✅ `build_prompt()` calls `enhance_prompt_with_rhythm()` when BPM is provided
 - ✅ Motion type is auto-selected via `get_motion_type_from_genre()` if not provided
@@ -220,6 +235,7 @@ def optimize_prompt_for_api(
 **Location**: `backend/app/services/scene_planner.py` (modify existing)
 
 Add logic to select appropriate motion type based on:
+
 - Song genre/mood
 - Scene context
 - User preferences (if available)
@@ -285,11 +301,13 @@ def select_motion_type(
 ### Effort Estimate
 
 **Foundation (✅ COMPLETE)**:
+
 - ✅ Prompt Enhancement Service: Done
 - ✅ Integration with Scene Planning: Done
 - ✅ Basic Motion Type Selection: Done
 
 **Remaining Work**:
+
 - **API-Specific Optimization**: 1 day
 - **Enhanced Motion Templates**: 0.5 days
 - **Advanced Motion Type Selection**: 0.5 days
@@ -302,11 +320,15 @@ def select_motion_type(
 
 ### Objective
 
-Apply visual effects (flashes, color bursts, zoom pulses) precisely on beat timestamps using FFmpeg filters, creating strong visual cues that the video is synchronized to the music.
+Apply visual effects (flashes, color bursts, zoom pulses) precisely on beat timestamps
+using FFmpeg filters, creating strong visual cues that the video is synchronized to
+the music.
 
 ### Technical Approach
 
-Use FFmpeg's `select` and `geq` filters to apply effects at exact frame timestamps corresponding to beat times. Effects are applied during the final video composition step.
+Use FFmpeg's `select` and `geq` filters to apply effects at exact frame timestamps
+corresponding to beat times. Effects are applied during the final video composition
+step.
 
 ### Implementation Details
 
@@ -314,19 +336,26 @@ Use FFmpeg's `select` and `geq` filters to apply effects at exact frame timestam
 
 **Status**: ✅ **FOUNDATION COMPLETE** - Basic implementation done, enhancements needed
 
-**Location**: `backend/app/services/beat_filters.py` (✅ exists - note: named `beat_filters.py` not `beat_effects.py`)
+**Location**: `backend/app/services/beat_filters.py` (✅ exists - note: named
+`beat_filters.py` not `beat_effects.py`)
 
 **Current Implementation** (Foundation):
 
 The service has been implemented with the following functions:
-- ✅ `generate_beat_filter_expression(beat_times, filter_type, frame_rate, tolerance_ms)` - Generates FFmpeg filter expressions
-- ✅ `generate_beat_filter_complex(beat_times, filter_type, frame_rate, tolerance_ms)` - Generates filter_complex expressions
+
+- ✅ `generate_beat_filter_expression(beat_times, filter_type, frame_rate,
+  tolerance_ms)` - Generates FFmpeg filter expressions
+- ✅ `generate_beat_filter_complex(beat_times, filter_type, frame_rate,
+  tolerance_ms)` - Generates filter_complex expressions
 - ✅ Supports filter types: `flash`, `color_burst`, `zoom_pulse`, `brightness_pulse`
 - ✅ Frame-accurate timing with tolerance windows
 
 **Integration Status**:
-- ✅ Integrated into `video_composition.py` - `concatenate_clips()` accepts `beat_times`, `filter_type`, `frame_rate` parameters
-- ✅ Beat times flow from `SongAnalysis` → `composition_execution.py` → `concatenate_clips()` → beat filter application
+
+- ✅ Integrated into `video_composition.py` - `concatenate_clips()` accepts
+  `beat_times`, `filter_type`, `frame_rate` parameters
+- ✅ Beat times flow from `SongAnalysis` → `composition_execution.py` →
+  `concatenate_clips()` → beat filter application
 - ✅ Basic flash effect implementation using time-based FFmpeg filters
 
 **Remaining Work** (Full Phase 3.2):
@@ -347,10 +376,11 @@ The service has been implemented with the following functions:
    - Future: Add frame-accurate verification and testing
    - Ensure effects trigger within ±20ms of beat timestamps
 
+```python
 def create_flash_filter(beat_frames: list[int], params: dict) -> str:
     """
     Create white flash effect on beat frames.
-    
+
     Effect: Single frame white flash (1 frame duration)
     """
     flash_intensity = params.get("intensity", 0.8)  # 0.0-1.0
@@ -369,11 +399,13 @@ def create_flash_filter(beat_frames: list[int], params: dict) -> str:
         filter_str = f"geq=r='if({beat_conditions},255,p(X,Y))':g='if({beat_conditions},255,p(X,Y))':b='if({beat_conditions},255,p(X,Y))'"
     
     return filter_str
+```
 
+```python
 def create_color_burst_filter(beat_frames: list[int], params: dict) -> str:
     """
     Create color burst effect (saturated color flash).
-    
+
     Effect: 2-3 frame color saturation burst
     """
     burst_duration = params.get("duration_frames", 2)  # Number of frames
@@ -392,11 +424,13 @@ def create_color_burst_filter(beat_frames: list[int], params: dict) -> str:
     filter_str = f"curves=all='0/0 0.5/0.7 1/1',geq=r='if({condition_expr},r(X,Y)*1.5,r(X,Y))':g='if({condition_expr},g(X,Y)*1.5,g(X,Y))':b='if({condition_expr},b(X,Y)*1.5,b(X,Y))'"
     
     return filter_str
+```
 
+```python
 def create_zoom_pulse_filter(beat_frames: list[int], params: dict) -> str:
     """
     Create zoom pulse effect on beats.
-    
+
     Effect: Subtle zoom in/out pulse (3-5 frames)
     """
     pulse_duration = params.get("duration_frames", 3)
@@ -415,11 +449,13 @@ def create_zoom_pulse_filter(beat_frames: list[int], params: dict) -> str:
     filter_str = f"zoompan=z='if(eq(n,BEAT_FRAME),{zoom_amount},1)':d=1"
     
     return filter_str
+```
 
+```python
 def create_glitch_filter(beat_frames: list[int], params: dict) -> str:
     """
     Create digital glitch effect on beats.
-    
+
     Effect: RGB channel shift + scanline effect (2-3 frames)
     """
     glitch_intensity = params.get("intensity", 0.3)
@@ -435,6 +471,7 @@ def create_glitch_filter(beat_frames: list[int], params: dict) -> str:
     )
     
     return filter_str
+
 ```
 
 #### 3.2.2: Integration with Video Composition
@@ -444,12 +481,14 @@ def create_glitch_filter(beat_frames: list[int], params: dict) -> str:
 **Current Implementation**:
 
 The beat filters are integrated into video composition:
+
 - ✅ `concatenate_clips()` accepts `beat_times`, `filter_type`, `frame_rate` parameters
 - ✅ Beat filters are applied before audio muxing
 - ✅ Uses `generate_beat_filter_complex()` from `beat_filters.py`
 - ✅ Basic flash effect implementation using time-based FFmpeg filters
 
 **Integration Flow**:
+
 - ✅ `composition_execution.py` → Gets `beat_times` from analysis via `get_latest_analysis()`
 - ✅ Passes `beat_times` to `concatenate_clips()`
 - ✅ `concatenate_clips()` applies filters to concatenated video before muxing
@@ -467,7 +506,7 @@ The beat filters are integrated into video composition:
    - Add support for more complex filter chains (zoom_pulse, glitch)
     """
     Concatenate normalized clips, apply beat effects, and mux with audio.
-    
+
     Args:
         ... existing args ...
         beat_times: List of beat timestamps for effect synchronization
@@ -478,6 +517,8 @@ The beat filters are integrated into video composition:
                 "effect_params": dict
             }
     """
+
+```python
     # ... existing concatenation logic ...
     
     # After concatenation, before audio muxing, apply beat effects
@@ -510,7 +551,7 @@ The beat filters are integrated into video composition:
     # ... continue with audio muxing ...
 ```
 
-**New Helper Function**:
+**New Helper Function:**
 
 ```python
 def apply_beat_effects_to_video(
@@ -570,7 +611,8 @@ class BeatEffectConfig(BaseSettings):
 
 #### 3.2.4: Frame-Accurate Timing
 
-**Critical Requirement**: Effects must trigger within ±20ms of beat timestamps (frame-accurate at 24 FPS).
+**Critical Requirement**: Effects must trigger within ±20ms of beat timestamps
+(frame-accurate at 24 FPS).
 
 **Implementation**:
 
@@ -641,11 +683,13 @@ def convert_beat_times_to_frames(
 ### Effort Estimate
 
 **Foundation (✅ COMPLETE)**:
+
 - ✅ Beat Filter Service: Done
 - ✅ Integration with Video Composition: Done
 - ✅ Basic Frame Timing: Done
 
 **Remaining Work**:
+
 - **Enhanced Effect Implementations** (glitch, improved zoom_pulse): 1-2 days
 - **Effect Parameter Customization**: 1 day
 - **Frame-Accurate Timing Verification**: 0.5 days
@@ -659,11 +703,13 @@ def convert_beat_times_to_frames(
 
 ### Objective
 
-Ensure all clip transitions (cuts between clips) occur precisely on musical beat boundaries, creating rhythmic editing that reinforces beat synchronization.
+Ensure all clip transitions (cuts between clips) occur precisely on musical beat
+boundaries, creating rhythmic editing that reinforces beat synchronization.
 
 ### Technical Approach
 
 Modify the video composition pipeline to:
+
 1. Align clip boundaries to nearest beat timestamps
 2. Trim/extend clips to match beat-aligned boundaries
 3. Ensure transitions occur exactly on beat frames
@@ -1058,7 +1104,7 @@ def verify_beat_aligned_transitions(
 
 **Status**: ✅ Foundation components implemented, full architecture pending
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Clip Generation Layer                     │
 │  ┌──────────────────────────────────────────────────────┐  │
@@ -1125,6 +1171,7 @@ def verify_beat_aligned_transitions(
 ### Data Flow
 
 **Current Implementation (Foundation)**:
+
 1. ✅ **Song Analysis** → Provides `beat_times` array and `bpm` (via `SongAnalysis` schema)
 2. ✅ **Prompt Enhancement** → Uses `bpm` to enhance prompts in `build_prompt()`
 3. ✅ **Clip Generation** → Generates clips with enhanced prompts (via `build_scene_spec()`)
@@ -1133,6 +1180,7 @@ def verify_beat_aligned_transitions(
 6. ✅ **Final Composition** → Combines clips with beat-reactive effects
 
 **Remaining Work**:
+
 - ⚠️ **Beat Alignment** → Uses `beat_times` to calculate boundaries (Phase 3.3)
 - ⚠️ **Clip Trimming/Extension** → Aligns clips to boundaries (Phase 3.3)
 
@@ -1175,6 +1223,7 @@ class BeatSyncConfig(BaseSettings):
 ### Unit Tests
 
 **Phase 3.1: Prompt Engineering** ✅ **FOUNDATION TESTS COMPLETE**
+
 - ✅ Test `enhance_prompt_with_rhythm()` with various BPM values (27 tests in `test_prompt_enhancement.py`)
 - ✅ Test `get_tempo_classification()` boundary values and tempo ranges
 - ✅ Test `get_motion_descriptor()` with all motion types and BPM combinations
@@ -1183,6 +1232,7 @@ class BeatSyncConfig(BaseSettings):
 - ⚠️ Test `optimize_prompt_for_api()` for each supported API (not yet implemented)
 
 **Phase 3.2: Beat Effects** ✅ **FOUNDATION TESTS COMPLETE**
+
 - ✅ Test `generate_beat_filter_expression()` generates valid FFmpeg filters (16 tests in `test_beat_filters.py`)
 - ✅ Test `generate_beat_filter_complex()` filter complex generation
 - ✅ Test all filter types (flash, color_burst, zoom_pulse, brightness_pulse)
@@ -1190,6 +1240,7 @@ class BeatSyncConfig(BaseSettings):
 - ⚠️ Test `convert_beat_times_to_frames()` accuracy (needs frame-accurate verification tests)
 
 **Phase 3.3: Structural Sync** (Not yet started)
+
 - Test `calculate_beat_aligned_clip_boundaries()` with various inputs
 - Test `trim_clip_to_beat_boundary()` and `extend_clip_to_beat_boundary()`
 - Test `verify_beat_aligned_transitions()` accuracy
@@ -1233,12 +1284,14 @@ class BeatSyncConfig(BaseSettings):
 ### Phase 3.1: Prompt Engineering (Week 1)
 
 **✅ Foundation Complete** (Already Done):
+
 - ✅ Created `prompt_enhancement.py` with core functions
 - ✅ Integrated with `scene_planner.py`
 - ✅ Basic motion type selection implemented
 - ✅ Unit tests written (27 tests)
 
 **Remaining Work**:
+
 - **Day 1**: API-specific optimization
   - Add `optimize_prompt_for_api()` function
   - Test with each API (Runway, Pika, Kling)
@@ -1256,6 +1309,7 @@ class BeatSyncConfig(BaseSettings):
 ### Phase 3.2: Audio-Reactive Filters (Week 2)
 
 **✅ Foundation Complete** (Already Done):
+
 - ✅ Created `beat_filters.py` (note: named `beat_filters.py` not `beat_effects.py`)
 - ✅ Implemented basic filter generation functions
 - ✅ Integrated with `video_composition.py`
@@ -1263,6 +1317,7 @@ class BeatSyncConfig(BaseSettings):
 - ✅ Unit tests written (16 tests)
 
 **Remaining Work**:
+
 - **Day 1**: Enhanced effect implementations
   - Improve zoom_pulse filter chain
   - Implement glitch effect
@@ -1286,18 +1341,22 @@ class BeatSyncConfig(BaseSettings):
 ### Phase 3.3: Structural Sync (Week 3)
 
 **Day 1**: Enhance beat alignment service
+
 - Add user selection support
 - Improve boundary calculation
 
 **Days 2-3**: Implement clip trimming/extension
+
 - Create trim/extend functions
 - Test with various clip lengths
 
 **Day 4**: Integration with composition pipeline
+
 - Modify `composition_execution.py`
 - Add beat alignment step
 
 **Days 5-6**: Testing & validation
+
 - Boundary alignment tests
 - Transition verification
 - Edge case tests
@@ -1305,14 +1364,17 @@ class BeatSyncConfig(BaseSettings):
 ### Integration & Polish (Week 4)
 
 **Days 1-2**: End-to-end integration
+
 - Test all three phases together
 - Fix any conflicts or issues
 
 **Day 3**: Feature flags & configuration
+
 - Add configuration options
 - Implement feature flags
 
 **Days 4-5**: Documentation & final testing
+
 - Update API documentation
 - User acceptance testing
 - Performance optimization
@@ -1327,17 +1389,20 @@ class BeatSyncConfig(BaseSettings):
 ### Total Timeline
 
 **Foundation Status**:
+
 - ✅ **Phase 3.1 Foundation**: Complete (prompt enhancement service + integration)
 - ✅ **Phase 3.2 Foundation**: Complete (beat filters service + integration)
 
 **Remaining Work**:
+
 - **Phase 3.1 Completion**: 3 days (API optimization, enhanced templates, advanced selection)
 - **Phase 3.2 Completion**: 5 days (enhanced effects, parameter customization, verification)
 - **Phase 3.3**: 6 days (unchanged - structural sync)
 - **Integration**: 5 days (unchanged)
 - **Total Remaining: ~19 days (~4 weeks)**
 
-**Note**: Foundation work has reduced remaining effort by ~3 days and enabled parallel work on Phase 3.3.
+**Note**: Foundation work has reduced remaining effort by ~3 days and enabled
+parallel work on Phase 3.3.
 
 ---
 
@@ -1418,13 +1483,15 @@ geq=r='p(X+3,Y)':g='p(X,Y)':b='p(X-3,Y)'
 
 ## Conclusion
 
-This implementation plan provides a comprehensive roadmap for implementing the three-phase Beat Synchronization feature. Each phase builds upon the previous to create a cohesive, professional beat-synced video generation system.
+This implementation plan provides a comprehensive roadmap for implementing the
+three-phase Beat Synchronization feature. Each phase builds upon the previous to
+create a cohesive, professional beat-synced video generation system.
 
 The phased approach allows for:
+
 - **Gradual rollout** with feature flags
 - **Independent testing** of each component
 - **Flexible configuration** for different use cases
 - **Measurable success** through defined metrics
 
 Total implementation time: **~4.5 weeks** with proper testing and validation.
-

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import clsx from 'clsx'
 import axios from 'axios'
 import { apiClient } from '../lib/apiClient'
@@ -13,13 +14,19 @@ import type {
 } from '../types/song'
 
 // Constants
-import { ACCEPTED_MIME_TYPES, MAX_DURATION_SECONDS } from '../constants/upload'
+import {
+  ACCEPTED_MIME_TYPES,
+  MAX_DURATION_SECONDS,
+  MAX_AUDIO_FILE_SIZE_MB,
+  MAX_AUDIO_FILE_SIZE_BYTES,
+} from '../constants/upload'
 
 // Utilities
 import { extractErrorMessage } from '../utils/validation'
 import { mapMoodToMoodKind } from '../utils/sections'
 import { computeDuration } from '../utils/audio'
 import { normalizeClipStatus } from '../utils/status'
+import { shouldDisableAnimations } from '../utils/animations'
 
 // Hooks
 import { useAnalysisPolling } from '../hooks/useAnalysisPolling'
@@ -27,6 +34,7 @@ import { useClipPolling } from '../hooks/useClipPolling'
 import { useCompositionPolling } from '../hooks/useCompositionPolling'
 import { useVideoTypeSelection } from '../hooks/useVideoTypeSelection'
 import { useAudioSelection } from '../hooks/useAudioSelection'
+import { useAuth } from '../hooks/useAuth'
 
 // Components
 import { BackgroundOrbs } from '../components/upload/BackgroundOrbs'
@@ -40,10 +48,15 @@ import {
 } from '../components/upload/Icons'
 import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimeline'
 import { VideoTypeSelector } from '../components/upload/VideoTypeSelector'
+import { TemplateSelector } from '../components/upload/TemplateSelector'
 import { CharacterImageUpload } from '../components/upload/CharacterImageUpload'
 import { TemplateCharacterModal } from '../components/upload/TemplateCharacterModal'
 import { SelectedTemplateDisplay } from '../components/upload/SelectedTemplateDisplay'
 import { SongProfileView } from '../components/song/SongProfileView'
+import { ProjectsModal } from '../components/projects/ProjectsModal'
+import { AuthModal } from '../components/auth/AuthModal'
+import { ErrorBoundary } from 'react-error-boundary'
+import { SectionErrorFallback } from '../components/SectionErrorFallback'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
 
@@ -54,6 +67,13 @@ interface UploadMetadata {
 }
 
 export const UploadPage: React.FC = () => {
+  const location = useLocation()
+  const isPublicView = location.pathname === '/public'
+  const { isAuthenticated, isLoading: isAuthLoading, currentUser } = useAuth()
+  const animationsDisabled = shouldDisableAnimations(
+    isPublicView,
+    currentUser?.animations_disabled,
+  )
   const fileInputId = useId()
   const [stage, setStage] = useState<UploadStage>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -72,9 +92,17 @@ export const UploadPage: React.FC = () => {
   const autoScrollCompletedRef = useRef<boolean>(false)
   const uploadAbortControllerRef = useRef<AbortController | null>(null)
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  const [projectsModalOpen, setProjectsModalOpen] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [loginPromptModalOpen, setLoginPromptModalOpen] = useState(false)
   const [videoTypeSelectorVisible, setVideoTypeSelectorVisible] = useState(true)
   const [hideCharacterConsistency, setHideCharacterConsistency] = useState(false)
   const [showNoCharacterConfirm, setShowNoCharacterConfirm] = useState(false)
+  const [showProfileHint, setShowProfileHint] = useState(false)
+  const [template, setTemplate] = useState<
+    'abstract' | 'environment' | 'character' | 'minimal'
+  >('abstract')
+  const templateInitializedRef = useRef(false)
 
   // Use custom hooks for video type and audio selection
   const videoTypeSelection = useVideoTypeSelection({
@@ -99,6 +127,28 @@ export const UploadPage: React.FC = () => {
   // Sync video type selection state
   const videoType = videoTypeSelection.videoType
   // const isSettingVideoType = videoTypeSelection.isSetting
+
+  // Sync template from songDetails (only once when songDetails loads)
+  useEffect(() => {
+    if (!songDetails || templateInitializedRef.current) return
+
+    const songTemplate = songDetails.template as
+      | 'abstract'
+      | 'environment'
+      | 'character'
+      | 'minimal'
+      | null
+      | undefined
+
+    // Only update if song has a template set, otherwise keep default 'abstract'
+    // Use requestAnimationFrame to avoid synchronous setState in effect
+    if (songTemplate && songTemplate !== template) {
+      requestAnimationFrame(() => {
+        setTemplate(songTemplate)
+      })
+    }
+    templateInitializedRef.current = true
+  }, [songDetails, template])
 
   // Hide video type selector 3 seconds after analysis begins (fade out)
   // COMMENTED OUT: Timing logic for fade-out
@@ -206,10 +256,21 @@ export const UploadPage: React.FC = () => {
     composeJobId,
   ])
 
-  const handleCancelClipJob = useCallback(() => {
-    if (!clipJobId) return
-    clipPolling.setError('Canceling clip generation is not available yet.')
-  }, [clipJobId, clipPolling])
+  const handleCancelClipJob = useCallback(async () => {
+    if (!clipJobId || !result?.songId) return
+
+    try {
+      await apiClient.post(`/songs/${result.songId}/clips/job/${clipJobId}/cancel`)
+      // The polling will pick up the cancelled status
+      clipPolling.setError(null)
+    } catch (err) {
+      const errorMessage = extractErrorMessage(
+        err,
+        'Failed to cancel clip generation job.',
+      )
+      clipPolling.setError(errorMessage)
+    }
+  }, [clipJobId, result?.songId, clipPolling])
 
   const handleComposeClips = useCallback(async () => {
     if (!result?.songId || !clipSummary) {
@@ -417,7 +478,7 @@ export const UploadPage: React.FC = () => {
     () => ({
       formats: 'MP3, WAV, M4A, FLAC, OGG',
       duration: 'Up to 7 minutes',
-      size: 'We recommend files under ~200 MB',
+      size: 'Up to 100 MB',
     }),
     [],
   )
@@ -440,8 +501,14 @@ export const UploadPage: React.FC = () => {
     setPlayerClipSelectionLocked(false)
     setVideoTypeSelectorVisible(true)
     autoScrollCompletedRef.current = false // Reset scroll flag for new upload
+    templateInitializedRef.current = false // Reset template initialization flag
+
+    // Clear persisted state
+    localStorage.removeItem('vibecraft_current_song_id')
+
     videoTypeSelection.reset()
     audioSelection.reset()
+    setTemplate('abstract') // Reset to default
     // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
     // if (highlightTimeoutRef.current) {
     //   window.clearTimeout(highlightTimeoutRef.current)
@@ -453,19 +520,86 @@ export const UploadPage: React.FC = () => {
     }
   }, [videoTypeSelection, audioSelection])
 
-  const fetchSongDetails = useCallback(async (songId: string) => {
-    try {
-      const { data } = await apiClient.get<SongRead>(`/songs/${songId}`)
-      setSongDetails(data)
-    } catch (err) {
-      console.error('Failed to load song details', err)
-    }
+  const fetchSongDetails = useCallback(
+    async (songId: string) => {
+      try {
+        // Use public endpoint if on public view or not authenticated
+        const endpoint =
+          isPublicView || !isAuthenticated
+            ? `/songs/${songId}/public`
+            : `/songs/${songId}`
+        const { data } = await apiClient.get<SongRead>(endpoint)
+        setSongDetails(data)
+      } catch (err) {
+        console.error('Failed to load song details', err)
+      }
+    },
+    [isAuthenticated, isPublicView],
+  )
+
+  const handleTitleUpdate = useCallback(
+    async (title: string) => {
+      if (!result?.songId) return
+      try {
+        await apiClient.patch(`/songs/${result.songId}/title`, { title })
+        // Refresh song details to get updated title
+        await fetchSongDetails(result.songId)
+      } catch (err) {
+        console.error('Failed to update title:', err)
+        throw err
+      }
+    },
+    [result?.songId, fetchSongDetails],
+  )
+
+  const handleTemplateUpdate = useCallback(
+    async (newTemplate: 'abstract' | 'environment' | 'character' | 'minimal') => {
+      if (!result?.songId) return
+      try {
+        setTemplate(newTemplate)
+        await apiClient.patch(`/songs/${result.songId}/template`, {
+          template: newTemplate,
+        })
+        // Refresh song details to get updated template
+        await fetchSongDetails(result.songId)
+      } catch (err) {
+        console.error('Failed to update template:', err)
+        setError(extractErrorMessage(err, 'Failed to update visual style template'))
+      }
+    },
+    [result?.songId, fetchSongDetails],
+  )
+
+  // Show profile hint on every page load (reset on refresh)
+  useEffect(() => {
+    // Always show the hint on mount - use setTimeout to avoid setState in effect
+    const timer = setTimeout(() => {
+      setShowProfileHint(true)
+    }, 0)
+    return () => clearTimeout(timer)
   }, [])
 
-  // Load song from URL parameter if present
+  // Animation will show on every page load/refresh
+
+  // Persist songId to localStorage when it changes
   useEffect(() => {
+    if (result?.songId) {
+      localStorage.setItem('vibecraft_current_song_id', result.songId)
+    } else {
+      localStorage.removeItem('vibecraft_current_song_id')
+    }
+  }, [result?.songId])
+
+  // Load song from URL parameter or localStorage on mount (works with or without auth)
+  useEffect(() => {
+    // Wait for auth state to be determined
+    if (isAuthLoading) {
+      return
+    }
+
     const urlParams = new URLSearchParams(window.location.search)
-    const songIdParam = urlParams.get('songId')
+    const songIdParam =
+      urlParams.get('songId') || localStorage.getItem('vibecraft_current_song_id')
 
     if (songIdParam && !result) {
       const loadSongById = async () => {
@@ -529,7 +663,15 @@ export const UploadPage: React.FC = () => {
 
       void loadSongById()
     }
-  }, [result, fetchSongDetails, analysisPolling, clipPolling])
+  }, [
+    isAuthenticated,
+    isAuthLoading,
+    result,
+    fetchSongDetails,
+    analysisPolling,
+    clipPolling,
+    resetState,
+  ])
 
   useEffect(() => {
     if (!analysisData && clipSummary?.analysis && result?.songId) {
@@ -666,6 +808,12 @@ export const UploadPage: React.FC = () => {
 
   const handleFileUpload = useCallback(
     async (file: File) => {
+      // Check if user is authenticated
+      if (!isAuthenticated) {
+        setLoginPromptModalOpen(true)
+        return
+      }
+
       resetState()
 
       if (
@@ -673,6 +821,16 @@ export const UploadPage: React.FC = () => {
       ) {
         setStage('error')
         setError('Unsupported audio format. Try MP3, WAV, M4A, FLAC, or OGG.')
+        return
+      }
+
+      // Check file size before uploading
+      if (file.size > MAX_AUDIO_FILE_SIZE_BYTES) {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1)
+        setStage('error')
+        setError(
+          `Audio file size (${fileSizeMB}MB) exceeds maximum (${MAX_AUDIO_FILE_SIZE_MB}MB).`,
+        )
         return
       }
 
@@ -713,6 +871,7 @@ export const UploadPage: React.FC = () => {
             'Content-Type': 'multipart/form-data',
           },
           signal: abortController.signal,
+          timeout: 120000, // 2 minute timeout for large files
           onUploadProgress: (event) => {
             if (!event.total) return
             const percentage = Math.min(
@@ -751,14 +910,28 @@ export const UploadPage: React.FC = () => {
         }
 
         console.error('Upload failed', err)
-        const message =
-          (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ??
+        const axiosError = err as {
+          response?: { data?: { detail?: string } }
+          message?: string
+          code?: string
+        }
+        let message =
+          axiosError.response?.data?.detail ??
+          axiosError.message ??
           'Upload failed. Please try again.'
+
+        // Handle timeout errors
+        if (axiosError.code === 'ECONNABORTED' || message.includes('timeout')) {
+          message =
+            'Upload timed out. The file may be too large or the connection is slow. Please try again.'
+        }
+
         setError(message)
         setStage('error')
+        setProgress(0)
       }
     },
-    [resetState, fetchSongDetails, clipPolling],
+    [isAuthenticated, resetState, fetchSongDetails, clipPolling],
   )
 
   const handleFilesSelected = useCallback(
@@ -834,8 +1007,45 @@ export const UploadPage: React.FC = () => {
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#0C0C12] via-[#121224] to-[#0B0B16] px-4 py-16 text-white">
       <BackgroundOrbs />
 
+      {/* Profile Button - Top Right */}
+      <div className="fixed top-6 right-6 z-50">
+        {/* Pointing Animation - One Time */}
+        {!animationsDisabled && showProfileHint && (
+          <div
+            className="absolute -left-12 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{
+              animation: 'pointAndFade 3s ease-in-out forwards',
+            }}
+          >
+            <div className="text-3xl filter drop-shadow-lg">👉</div>
+          </div>
+        )}
+
+        {!isPublicView && (
+          <button
+            onClick={() => {
+              if (isAuthenticated) {
+                setProjectsModalOpen(true)
+              } else {
+                setAuthModalOpen(true)
+              }
+              setShowProfileHint(false)
+            }}
+            className="relative flex h-16 w-16 items-center justify-center rounded-full bg-vc-accent-primary shadow-vc2 hover:shadow-vc3 hover:bg-[#7A76FF] transition-all active:scale-[0.98] overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label={isAuthenticated ? 'Open projects' : 'Login'}
+            disabled={isAuthLoading}
+          >
+            <img
+              src="/img/vibe_lightning_simple.png"
+              alt="Profile"
+              className="w-full h-full object-cover"
+            />
+          </button>
+        )}
+      </div>
+
       {analysisState !== 'completed' && (
-        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
+        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-4 text-center">
           <div className="space-y-3">
             {/* <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
               Upload
@@ -957,11 +1167,7 @@ export const UploadPage: React.FC = () => {
                           analysisState === 'queued' ||
                           analysisState === 'processing'
                         }
-                        confirmButtonText={
-                          analysisState === 'queued' || analysisState === 'processing'
-                            ? 'Starting Analysis...'
-                            : 'Confirm & Start Analysis'
-                        }
+                        confirmButtonText="Confirm & Start Analysis"
                       />
                     )
                   })()}
@@ -1056,6 +1262,15 @@ export const UploadPage: React.FC = () => {
                     onSelect={videoTypeSelection.setVideoType}
                     selectedType={videoType}
                   />
+                  {videoType && (
+                    <div className="mt-4 pt-4 border-t border-vc-border">
+                      <div className="vc-label mb-2">Visual Style</div>
+                      <TemplateSelector
+                        onSelect={handleTemplateUpdate}
+                        selectedTemplate={template}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null
@@ -1110,7 +1325,7 @@ export const UploadPage: React.FC = () => {
             )
           })()}
 
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-vc-text-muted">
+          <div className="flex flex-wrap items-center justify-center gap-0 text-xs text-vc-text-muted -mt-2">
             <RequirementPill
               icon={<WaveformIcon />}
               label={`Accepted: ${requirementsCopy.formats}`}
@@ -1126,7 +1341,7 @@ export const UploadPage: React.FC = () => {
       {/* For full_length videos, analysis starts automatically after video type selection */}
 
       {analysisState === 'completed' && analysisData && songDetails && (
-        <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
+        <div className="vc-app-main mx-auto w-full max-w-6xl px-4 pt-12 pb-0">
           {/* Fallback: If videoType is not set, show a message */}
           {!videoType && (
             <div className="mb-8 rounded-3xl border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-7">
@@ -1141,7 +1356,7 @@ export const UploadPage: React.FC = () => {
           )}
           {/* Character Image Upload Step - only for short-form videos */}
           {videoType === 'short_form' && result?.songId && !hideCharacterConsistency && (
-            <section className="mb-2 space-y-4 -mt-8">
+            <section className="mb-2 space-y-4 -mt-16">
               <div className="vc-label text-center">Character Consistency (Optional)</div>
               {songDetails?.character_consistency_enabled &&
               (songDetails.character_reference_image_s3_key ||
@@ -1165,7 +1380,14 @@ export const UploadPage: React.FC = () => {
                       </div>
                     </div>
                   )} */}
-                  <SelectedTemplateDisplay songId={result.songId} />
+                  <SelectedTemplateDisplay
+                    songId={result.songId}
+                    disabled={
+                      clipJobId != null ||
+                      clipJobStatus !== 'idle' ||
+                      (clipSummary?.totalClips ?? 0) > 0
+                    }
+                  />
                 </>
               ) : (
                 // Show upload/template selection UI
@@ -1193,6 +1415,11 @@ export const UploadPage: React.FC = () => {
                       setError(error)
                     }}
                     onTemplateSelect={() => setTemplateModalOpen(true)}
+                    disabled={
+                      clipJobId != null ||
+                      clipJobStatus !== 'idle' ||
+                      (clipSummary?.totalClips ?? 0) > 0
+                    }
                   />
                   <TemplateCharacterModal
                     isOpen={templateModalOpen}
@@ -1255,35 +1482,69 @@ export const UploadPage: React.FC = () => {
               </section>
             )}
 
+          {/* Template Selector - shown when video type is selected */}
+          {videoType && (
+            <section className="mb-4">
+              <div className="vc-label mb-2 text-center">Visual Style</div>
+              <div className="flex justify-center">
+                <TemplateSelector
+                  onSelect={handleTemplateUpdate}
+                  selectedTemplate={template}
+                  disabled={
+                    clipJobId != null ||
+                    clipJobStatus !== 'idle' ||
+                    (clipSummary?.totalClips ?? 0) > 0
+                  }
+                />
+              </div>
+            </section>
+          )}
+
           {/* Song Profile View - shown after selection is made (for short-form) or directly (for full-length) */}
           {(videoType === 'full_length' ||
             (videoType === 'short_form' && audioSelectionValue)) &&
             analysisData &&
             songDetails && (
-              <SongProfileView
-                analysisData={analysisData}
-                songDetails={songDetails}
-                clipSummary={clipSummary}
-                clipJobId={clipJobId}
-                clipJobStatus={clipJobStatus}
-                clipJobProgress={clipJobProgress}
-                clipJobError={clipJobError}
-                isComposing={isComposing}
-                composeJobProgress={composeJobProgress}
-                playerActiveClipId={playerActiveClipId}
-                highlightedSectionId={highlightedSectionId}
-                metadata={metadata}
-                lyricsBySection={lyricsBySection}
-                audioUrl={result?.audioUrl ?? null}
-                onGenerateClips={handleGenerateClips}
-                onCancelClipJob={handleCancelClipJob}
-                onCompose={handleComposeClips}
-                onPreviewClip={handlePreviewClip}
-                onRegenerateClip={handleRegenerateClip}
-                onRetryClip={handleRetryClip}
-                onPlayerClipSelect={handlePlayerClipSelect}
-                onSectionSelect={handleSectionSelect}
-              />
+              <ErrorBoundary FallbackComponent={SectionErrorFallback}>
+                <SongProfileView
+                  analysisData={analysisData}
+                  songDetails={songDetails}
+                  clipSummary={clipSummary}
+                  clipJobId={clipJobId}
+                  clipJobStatus={clipJobStatus}
+                  clipJobProgress={clipJobProgress}
+                  clipJobError={clipJobError}
+                  isComposing={isComposing}
+                  composeJobProgress={composeJobProgress}
+                  playerActiveClipId={playerActiveClipId}
+                  highlightedSectionId={highlightedSectionId}
+                  metadata={metadata}
+                  lyricsBySection={lyricsBySection}
+                  audioUrl={result?.audioUrl ?? null}
+                  onGenerateClips={
+                    !isPublicView && isAuthenticated ? handleGenerateClips : undefined
+                  }
+                  onCancelClipJob={
+                    !isPublicView && isAuthenticated ? handleCancelClipJob : undefined
+                  }
+                  onCompose={
+                    !isPublicView && isAuthenticated ? handleComposeClips : undefined
+                  }
+                  onPreviewClip={handlePreviewClip}
+                  onRegenerateClip={
+                    !isPublicView && isAuthenticated ? handleRegenerateClip : undefined
+                  }
+                  onRetryClip={
+                    !isPublicView && isAuthenticated ? handleRetryClip : undefined
+                  }
+                  onPlayerClipSelect={handlePlayerClipSelect}
+                  onSectionSelect={handleSectionSelect}
+                  onTitleUpdate={
+                    !isPublicView && isAuthenticated ? handleTitleUpdate : undefined
+                  }
+                  isPublicView={isPublicView}
+                />
+              </ErrorBoundary>
             )}
         </div>
       )}
@@ -1406,6 +1667,104 @@ export const UploadPage: React.FC = () => {
                 Analysis complete but missing data. State: analysisData=
                 {String(!!analysisData)}, songDetails={String(!!songDetails)}
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isPublicView && (
+        <ProjectsModal
+          isOpen={projectsModalOpen}
+          onClose={() => setProjectsModalOpen(false)}
+          onOpenProject={(songId) => {
+            // Load the project by setting the songId in URL
+            window.history.pushState({}, '', `/?songId=${songId}`)
+            // Trigger a reload of the song details
+            if (songId) {
+              fetchSongDetails(songId)
+              setResult({ songId } as SongUploadResponse)
+            }
+          }}
+          onOpenAuth={() => setAuthModalOpen(true)}
+        />
+      )}
+
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={() => {
+          // After successful login/register, close the modal
+          // The auth state will update automatically via React Query
+          setAuthModalOpen(false)
+        }}
+      />
+
+      {/* Login Prompt Modal */}
+      {loginPromptModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => {
+            setLoginPromptModalOpen(false)
+            // Re-animate the pointing hand after closing - reset to false first to force re-render
+            setShowProfileHint(false)
+            setTimeout(() => setShowProfileHint(true), 100)
+          }}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-[rgba(20,20,32,0.95)] backdrop-blur-xl border border-vc-border/50 shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => {
+                setLoginPromptModalOpen(false)
+                // Re-animate the pointing hand after closing
+                setShowProfileHint(false)
+                setTimeout(() => setShowProfileHint(true), 100)
+              }}
+              className="absolute top-4 right-4 text-vc-text-secondary hover:text-white transition-colors p-2 hover:bg-vc-border/30 rounded-lg"
+              aria-label="Close"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-white mb-4">Login Required</h2>
+              <p className="text-white/70 mb-6">
+                Please log in or sign up to upload and create videos.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <VCButton
+                  onClick={() => {
+                    setLoginPromptModalOpen(false)
+                    setAuthModalOpen(true)
+                  }}
+                >
+                  Login / Sign Up
+                </VCButton>
+                <VCButton
+                  variant="secondary"
+                  onClick={() => {
+                    setLoginPromptModalOpen(false)
+                    // Re-animate the pointing hand after closing
+                    setShowProfileHint(false)
+                    setTimeout(() => setShowProfileHint(true), 100)
+                  }}
+                >
+                  Cancel
+                </VCButton>
+              </div>
             </div>
           </div>
         </div>

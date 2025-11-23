@@ -16,6 +16,8 @@ export const ACCEPTED_MIME_TYPES = [
 ] as const
 
 export const MAX_DURATION_SECONDS = 7 * 60
+export const MAX_AUDIO_FILE_SIZE_MB = 100 // 100 MB maximum file size for audio uploads
+export const MAX_AUDIO_FILE_SIZE_BYTES = MAX_AUDIO_FILE_SIZE_MB * 1024 * 1024
 
 export const SECTION_TYPE_LABELS: Record<string, string> = {
   intro: 'Intro',

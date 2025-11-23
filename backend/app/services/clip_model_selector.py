@@ -87,6 +87,8 @@ def get_clips_for_composition(
     """
     Get and validate all clips for composition.
 
+    Optimized to fetch all clips in a single query instead of N+1 pattern.
+
     Args:
         session: Database session
         clip_ids: List of clip IDs to retrieve
@@ -100,17 +102,39 @@ def get_clips_for_composition(
         CompositionError: If any clip doesn't belong to song or isn't ready
     """
     use_sections = _should_use_sections_for_song(song)
-    clips = []
+    model_class = get_clip_model_class(use_sections)
+    
+    if not clip_ids:
+        return [], []
+    
+    # Fetch all clips in a single query (optimization #2: fix N+1)
+    from sqlmodel import select
+    statement = select(model_class).where(model_class.id.in_(clip_ids))  # type: ignore[attr-defined]
+    clips = list(session.exec(statement).all())
+    
+    # Create a lookup dict for validation
+    clip_dict = {clip.id: clip for clip in clips}
+    
+    # Validate all clips
+    validated_clips = []
     clip_urls = []
-
+    
     for clip_id in clip_ids:
-        clip = get_and_validate_clip(session, clip_id, song.id, use_sections)
-        clips.append(clip)
-        if clip.video_url:
-            clip_urls.append(clip.video_url)
-        else:
-            model_name = type(clip).__name__
-            raise CompositionError(f"{model_name} {clip_id} has no video_url")
-
-    return clips, clip_urls
+        clip = clip_dict.get(clip_id)
+        if not clip:
+            model_name = model_class.__name__
+            raise ClipNotFoundError(f"{model_name} {clip_id} not found")
+        
+        if clip.song_id != song.id:
+            model_name = model_class.__name__
+            raise CompositionError(f"{model_name} {clip_id} does not belong to song {song.id}")
+        
+        if clip.status != "completed" or not clip.video_url:
+            model_name = model_class.__name__
+            raise CompositionError(f"{model_name} {clip_id} is not ready (status: {clip.status})")
+        
+        validated_clips.append(clip)
+        clip_urls.append(clip.video_url)
+    
+    return validated_clips, clip_urls
 

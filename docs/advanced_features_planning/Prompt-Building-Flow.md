@@ -9,10 +9,12 @@ Prompts are constructed through a multi-stage pipeline that transforms song anal
 **Entry Point:** `run_clip_generation_job()` in `clip_generation.py` calls `_build_scene_spec_for_clip()`
 
 **Path Selection:**
+
 - **Short-form videos (no sections):** Calls `build_clip_scene_spec()` which uses song-level analysis
 - **Long-form videos (with sections):** Calls `build_scene_spec()` which uses section-specific analysis
 
 **Both paths call `build_prompt()` with:**
+
 - Song analysis data (mood, genre, BPM, mood tags)
 - Mapped visual parameters (color palette, camera motion, shot pattern)
 - Optional section context and lyrics
@@ -62,6 +64,7 @@ Prompts are constructed through a multi-stage pipeline that transforms song anal
 Calls `optimize_prompt_for_api()` which tailors the prompt based on API/model:
 
 **For Minimax Hailuo 2.3 (current default):**
+
 - If BPM not already in prompt: Appends `". Camera: static. Motion: synchronized to {BPM} BPM."`
 - If BPM already present: Appends `". Camera: static."`
 
@@ -70,6 +73,7 @@ Calls `optimize_prompt_for_api()` which tailors the prompt based on API/model:
 ## Stage 5: Final Prompt Usage
 
 The optimized prompt is sent to Replicate API along with:
+
 - Image input (if character consistency enabled)
 - Frame count, FPS, dimensions
 - Seed (for reproducibility)
@@ -103,27 +107,32 @@ The optimized prompt is sent to Replicate API along with:
 ### Stage-by-Stage Prompt Evolution
 
 **Stage 1: Base Components**
-```
+
+```text
 "Abstract visual style, vibrant color palette with #FF6B9D, #FFD93D, and #6BCF7F, energetic, danceable, upbeat mood, Electronic aesthetic, medium with medium pacing, fast_zoom camera motion (fast speed)"
 ```
 
 **Stage 2: Rhythm Enhancement**
+
 - Motion type selected: "bouncing" (based on genre="Electronic" → priority 4)
 - Motion descriptor: "bouncing motion, rhythmic pulsing, steady vertical rhythm matching the beat" (BPM 128 = "fast" tempo)
 - Enhanced prompt:
-```
+
+```text
 "Abstract visual style, vibrant color palette with #FF6B9D, #FFD93D, and #6BCF7F, energetic, danceable, upbeat mood, Electronic aesthetic, medium with medium pacing, fast_zoom camera motion (fast speed), bouncing motion, rhythmic pulsing, steady vertical rhythm matching the beat synchronized to 128 BPM tempo, rhythmic motion matching the beat"
 ```
 
 **Stage 3: API Optimization (Minimax Hailuo 2.3)**
+
 - BPM already present, adds camera directive:
-```
+
+```text
 "Abstract visual style, vibrant color palette with #FF6B9D, #FFD93D, and #6BCF7F, energetic, danceable, upbeat mood, Electronic aesthetic, medium with medium pacing, fast_zoom camera motion (fast speed), bouncing motion, rhythmic pulsing, steady vertical rhythm matching the beat synchronized to 128 BPM tempo, rhythmic motion matching the beat. Camera: static."
 ```
 
 ### Final Prompt (Sent to Replicate)
 
-```
+```text
 "Abstract visual style, vibrant color palette with #FF6B9D, #FFD93D, and #6BCF7F, energetic, danceable, upbeat mood, Electronic aesthetic, medium with medium pacing, fast_zoom camera motion (fast speed), bouncing motion, rhythmic pulsing, steady vertical rhythm matching the beat synchronized to 128 BPM tempo, rhythmic motion matching the beat. Camera: static."
 ```
 
@@ -135,7 +144,7 @@ The optimized prompt is sent to Replicate API along with:
 
 #### Actual Prompt from Database
 
-```
+```text
 "Abstract visual style, calm color palette with #4A90E2, #7B68EE, and #87CEEB, calm, danceable mood, Electronic aesthetic, medium with medium pacing, fast_zoom camera motion (fast speed), rapid looping, energetic repetitive cycles, quick seamless loops synchronized to tempo synchronized to 129 BPM tempo, rhythmic motion matching the beat"
 ```
 
@@ -160,4 +169,3 @@ The optimized prompt is sent to Replicate API along with:
 - The prompt may need explicit character/dancer references to generate characters consistently
 - "Abstract visual style" may conflict with character-based generation goals
 - Motion descriptors describe patterns but not character actions (e.g., "person dancing" vs "bouncing motion")
-

@@ -162,20 +162,20 @@
 
 ### For Sections > 6 seconds
 
-**Option 1: Use Hailuo 02 (10 seconds)**
+#### Option 1: Use Hailuo 02 (10 seconds)
 
 - Best for sections 7-10 seconds
 - Higher quality, single generation per section
 - Check pricing on Replicate
 
-**Option 2: Generate multiple clips and concatenate**
+#### Option 2: Generate multiple clips and concatenate
 
 - Use current Hailuo 2.3 (6s max)
 - Generate 2-3 clips for longer sections
 - Concatenate in composition engine
 - More cost-effective but requires composition logic
 
-**Option 3: Hybrid approach**
+#### Option 3: Hybrid approach
 
 - Use Hailuo 2.3 for sections ≤ 6 seconds
 - Use Hailuo 02 for sections > 6 seconds

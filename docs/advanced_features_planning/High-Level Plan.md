@@ -53,13 +53,18 @@ consistent, the Image-to-Video model may still introduce visual drift across the
 6 separate generations. The implementation includes graceful fallback to
 text-to-video if image-to-video generation fails.
 
-**Known Issue:** Currently, most clips do not show a dancing figure/character, and when a character does appear, it's not based on the provided reference image. Prior to refactors and adding the character consistency option, we actually did get a dancing character almost all the time. This suggests the prompt generation logic may need investigation. See `Temp-Troubleshooting-Log.md` for details.
+**Known Issue:** Currently, most clips do not show a dancing figure/character, and
+when a character does appear, it's not based on the provided reference image. Prior
+to refactors and adding the character consistency option, we actually did get a
+dancing character almost all the time. This suggests the prompt generation logic
+may need investigation. See `Temp-Troubleshooting-Log.md` for details.
 
 ---
 
 ## 3. Beat Synchronization: Programmatic Quick Wins
 
-These post-processing steps are independent of the video generation API and rely on the existing FFmpeg composition pipeline.
+These post-processing steps are independent of the video generation API and rely
+on the existing FFmpeg composition pipeline.
 
 ### 3.1. Prompt Engineering (Technical Exploration Option 3) ✅ COMPLETE
 
@@ -153,12 +158,14 @@ proper coordination and use of Git worktrees.
 #### Character Consistency Status ✅ COMPLETE
 
 **New Files** (All Implemented):
+
 - `backend/app/services/image_interrogation.py` ✅ (Phase 2: Image Interrogation Service)
 - `backend/app/services/character_image_generation.py` ✅ (Phase 3: Character Image Generation Service)
 - `backend/app/services/character_consistency.py` ✅ (Phase 5: Orchestration
   Workflow)
 
 **Enhanced Files** (All Complete):
+
 - `backend/app/services/video_generation.py` ✅ (Phase 4: Image-to-Video Support with Enhanced Fallback)
 - `backend/app/services/clip_generation.py` ✅ (Phase 5: Integration with Character Images)
 - `backend/app/services/storage.py` ✅ (Phase 1: Character Image Storage Helpers)
@@ -167,6 +174,7 @@ proper coordination and use of Git worktrees.
   components)
 
 **Testing & Documentation** (Phase 7: Complete):
+
 - Comprehensive unit tests: 31 tests (all passing)
 - Integration tests: 5 tests (skip when DB unavailable, expected)
 - 4 workflow-stage test scripts with phase references
@@ -175,6 +183,7 @@ proper coordination and use of Git worktrees.
 #### Beat Synchronization Status ✅ COMPLETE
 
 **Enhanced Files** (All Complete):
+
 - `backend/app/services/prompt_enhancement.py` ✅ (Phase 3.1: API-specific
   optimization, motion selection, BPM extraction)
 - `backend/app/services/beat_filters.py` ✅ (Phase 3.2: Glitch effect, effect params, frame-accurate timing)
@@ -186,25 +195,32 @@ proper coordination and use of Git worktrees.
 - `backend/app/core/config.py` ✅ (Phase 3.2: BeatEffectConfig)
 
 **Testing & Documentation** (Complete):
+
 - Comprehensive unit tests: 414 tests total (all passing)
   - Phase 3.1: 61 tests in `test_prompt_enhancement.py`
   - Phase 3.2: Tests in `test_beat_filters.py` (frame conversion, effect params, glitch)
-  - Phase 3.3: Tests in `test_beat_alignment.py` and `test_video_composition.py` (boundaries, transitions, trim/extend)
+  - Phase 3.3: Tests in `test_beat_alignment.py` and `test_video_composition.py`
+    (boundaries, transitions, trim/extend)
 - 3 comprehensive test scripts: `test-beat-sync-3.1.sh`, `test-beat-sync-3.2.sh`, `test-beat-sync-3.3.sh`
 - Zero linting issues
 
 #### Conflict Points
 
 **Low Risk**:
+
 - No shared new files
-- Different service layers (Character Consistency: image/video generation; Beat Sync: prompt/composition)
+- Different service layers (Character Consistency: image/video generation; Beat
+  Sync: prompt/composition)
 - Foundation work already integrated
 
 **Medium Risk** (Requires Coordination):
-- Both features may need to update `backend/app/core/config.py` for feature flags (coordinate to avoid merge conflicts)
+
+- Both features may need to update `backend/app/core/config.py` for feature flags
+  (coordinate to avoid merge conflicts)
 - Both features may need database migrations (coordinate migration numbering)
 
 **No Conflicts**:
+
 - Character Consistency doesn't modify `composition_execution.py` (Beat Sync's main modification target)
 - Beat Sync doesn't modify `video_generation.py` or `clip_generation.py`
   (Character Consistency's main modification targets)
@@ -300,6 +316,7 @@ git push origin feature/beat-sync-completion
 **Status**: All phases implemented and merged into `advancedFeatures` branch
 
 **Completed Tasks**:
+
 1. ✅ Implement `image_interrogation.py` service (Phase 2: OpenAI GPT-4 Vision + Replicate fallback)
 2. ✅ Implement `character_image_generation.py` service (Phase 3: Replicate SDXL with IP-Adapter)
 3. ✅ Implement `character_consistency.py` orchestration service (Phase 5: Full workflow)
@@ -311,6 +328,7 @@ git push origin feature/beat-sync-completion
 9. ✅ Workflow-stage test scripts (Phase 7: 4 scripts with phase references)
 
 **Files Created/Modified**:
+
 - `backend/app/services/image_interrogation.py` ✅ (NEW - Phase 2)
 - `backend/app/services/character_image_generation.py` ✅ (NEW - Phase 3)
 - `backend/app/services/character_consistency.py` ✅ (NEW - Phase 5)
@@ -332,6 +350,7 @@ git push origin feature/beat-sync-completion
 **Status**: All phases implemented and merged into `advancedFeatures` branch
 
 **Completed Tasks**:
+
 1. ✅ Enhanced `prompt_enhancement.py` with API-specific optimization (Phase
    3.1)
 2. ✅ Enhanced `beat_filters.py` with improved effects (glitch, better zoom_pulse,
@@ -344,6 +363,7 @@ git push origin feature/beat-sync-completion
 8. ✅ Created 3 comprehensive test scripts for each phase
 
 **Files Created/Modified**:
+
 - `backend/app/services/prompt_enhancement.py` ✅ (ENHANCED - Phase 3.1: API
   optimization, motion selection)
 - `backend/app/services/beat_filters.py` ✅ (ENHANCED - Phase 3.2: Glitch
@@ -366,6 +386,7 @@ git push origin feature/beat-sync-completion
 ### 4.5. Risk Mitigation
 
 **Potential Issues**:
+
 1. **Merge Conflicts**: Unlikely but possible if both modify shared config files
    - **Mitigation**: Coordinate config changes upfront, use separate config classes if needed
 
@@ -382,6 +403,7 @@ git push origin feature/beat-sync-completion
 ### 4.6. Success Criteria
 
 **Parallel Development Results**:
+
 - ✅ Both features were developed independently without blocking each other
 - ✅ Merge conflicts: 0 conflicts (clean merge)
 - ✅ Integration tests pass for both features independently
@@ -398,33 +420,51 @@ Git worktrees as planned.
 
 ## 5. Appendix: OpenCV Motion Analysis and Selective Time-Stretching (Future Work)
 
-This section details the most advanced, high-effort approach for achieving true beat synchronization, as outlined in **Technical Exploration Approach 1**. This method should be considered **Future Work** and implemented only after the quick-win strategies have been fully deployed and validated.
+This section details the most advanced, high-effort approach for achieving true beat
+synchronization, as outlined in **Technical Exploration Approach 1**. This method
+should be considered **Future Work** and implemented only after the quick-win
+strategies have been fully deployed and validated.
 
 ### 4.1. Goal: True Motion Synchronization
 
-The objective is to programmatically align the peak moments of motion within the AI-generated video clips to the precise timestamps of the musical beats (`beat_times`).
+The objective is to programmatically align the peak moments of motion within the
+AI-generated video clips to the precise timestamps of the musical beats
+(`beat_times`).
 
 ### 4.2. Technical Approach: Post-Generation Manipulation
 
-This approach uses computer vision to analyze the generated video and then uses video processing tools (FFmpeg) to manipulate the playback speed of specific segments.
+This approach uses computer vision to analyze the generated video and then uses
+video processing tools (FFmpeg) to manipulate the playback speed of specific
+segments.
 
 #### Stage 1: Motion Analysis with OpenCV
 
-The core is to quantify "motion" using **Optical Flow** (specifically `cv2.calcOpticalFlowFarneback`) to create a **Motion Intensity Signal** over time. This signal is then smoothed and normalized to highlight significant movements.
+The core is to quantify "motion" using **Optical Flow** (specifically
+`cv2.calcOpticalFlowFarneback`) to create a **Motion Intensity Signal** over time.
+This signal is then smoothed and normalized to highlight significant movements.
 
 #### Stage 2: Peak Detection and Alignment Calculation
 
-*   **Peak Detection:** Use `scipy.signal.find_peaks` to identify the timestamps of the most prominent motion peaks.
-*   **Alignment:** For each motion peak, find the closest beat timestamp in the `beat_times` array.
-*   **Calculation:** Calculate the required `stretch_factor` (speed change) to move the motion peak to the target beat timestamp.
+- **Peak Detection:** Use `scipy.signal.find_peaks` to identify the timestamps of
+  the most prominent motion peaks.
+- **Alignment:** For each motion peak, find the closest beat timestamp in the
+  `beat_times` array.
+- **Calculation:** Calculate the required `stretch_factor` (speed change) to move
+  the motion peak to the target beat timestamp.
 
 $$
-\text{Stretch Factor} = \frac{\text{Original Duration}}{\text{Target Duration}} = \frac{\text{Motion Peak Time}}{\text{Target Beat Time}}
+\text{Stretch Factor} = \frac{\text{Original Duration}}{\text{Target Duration}} =
+\frac{\text{Motion Peak Time}}{\text{Target Beat Time}}
 $$
 
 #### Stage 3: Video Manipulation with FFmpeg
 
-*   **Filter:** Use FFmpeg's `setpts` filter to apply variable speed changes to the video segments that require adjustment.
-*   **Process:** The video is split into segments, each segment is processed with the appropriate `setpts` value, and all segments are then concatenated back together.
+- **Filter:** Use FFmpeg's `setpts` filter to apply variable speed changes to
+  the video segments that require adjustment.
+- **Process:** The video is split into segments, each segment is processed with
+  the appropriate `setpts` value, and all segments are then concatenated back
+  together.
 
-This method offers the highest quality synchronization but requires significant development time, testing, and computational resources. It is the ultimate goal for beat-sync precision.
+This method offers the highest quality synchronization but requires significant
+development time, testing, and computational resources. It is the ultimate goal
+for beat-sync precision.

@@ -294,6 +294,7 @@ def build_prompt(
     lyrics: Optional[str] = None,
     bpm: Optional[float] = None,  # NEW PARAMETER
     motion_type: Optional[str] = None,  # NEW PARAMETER
+    template: TemplateType = DEFAULT_TEMPLATE,  # Template type for visual style
 ) -> str:
     """
     Build video generation prompt combining all features.
@@ -309,6 +310,7 @@ def build_prompt(
         lyrics: Optional lyrics text for motif injection
         bpm: Optional BPM for rhythm enhancement
         motion_type: Optional motion type for rhythm enhancement
+        template: Template type for visual style ("abstract", "environment", "character", "minimal")
 
     Returns:
         Complete prompt string for video generation
@@ -317,7 +319,14 @@ def build_prompt(
     components = []
 
     # Visual style from template
-    components.append("Abstract visual style")
+    template_style_map = {
+        "abstract": "Abstract visual style",
+        "environment": "Environmental visual style",
+        "character": "Character-focused visual style",
+        "minimal": "Minimalist visual style",
+    }
+    visual_style = template_style_map.get(template, "Abstract visual style")
+    components.append(visual_style)
 
     # Color palette
     components.append(f"{color_palette.mood} color palette with {color_palette.primary}, {color_palette.secondary}, and {color_palette.accent}")
@@ -335,6 +344,9 @@ def build_prompt(
 
     # Camera motion
     components.append(f"{camera_motion.type} camera motion ({camera_motion.speed} speed)")
+
+    # Dancing instruction - always included for dynamic figure movement
+    components.append("the figure is dancing dynamically, varying the limbs that they move, and at some point turning around")
 
     # Section type context (only if section is provided)
     if section:
@@ -443,6 +455,7 @@ def build_scene_spec(
         lyrics=lyrics_text,
         bpm=analysis.bpm,  # NEW: Pass BPM for rhythm enhancement
         motion_type=None,  # Can be made configurable later
+        template=template,  # Pass template for visual style
     )
 
     # Calculate duration
@@ -505,6 +518,7 @@ def build_clip_scene_spec(
         lyrics=None,  # Could extract lyrics for time range if needed
         bpm=analysis.bpm,  # NEW: Pass BPM for rhythm enhancement
         motion_type=None,  # Can be made configurable later
+        template=template,  # Pass template for visual style
     )
 
     intensity = (analysis.mood_vector.energy + analysis.mood_vector.tension) / 2.0

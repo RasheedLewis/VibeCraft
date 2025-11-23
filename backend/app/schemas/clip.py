@@ -53,6 +53,8 @@ class SongClipStatus(BaseModel):
     num_frames: int = Field(..., alias="numFrames", ge=0)
     fps: int = Field(..., ge=1)
     video_url: Optional[str] = Field(None, alias="videoUrl")
+    prompt: Optional[str] = None  # Full prompt used for generation
+    style_seed: Optional[str] = Field(None, alias="styleSeed")
     rq_job_id: Optional[str] = Field(None, alias="rqJobId")
     replicate_job_id: Optional[str] = Field(None, alias="replicateJobId")
     error: Optional[str] = None

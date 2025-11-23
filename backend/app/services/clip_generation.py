@@ -16,12 +16,24 @@ from sqlmodel import select
 from app.core.config import get_settings
 from app.core.constants import DEFAULT_MAX_CONCURRENCY, QUEUE_TIMEOUT_SEC
 from app.core.database import session_scope
+from app.core.logging import configure_logging
 from app.core.queue import get_queue
+
+# Ensure logging is configured for RQ workers
+# This is needed because RQ workers don't automatically call configure_logging()
+# Without this, logger.info() calls may be filtered out (root logger defaults to WARNING)
+try:
+    settings = get_settings()
+    configure_logging(settings.api_log_level)
+except Exception:
+    # Fallback to default if settings can't be loaded
+    configure_logging("info")
 from app.exceptions import (
     ClipGenerationError,
     ClipNotFoundError,
     CompositionError,
     JobNotFoundError,
+    JobStateError,
     SongNotFoundError,
     StorageError,
 )
@@ -237,6 +249,7 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     # Get character image URLs if character consistency is enabled
     character_image_urls = []
     character_image_url = None
+    song = None
     
     try:
         song = SongRepository.get_by_id(song_id)
@@ -257,7 +270,9 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     logger.info(
         f"[CLIP-GEN] Clip {clip_id}: Calling generate_section_video with "
         f"character_image_url={'set' if character_image_url else 'none'}, "
-        f"character_image_urls count={len(character_image_urls)}"
+        f"character_image_urls count={len(character_image_urls)}, "
+        f"num_frames={clip_num_frames}, fps={clip_fps}, "
+        f"clip.duration_sec={clip.duration_sec}, scene_spec.duration_sec={scene_spec.duration_sec}"
     )
     success, video_url, metadata = generate_section_video(
         scene_spec,
@@ -266,8 +281,24 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
         fps=clip_fps,
         reference_image_url=character_image_url,  # Fallback single image
         reference_image_urls=character_image_urls if len(character_image_urls) > 0 else None,  # Try multiple
+        song_id=song_id,  # Pass song_id for prompt logging
+        clip_id=clip_id,  # Pass clip_id for prompt logging
     )
     metadata = metadata or {}
+    
+    # Track estimated cost for this clip generation
+    if song:  # Only track cost if we successfully retrieved the song
+        from app.services.cost_tracking import track_video_generation_cost
+        from app.core.constants import VIDEO_MODEL
+        try:
+            track_video_generation_cost(
+                song_id=song_id,
+                model_name=VIDEO_MODEL,
+                num_clips=1,
+                has_character_consistency=bool(character_image_url),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to track cost for clip {clip_id}: {e}")
 
     try:
         clip = ClipRepository.get_by_id(clip_id)
@@ -292,6 +323,41 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     clip.num_frames = metadata.get("num_frames", clip_num_frames) or clip_num_frames
 
     if success and video_url:
+        # Verify actual video duration matches expected duration
+        try:
+            import subprocess
+            import json
+            settings = get_settings()
+            ffprobe_bin = settings.ffmpeg_bin.replace("ffmpeg", "ffprobe")
+            probe_cmd = [
+                ffprobe_bin,
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "json",
+                video_url,
+            ]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                probe_data = json.loads(result.stdout)
+                actual_duration = float(probe_data["format"]["duration"])
+                expected_duration = clip.duration_sec or 0
+                if expected_duration > 0:
+                    duration_diff = abs(actual_duration - expected_duration)
+                    if duration_diff > 0.5:  # More than 0.5s difference
+                        logger.warning(
+                            f"[CLIP-GEN] Clip {clip_id}: Duration mismatch! "
+                            f"Expected {expected_duration:.2f}s, actual {actual_duration:.2f}s "
+                            f"(diff: {duration_diff:.2f}s). "
+                            f"Sent num_frames={clip_num_frames}, fps={clip_fps}"
+                        )
+                    else:
+                        logger.info(
+                            f"[CLIP-GEN] Clip {clip_id}: Duration verified - "
+                            f"expected {expected_duration:.2f}s, actual {actual_duration:.2f}s"
+                        )
+        except Exception as e:
+            logger.debug(f"Could not verify video duration for clip {clip_id}: {e}")
+        
         clip.status = "completed"
         clip.video_url = video_url
         clip.error = None
@@ -320,8 +386,53 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
     song = SongRepository.get_by_id(song_id)
     clips = ClipRepository.get_by_song_id(song_id)
 
+    # Return empty summary if no clips exist yet (instead of raising error)
     if not clips:
-        raise ValueError("No planned clips found for song.")
+        song_duration = float(song.duration_sec) if song and song.duration_sec is not None else None
+        composed_video_url: Optional[str] = None
+        composed_video_poster_url: Optional[str] = None
+
+        if song:
+            settings = get_settings()
+            bucket = settings.s3_bucket_name
+            if song.composed_video_s3_key and bucket:
+                if check_s3_object_exists(bucket_name=bucket, key=song.composed_video_s3_key):
+                    try:
+                        composed_video_url = generate_presigned_get_url(
+                            bucket_name=bucket,
+                            key=song.composed_video_s3_key,
+                            expires_in=3600 * 24,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error(
+                            "Failed to generate composed video URL for song %s: %s", song_id, exc
+                        )
+            if song.composed_video_poster_s3_key and bucket:
+                try:
+                    composed_video_poster_url = generate_presigned_get_url(
+                        bucket_name=bucket,
+                        key=song.composed_video_poster_s3_key,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(
+                        "Failed to generate composed poster URL for song %s: %s", song_id, exc
+                    )
+
+        return ClipGenerationSummary(
+            songId=song_id,
+            songDurationSec=song_duration,
+            totalClips=0,
+            completedClips=0,
+            failedClips=0,
+            processingClips=0,
+            queuedClips=0,
+            progressCompleted=0,
+            progressTotal=0,
+            clips=[],
+            analysis=None,
+            composedVideoUrl=composed_video_url,
+            composedVideoPosterUrl=composed_video_poster_url,
+        )
 
     status_counts = Counter(clip.status for clip in clips)
     total = len(clips)
@@ -345,7 +456,7 @@ def get_clip_generation_summary(song_id: UUID) -> ClipGenerationSummary:
                     composed_video_url = generate_presigned_get_url(
                         bucket_name=bucket,
                         key=song.composed_video_s3_key,
-                        expires_in=3600 * 24,  # 24 hours for composed videos
+                        expires_in=3600 * 24 * 7,  # 7 days for composed videos
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.error(
@@ -411,27 +522,42 @@ def _build_scene_spec_for_clip(clip_id: UUID, analysis: SongAnalysis) -> SceneSp
     For short-form videos (no sections), uses song-level analysis.
     For long-form videos (with sections), uses section-specific analysis.
     """
+    from app.schemas.scene import TemplateType
+    from app.services.scene_planner import DEFAULT_TEMPLATE
+    
     clip = ClipRepository.get_by_id(clip_id)
     start_sec = clip.start_sec
     end_sec = clip.end_sec or (clip.start_sec + clip.duration_sec)
     duration_sec = clip.duration_sec
+
+    # Get template from song (default to 'abstract' if not set)
+    song = SongRepository.get_by_id(clip.song_id)
+    template: TemplateType = DEFAULT_TEMPLATE
+    if song and song.template:
+        # Validate template value
+        valid_templates = ["abstract", "environment", "character", "minimal"]
+        if song.template in valid_templates:
+            template = song.template  # type: ignore
+        else:
+            logger.warning(f"Invalid template '{song.template}' for song {clip.song_id}, using default 'abstract'")
 
     # For short-form videos, analysis may not have sections
     # Use build_clip_scene_spec which works with song-level analysis
     if not analysis.sections:
         logger.info(
             f"[CLIP-GEN] Clip {clip_id}: No sections in analysis, using clip scene spec "
-            f"(short-form mode) for {start_sec}s-{end_sec}s"
+            f"(short-form mode) for {start_sec}s-{end_sec}s, template={template}"
         )
         return build_clip_scene_spec(
             start_sec=start_sec,
             end_sec=end_sec,
             analysis=analysis,
+            template=template,
         )
 
     # For long-form videos with sections, use section-specific scene spec
     target_section = _find_section_for_clip(start_sec, analysis.sections)
-    scene_spec = build_scene_spec(target_section.id, analysis)
+    scene_spec = build_scene_spec(target_section.id, analysis, template=template)
     return scene_spec.model_copy(update={"duration_sec": duration_sec})
 
 
@@ -448,12 +574,12 @@ def _get_character_image_urls(song) -> tuple[list[str], Optional[str]]:
     
     Returns tuple of (urls_list, fallback_url) where:
     - urls_list: List of all available character image URLs (for multiple image support)
-    - fallback_url: Single URL for fallback (first available image)
+    - fallback_url: Single URL for fallback (selected pose, or first available image)
     
     Priority order:
-    1. character_generated_image_s3_key (if available)
-    2. character_reference_image_s3_key (pose-a)
-    3. character_pose_b_s3_key (pose-b, added to list but not as fallback)
+    1. character_generated_image_s3_key (if available) - always takes priority
+    2. Selected pose (character_selected_pose: "A" or "B")
+    3. Non-selected pose (added to list but not as fallback)
     """
     if not song or not song.character_consistency_enabled:
         return [], None
@@ -461,8 +587,9 @@ def _get_character_image_urls(song) -> tuple[list[str], Optional[str]]:
     character_image_urls = []
     character_image_url = None
     settings = get_settings()
+    selected_pose = getattr(song, 'character_selected_pose', 'A') or 'A'
     
-    # Priority 1: Use generated image if available
+    # Priority 1: Use generated image if available (always takes priority)
     if song.character_generated_image_s3_key:
         try:
             generated_url = generate_presigned_get_url(
@@ -472,11 +599,17 @@ def _get_character_image_urls(song) -> tuple[list[str], Optional[str]]:
             )
             character_image_urls.append(generated_url)
             character_image_url = generated_url
-            logger.info(f"Using character generated image for clip generation: {song.character_generated_image_s3_key}")
+            logger.info(
+                f"Using character generated image for clip generation: {song.character_generated_image_s3_key} "
+                f"(selected_pose={selected_pose} ignored, generated image takes priority)"
+            )
         except Exception as e:
             logger.warning(f"Failed to generate presigned URL for character generated image: {e}")
     
-    # Priority 2: Use reference image (pose-a)
+    # Priority 2: Use selected pose (A or B)
+    pose_a_url = None
+    pose_b_url = None
+    
     if song.character_reference_image_s3_key:
         try:
             pose_a_url = generate_presigned_get_url(
@@ -484,15 +617,9 @@ def _get_character_image_urls(song) -> tuple[list[str], Optional[str]]:
                 key=song.character_reference_image_s3_key,
                 expires_in=3600,
             )
-            # Only add if not already added (generated image takes priority)
-            if not character_image_urls:
-                character_image_urls.append(pose_a_url)
-                character_image_url = pose_a_url
-            logger.info(f"Using character reference image (pose-a) for clip generation: {song.character_reference_image_s3_key}")
         except Exception as e:
-            logger.warning(f"Failed to generate presigned URL for character reference image: {e}")
+            logger.warning(f"Failed to generate presigned URL for character reference image (pose-a): {e}")
     
-    # Priority 3: Add pose-b if available (for multiple image support)
     if song.character_pose_b_s3_key:
         try:
             pose_b_url = generate_presigned_get_url(
@@ -500,10 +627,50 @@ def _get_character_image_urls(song) -> tuple[list[str], Optional[str]]:
                 key=song.character_pose_b_s3_key,
                 expires_in=3600,
             )
-            character_image_urls.append(pose_b_url)
-            logger.info(f"Using character pose-b image for clip generation: {song.character_pose_b_s3_key}")
         except Exception as e:
             logger.warning(f"Failed to generate presigned URL for character pose-b image: {e}")
+    
+    # If no generated image, use selected pose as primary
+    if not character_image_url:
+        if selected_pose == "B" and pose_b_url:
+            character_image_urls.append(pose_b_url)
+            character_image_url = pose_b_url
+            logger.info(
+                f"Using character pose-b image for clip generation (selected_pose=B): "
+                f"{song.character_pose_b_s3_key}"
+            )
+            # Add pose-a to list if available
+            if pose_a_url:
+                character_image_urls.append(pose_a_url)
+        elif selected_pose == "A" and pose_a_url:
+            character_image_urls.append(pose_a_url)
+            character_image_url = pose_a_url
+            logger.info(
+                f"Using character reference image (pose-a) for clip generation (selected_pose=A): "
+                f"{song.character_reference_image_s3_key}"
+            )
+            # Add pose-b to list if available
+            if pose_b_url:
+                character_image_urls.append(pose_b_url)
+        else:
+            # Fallback: use whichever pose is available
+            if pose_a_url:
+                character_image_urls.append(pose_a_url)
+                character_image_url = pose_a_url
+                logger.warning(
+                    f"Selected pose '{selected_pose}' not available, using pose-a as fallback: "
+                    f"{song.character_reference_image_s3_key}"
+                )
+            if pose_b_url:
+                if not character_image_url:
+                    character_image_urls.append(pose_b_url)
+                    character_image_url = pose_b_url
+                    logger.warning(
+                        f"Selected pose '{selected_pose}' not available, using pose-b as fallback: "
+                        f"{song.character_pose_b_s3_key}"
+                    )
+                else:
+                    character_image_urls.append(pose_b_url)
     
     # Ensure we have at least one URL for fallback
     if character_image_urls and not character_image_url:
@@ -745,9 +912,11 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
 
         # Download clips and normalize them
         total_clips = len(completed_clips)
+        source_paths: list[tuple[int, Path]] = []  # (clip_index, path) tuples to preserve order
+        
+        # Step 1: Download all clips (sequential for now, could be parallelized later)
         for idx, clip in enumerate(completed_clips):
             source_path = temp_dir / f"clip_{clip.clip_index:03}.mp4"
-            normalized_path = temp_dir / f"clip_{clip.clip_index:03}_normalized.mp4"
 
             # Try to download from S3 key first (more reliable than presigned URL)
             # S3 key pattern: songs/{song_id}/clips/{clip_index:03d}.mp4
@@ -805,18 +974,65 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
                         )
                     _download_clip_to_path(clip.video_url, source_path)
             
+            source_paths.append((clip.clip_index, source_path))
+            
             # Update progress: 20-40% for downloading clips
             if job_id:
                 download_progress = 20 + int((idx + 1) / total_clips * 20)
                 update_job_progress(job_id, download_progress, "processing")
-            
-            normalize_clip(str(source_path), str(normalized_path))
-            normalized_paths.append(normalized_path)
-            
-            # Update progress: 40-65% for normalizing clips
-            if job_id:
-                normalize_progress = 40 + int((idx + 1) / total_clips * 25)
-                update_job_progress(job_id, normalize_progress, "processing")
+        
+        # Step 2: Normalize clips in parallel (optimization #8)
+        if job_id:
+            update_job_progress(job_id, 40, "processing")  # Starting normalization
+        
+        def normalize_single_clip(clip_index: int, source_path: Path, expected_duration: Optional[float]) -> tuple[int, Path]:
+            """Normalize a single clip and return (clip_index, normalized_path)."""
+            normalized_path = temp_dir / f"clip_{clip_index:03}_normalized.mp4"
+            try:
+                normalize_clip(
+                    str(source_path), 
+                    str(normalized_path),
+                    target_duration_sec=expected_duration
+                )
+                logger.info(f"Normalized clip {clip_index}")
+                return (clip_index, normalized_path)
+            except Exception as e:
+                raise RuntimeError(f"Failed to normalize clip {clip_index}: {e}") from e
+
+        # Normalize in parallel using ThreadPoolExecutor
+        import concurrent.futures
+        
+        # Create a lookup dict for clip durations
+        clip_duration_map = {clip.clip_index: clip.duration_sec for clip in completed_clips}
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_clip_index = {
+                executor.submit(
+                    normalize_single_clip, 
+                    clip_index, 
+                    source_path,
+                    clip_duration_map.get(clip_index)
+                ): clip_index
+                for clip_index, source_path in source_paths
+            }
+
+            normalized_results = []
+            for future in concurrent.futures.as_completed(future_to_clip_index):
+                clip_index = future_to_clip_index[future]
+                try:
+                    result = future.result(timeout=300)  # 5 minute timeout per clip
+                    normalized_results.append(result)
+                    
+                    # Update progress: 40-65% for normalizing clips
+                    if job_id:
+                        normalize_progress = 40 + int((len(normalized_results) / total_clips) * 25)
+                        update_job_progress(job_id, normalize_progress, "processing")
+                except Exception as e:
+                    raise RuntimeError(f"Normalization failed for clip {clip_index}: {e}") from e
+
+        # Sort normalized paths by clip_index to preserve order
+        normalized_results.sort(key=lambda x: x[0])
+        normalized_paths = [path for _, path in normalized_results]
 
         # Download audio (key has already been validated to exist in S3 above)
         audio_bytes = download_bytes_from_s3(bucket_name=bucket, key=audio_key)
@@ -846,6 +1062,18 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         if job_id:
             update_job_progress(job_id, 65, "processing")  # Starting concatenation
 
+        # Get beat times from analysis (for beat-synced visual effects)
+        analysis = get_latest_analysis(song_id)
+        beat_times = None
+        if analysis and hasattr(analysis, 'beat_times') and analysis.beat_times:
+            beat_times = analysis.beat_times
+            logger.info(f"Found {len(beat_times)} beat times for beat-synced visual effects")
+        
+        # Get beat effect config
+        from app.core.config import get_beat_effect_config
+        effect_config = get_beat_effect_config()
+        filter_type = effect_config.effect_type if effect_config.enabled else None
+
         # Concatenate clips with audio
         output_path = temp_dir / "composed_video.mp4"
         composition_result = concatenate_clips(
@@ -854,6 +1082,9 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
             str(output_path),
             song_duration_sec=effective_duration,
             job_id=job_id,
+            beat_times=beat_times if effect_config.enabled else None,  # Only pass if effects enabled
+            filter_type=filter_type or "flash",  # Use config or default
+            frame_rate=24.0,
         )
         
         if job_id:
@@ -995,10 +1226,7 @@ def start_clip_generation_job(
     *,
     max_parallel: int = DEFAULT_MAX_CONCURRENCY,
 ) -> ClipGenerationJobResponse:
-    try:
-        summary = get_clip_generation_summary(song_id)
-    except ValueError as exc:
-        raise ValueError("No planned clips available for this song.") from exc
+    summary = get_clip_generation_summary(song_id)
 
     if summary.total_clips == 0:
         raise ValueError("No clips to generate for this song.")
@@ -1077,4 +1305,74 @@ def get_clip_generation_job_status(job_id: str) -> JobStatusResponse:
         error=job_record.error,
         result=summary,
     )
+
+
+def cancel_clip_generation_job(job_id: str) -> None:
+    """
+    Cancel a clip generation job.
+    
+    Marks the job as cancelled and attempts to cancel any active RQ jobs.
+    
+    Args:
+        job_id: Clip generation job ID
+        
+    Raises:
+        JobNotFoundError: If job not found
+        JobStateError: If job cannot be cancelled
+    """
+    from app.core.database import session_scope
+    
+    with session_scope() as session:
+        job_record = session.get(ClipGenerationJob, job_id)
+        if not job_record:
+            raise JobNotFoundError(f"Clip generation job {job_id} not found")
+        
+        if job_record.status in ("completed", "failed", "cancelled"):
+            raise JobStateError(f"Job {job_id} cannot be cancelled (status: {job_record.status})")
+        
+        # Mark job as cancelled
+        job_record.status = "cancelled"
+        job_record.error = "Job cancelled by user"
+        session.add(job_record)
+        session.commit()
+        
+        logger.info(f"Cancelled clip generation job {job_id}")
+        
+        # Try to cancel RQ jobs for clips in this batch
+        # Get all clips for this song that are queued or processing
+        from app.models.clip import SongClip
+        from sqlmodel import select
+        
+        clips = session.exec(
+            select(SongClip)
+            .where(SongClip.song_id == job_record.song_id)
+            .where(SongClip.status.in_(["queued", "processing"]))
+        ).all()
+        
+        # Cancel RQ jobs if they exist
+        from app.core.queue import get_queue
+        from app.core.config import get_settings
+        
+        settings = get_settings()
+        queue = get_queue(
+            queue_name=f"{settings.rq_worker_queue}:clip-generation",
+            timeout=60,
+        )
+        
+        for clip in clips:
+            if clip.rq_job_id:
+                try:
+                    rq_job = queue.fetch_job(clip.rq_job_id)
+                    if rq_job and rq_job.get_status() in ("queued", "started"):
+                        rq_job.cancel()
+                        logger.info(f"Cancelled RQ job {clip.rq_job_id} for clip {clip.id}")
+                except Exception as e:
+                    logger.warning(f"Failed to cancel RQ job {clip.rq_job_id} for clip {clip.id}: {e}")
+                
+                # Mark clip as cancelled
+                clip.status = "cancelled"
+                clip.error = "Cancelled by user"
+                session.add(clip)
+        
+        session.commit()
 

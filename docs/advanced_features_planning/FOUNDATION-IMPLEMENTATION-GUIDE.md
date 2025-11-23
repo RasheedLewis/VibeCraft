@@ -1,6 +1,8 @@
 # Foundation Implementation Guide
 
-**Purpose**: Detailed implementation guide for foundation work required before implementing Character Consistency and Beat Sync features. Designed for parallel development by two different developers/AI agents.
+**Purpose**: Detailed implementation guide for foundation work required before
+implementing Character Consistency and Beat Sync features. Designed for parallel
+development by two different developers/AI agents.
 
 **Date**: After Prerequisites 1 & 2 (Dual Use Case) completion
 
@@ -22,12 +24,14 @@
 
 ### Goal
 
-Implement the minimal foundation infrastructure (Option A from FOUNDATION-ASSESSMENT.md) to enable both Character Consistency and Beat Sync features. This foundation work can be done in parallel by two different developers/agents.
+Implement the minimal foundation infrastructure (Option A from
+FOUNDATION-ASSESSMENT.md) to enable both Character Consistency and Beat Sync features.
+This foundation work can be done in parallel by two different developers/agents.
 
 ### Foundation Work Summary
 
 | Stream | Tasks | Estimated Time | Developer |
-|--------|-------|----------------|-----------|
+| ------ | ----- | -------------- | --------- |
 | **Character Consistency Foundation** | Image upload, image-to-video support | 4-6 days | Agent 1 |
 | **Beat Sync Foundation** | Prompt enhancement, beat-reactive filters | 3-5 days | Agent 2 |
 
@@ -61,7 +65,8 @@ git worktree add ../VibeCraft-beat-sync feature/beat-sync-foundation
 # Agent 2 works in: ../VibeCraft-beat-sync
 ```
 
-See [Git Workflow: Worktrees vs. Standard Branches](#git-workflow-worktrees-vs-standard-branches) section for full details.
+See [Git Workflow: Worktrees vs. Standard Branches](#git-workflow-worktrees-vs-standard-branches)
+section for full details.
 
 ---
 
@@ -72,16 +77,19 @@ See [Git Workflow: Worktrees vs. Standard Branches](#git-workflow-worktrees-vs-s
 The foundation work is intentionally separated to minimize conflicts:
 
 **Character Consistency Foundation** (Agent 1):
+
 - Image upload infrastructure
 - Image-to-video support in video generation
 - Database schema changes (character fields)
 
 **Beat Sync Foundation** (Agent 2):
+
 - Prompt enhancement service
 - Beat-reactive FFmpeg filters
 - BPM integration in scene planning
 
 **Shared/Coordination Points**:
+
 - Database migrations (coordinate to avoid conflicts)
 - Video generation service modifications (coordinate carefully)
 - Testing infrastructure
@@ -134,6 +142,7 @@ def downgrade():
 ```
 
 **Action Items**:
+
 1. Add fields to `Song` model
 2. Create migration file
 3. Run migration: `python -m app.core.migrations upgrade`
@@ -244,11 +253,13 @@ def normalize_image_format(image_bytes: bytes, target_format: str = "JPEG") -> b
 ```
 
 **Dependencies**: Add `Pillow` to `requirements.txt`:
-```
+
+```text
 Pillow>=10.0.0
 ```
 
 **Action Items**:
+
 1. Create `image_validation.py` service
 2. Add Pillow to requirements.txt
 3. Install: `pip install Pillow`
@@ -354,6 +365,7 @@ async def upload_character_image(
 ```
 
 **Action Items**:
+
 1. Add import statements
 2. Add `upload_character_image` endpoint
 3. Test endpoint with Postman/curl
@@ -460,6 +472,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
 ```
 
 **Action Items**:
+
 1. Create `CharacterImageUpload.tsx` component
 2. Add to upload flow (after video type selection, before analysis)
 3. Style with Tailwind CSS
@@ -473,6 +486,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
 #### Step 2.1: Research Replicate Image-to-Video Models
 
 **Action Items**:
+
 1. Check Replicate documentation for image-to-video models
 2. Test models: `minimax/hailuo-2.3`, `google/veo-3.1`, `luma/ray`
 3. Document model parameters, costs, quality
@@ -569,6 +583,7 @@ def generate_section_video(
 ```
 
 **Action Items**:
+
 1. Add `reference_image_url` parameter to `generate_section_video()`
 2. Add conditional logic for image-to-video vs text-to-video
 3. Update all call sites to pass `reference_image_url=None` (backward compatible)
@@ -606,6 +621,7 @@ success, video_url, metadata = generate_section_video(
 ```
 
 **Action Items**:
+
 1. Locate clip generation function
 2. Add logic to retrieve character image URL
 3. Pass to `generate_section_video()`
@@ -640,6 +656,7 @@ def get_character_image_s3_key(song_id: UUID, image_type: str = "reference") -> 
 ```
 
 **Action Items**:
+
 1. Add helper function to storage service
 2. Update upload endpoint to use helper
 3. Ensure consistent path structure
@@ -819,6 +836,7 @@ def get_motion_type_from_genre(genre: Optional[str] = None) -> str:
 ```
 
 **Action Items**:
+
 1. Create `prompt_enhancement.py` service
 2. Implement functions above
 3. Add unit tests
@@ -880,6 +898,7 @@ def build_prompt(
 ```
 
 **Action Items**:
+
 1. Locate `build_prompt()` function
 2. Add `bpm` and `motion_type` parameters
 3. Integrate prompt enhancement
@@ -908,6 +927,7 @@ prompt = build_prompt(
 ```
 
 **Action Items**:
+
 1. Locate scene planning call sites
 2. Extract BPM from analysis
 3. Pass to `build_prompt()`
@@ -1101,6 +1121,7 @@ def apply_beat_filters_to_video(
 ```
 
 **Action Items**:
+
 1. Create `beat_filters.py` service
 2. Implement filter generation functions
 3. Test filter expressions with sample beat times
@@ -1158,6 +1179,7 @@ def compose_final_video(
 ```
 
 **Action Items**:
+
 1. Locate `compose_final_video()` or similar function
 2. Add `beat_times` and `filter_type` parameters
 3. Integrate beat filter generation
@@ -1188,6 +1210,7 @@ success = compose_final_video(
 ```
 
 **Action Items**:
+
 1. Locate composition execution
 2. Extract beat_times from analysis
 3. Pass to composition function
@@ -1301,7 +1324,7 @@ def test_beat_filter_integration():
 ### Character Consistency Foundation Timeline
 
 | Task | Duration | Dependencies |
-|------|----------|--------------|
+| ---- | -------- | ----------- |
 | Image Upload Infrastructure | 1-2 days | None |
 | Image-to-Video Support | 2-3 days | Image Upload |
 | **Total** | **4-6 days** | |
@@ -1309,7 +1332,7 @@ def test_beat_filter_integration():
 ### Beat Sync Foundation Timeline
 
 | Task | Duration | Dependencies |
-|------|----------|--------------|
+| ---- | -------- | ----------- |
 | Prompt Enhancement | 1 day | None |
 | Beat-Reactive Filters | 2-3 days | None |
 | **Total** | **3-5 days** | |
@@ -1317,14 +1340,17 @@ def test_beat_filter_integration():
 ### Parallel Execution Plan
 
 **Week 1**:
+
 - **Agent 1**: Image upload infrastructure (Days 1-2)
 - **Agent 2**: Prompt enhancement service (Day 1)
 
 **Week 2**:
+
 - **Agent 1**: Image-to-video support (Days 3-5)
 - **Agent 2**: Beat-reactive filters (Days 2-4)
 
 **Week 3**:
+
 - **Both**: Integration testing (Day 1)
 - **Both**: Bug fixes and polish (Days 2-3)
 
@@ -1364,6 +1390,7 @@ Once foundation work is complete:
 #### File Overlap Analysis
 
 **Character Consistency Foundation touches:**
+
 - `backend/app/models/song.py` (adds fields)
 - `backend/app/api/v1/routes_songs.py` (adds endpoint)
 - `backend/app/services/video_generation.py` (adds optional parameter)
@@ -1372,19 +1399,24 @@ Once foundation work is complete:
 - **New files**: `image_validation.py`, `CharacterImageUpload.tsx`
 
 **Beat Sync Foundation touches:**
+
 - `backend/app/services/scene_planner.py` (adds optional parameter)
 - `backend/app/services/clip_planning.py` (passes BPM)
 - `backend/app/services/video_composition.py` (adds optional parameters)
 - `backend/app/services/composition_execution.py` (passes beat_times)
 - **New files**: `prompt_enhancement.py`, `beat_filters.py`
 
-**Overlap**: Minimal - mostly different files. When files overlap, changes are **additive and backward compatible** (optional parameters).
+**Overlap**: Minimal - mostly different files. When files overlap, changes are
+**additive and backward compatible** (optional parameters).
 
 #### Recommendation: **Use Git Worktrees for Parallel Development**
 
-Since both agents need to commit simultaneously, **Git worktrees are the right solution**. This allows each agent to have their own working directory with their branch checked out, enabling true parallel development.
+Since both agents need to commit simultaneously, **Git worktrees are the right
+solution**. This allows each agent to have their own working directory with their
+branch checked out, enabling true parallel development.
 
 **Why worktrees ARE needed:**
+
 1. ✅ **Simultaneous commits**: Both agents can commit to their branches at the same time
 2. ✅ **No branch switching**: Each agent works in their own directory
 3. ✅ **Independent testing**: Each can test their branch without affecting the other
@@ -1480,15 +1512,19 @@ git branch -d feature/beat-sync-foundation
 
 #### Important Notes
 
-- **Shared `.git` directory**: All worktrees share the same `.git` directory, so commits are immediately visible to both
-- **Separate working directories**: Each worktree has its own working directory, so file changes don't conflict
-- **Branch protection**: Git prevents checking out the same branch in multiple worktrees (which is what we want)
+- **Shared `.git` directory**: All worktrees share the same `.git` directory, so
+  commits are immediately visible to both
+- **Separate working directories**: Each worktree has its own working directory, so
+  file changes don't conflict
+- **Branch protection**: Git prevents checking out the same branch in multiple
+  worktrees (which is what we want)
 - **Database/venv**: Each worktree can have its own virtual environment and database connections
 - **IDE/Editor**: Each agent can open their worktree directory in their IDE independently
 
 #### Troubleshooting
 
 **If worktree creation fails:**
+
 ```bash
 # Check if branch exists
 git branch -a | grep feature/
@@ -1499,11 +1535,13 @@ git push -u origin feature/character-consistency-foundation
 ```
 
 **To list all worktrees:**
+
 ```bash
 git worktree list
 ```
 
 **To see which files are modified in each worktree:**
+
 ```bash
 # From main repo
 git status  # Shows main worktree status
@@ -1544,15 +1582,20 @@ Before merging foundation work:
 
 ## Summary
 
-This guide provides detailed implementation steps for foundation work required for Character Consistency and Beat Sync features. The work is designed to be done in parallel by two developers/agents with minimal conflicts.
+This guide provides detailed implementation steps for foundation work required for
+Character Consistency and Beat Sync features. The work is designed to be done in
+parallel by two developers/agents with minimal conflicts.
 
 **Key Deliverables**:
+
 1. Image upload infrastructure (Character Consistency)
 2. Image-to-video support (Character Consistency)
 3. Prompt enhancement with BPM (Beat Sync)
 4. Beat-reactive FFmpeg filters (Beat Sync)
 
-**Estimated Total Time**: 4-6 days (Character Consistency) + 3-5 days (Beat Sync) = 7-11 days parallel work
+**Estimated Total Time**: 4-6 days (Character Consistency) + 3-5 days (Beat Sync) =
+7-11 days parallel work
 
-**Next**: After foundation is complete, proceed with full feature implementation as described in `CHARACTER_CONSISTENCY_IMPLEMENTATION.md` and `BEAT-SYNC-IMPLEMENTATION-PLAN.md`.
-
+**Next**: After foundation is complete, proceed with full feature implementation as
+described in `CHARACTER_CONSISTENCY_IMPLEMENTATION.md` and
+`BEAT-SYNC-IMPLEMENTATION-PLAN.md`.

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { apiClient } from '../lib/apiClient'
 import type { SongAnalysis, JobStatusResponse } from '../types/song'
 import { useJobPolling } from './useJobPolling'
@@ -14,9 +14,19 @@ export function useAnalysisPolling(songId: string | null) {
   const [error, setError] = useState<string | null>(null)
   const [isFetching, setIsFetching] = useState<boolean>(false)
 
+  // Poll counter for debugging (temporary)
+  const fetchCountRef = useRef(0)
+
   const fetchAnalysis = useCallback(async (songId: string) => {
     setIsFetching(true)
     try {
+      fetchCountRef.current += 1
+      if (import.meta.env.DEV) {
+        console.log(
+          `[POLL-COUNT] useAnalysisPolling fetchAnalysis #${fetchCountRef.current} for songId: ${songId}`,
+        )
+      }
+
       const { data } = await apiClient.get<SongAnalysis>(`/songs/${songId}/analysis`)
       setData(data)
       setError(null)

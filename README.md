@@ -60,7 +60,7 @@ Audio Upload → Music Analysis → Scene Planning → Section Video Generation 
 Composition Engine → Final 1080p Music Video
 ```
 
-### **Tech Stack**
+## **Tech Stack**
 
 * **Frontend:** React + TypeScript + Vite
 * **Backend:** Python + FastAPI
@@ -70,7 +70,7 @@ Composition Engine → Final 1080p Music Video
 * **Video Engine:** FFmpeg (transitions, muxing, grading)
 * **Database:** PostgreSQL
 
-### **High-Level Pipeline**
+## **High-Level Pipeline**
 
 * **Audio preprocessing:** ffmpeg + librosa
 * **Music analysis:** BPM, beat grid, mood vector, genre classifier
@@ -83,7 +83,7 @@ Composition Engine → Final 1080p Music Video
 
 # 🔥 **Key Features (Technical)**
 
-### 🎶 **Music Intelligence Engine**
+## 🎶 **Music Intelligence Engine**
 
 * BPM via autocorrelation
 * Beat grid detection
@@ -92,7 +92,7 @@ Composition Engine → Final 1080p Music Video
 * Whisper-powered lyric extraction
 * Audio embeddings → mood & genre classifier
 
-### 🎞 **Scene Planner**
+## 🎞 **Scene Planner**
 
 * Converts `SongAnalysis` → `SceneSpec`
 * Maps moods → color palettes
@@ -100,13 +100,13 @@ Composition Engine → Final 1080p Music Video
 * Maps sections → shot pacing
 * Ensures cohesive look across all scenes
 
-### 🤖 **AI Video Generation**
+## 🤖 **AI Video Generation**
 
 * Deterministic seeds for visual consistency
 * Style tokens per template (e.g., lofi, neon, dreamy, cyberpunk)
 * Parallelized clip generation to reduce cost/time
 
-### 🎛 **Composition Engine**
+## 🎛 **Composition Engine**
 
 * Aligns cuts with beat grid
 * Avoids audio drift
@@ -132,23 +132,23 @@ Composition Engine → Final 1080p Music Video
 
 VibeCraft is built on a synesthetic design philosophy:
 
-> **“See your sound. Feel your visuals.”**
+> **"See your sound. Feel your visuals."**
 
-### **Visual Identity**
+## **Visual Identity**
 
 * Deep violet-black surfaces
 * Neon gradients (violet → magenta → aqua)
 * Ambient glow edges
 * Waveform and prism iconography
 
-### **Motion**
+## **Motion**
 
 * Pulse bars
 * Wave sweeps
 * Beat flashes
 * Ambient particle drift
 
-### **Typography**
+## **Typography**
 
 * *Inter* for UI
 * *Space Grotesk* for titles
@@ -185,7 +185,7 @@ vibecraft/
 
 # 🛠 **Installation & Local Development**
 
-### **Prerequisites**
+## **Prerequisites**
 
 * Python 3.10+
 * Node 18+
@@ -223,7 +223,7 @@ npm run dev
 
 # 🏆 **Why VibeCraft Stands Out**
 
-### **For musicians**
+## **For musicians**
 
 * No editing timeline needed
 * Visuals automatically match emotional tone
@@ -231,7 +231,7 @@ npm run dev
 * Fast enough to use during creative flow
 * Beautiful defaults, infinite customizations
 
-### **For engineers**
+## **For engineers**
 
 * Modular, scalable architecture
 * Clear API boundaries
@@ -239,7 +239,7 @@ npm run dev
 * Smart caching & cost controls
 * Deterministic scene planning
 
-### **For judges/investors**
+## **For judges/investors**
 
 * Strong product vision
 * Real technical depth

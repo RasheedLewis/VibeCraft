@@ -132,6 +132,8 @@ class TestRetryClipGeneration:
         clip.start_beat_index = None
         clip.end_beat_index = None
         clip.source = "test"
+        clip.prompt = None  # Optional field for SongClipStatus
+        clip.style_seed = None  # Optional field for SongClipStatus
 
         # Mock repository
         mock_repo.get_by_id.return_value = clip
@@ -197,6 +199,8 @@ class TestRetryClipGeneration:
         clip.start_beat_index = None
         clip.end_beat_index = None
         clip.source = "test"
+        clip.prompt = None  # Optional field for SongClipStatus
+        clip.style_seed = None  # Optional field for SongClipStatus
 
         mock_repo.get_by_id.return_value = clip
         mock_repo.update.return_value = clip
@@ -238,6 +242,8 @@ class TestRetryClipGeneration:
         clip.start_beat_index = None
         clip.end_beat_index = None
         clip.source = "test"
+        clip.prompt = None  # Optional field for SongClipStatus
+        clip.style_seed = None  # Optional field for SongClipStatus
 
         mock_repo.get_by_id.return_value = clip
         mock_repo.update.return_value = clip
@@ -313,6 +319,8 @@ class TestRetryClipGeneration:
         clip.start_beat_index = None
         clip.end_beat_index = None
         clip.source = "test"  # Required string field
+        clip.prompt = None  # Optional field for SongClipStatus
+        clip.style_seed = None  # Optional field for SongClipStatus
 
         mock_repo.get_by_id.return_value = clip
         mock_repo.update.return_value = clip

@@ -2,7 +2,11 @@
 
 ## Overview
 
-This document outlines the plan and implementation details for adding a new UI step that allows users to select up to 30 seconds from their uploaded audio track. The selection interface will include draggable start and end markers on a waveform visualization, with audio preview starting from the playhead (start marker position).
+This document outlines the plan and implementation details for adding a new UI
+step that allows users to select up to 30 seconds from their uploaded audio
+track. The selection interface will include draggable start and end markers on a
+waveform visualization, with audio preview starting from the playhead (start
+marker position).
 
 **Goal**: Enable users to select a specific 30-second segment from their uploaded audio before proceeding with clip generation, improving control over which portion of their track gets processed into video.
 
@@ -11,7 +15,8 @@ This document outlines the plan and implementation details for adding a new UI s
 ## Current Architecture
 
 ### Upload Flow (Current State)
-```
+
+```text
 1. User uploads audio file
 2. Backend processes audio (preprocessing, analysis)
 3. Frontend displays analysis results
@@ -20,7 +25,8 @@ This document outlines the plan and implementation details for adding a new UI s
 ```
 
 ### Target Flow (With Selection Step)
-```
+
+```text
 1. User uploads audio file
 2. Backend processes audio (preprocessing, analysis)
 3. Frontend displays analysis results
@@ -35,6 +41,7 @@ This document outlines the plan and implementation details for adding a new UI s
 ## Feature Requirements
 
 ### Functional Requirements
+
 1. **Selection Interface**
    - Display full audio waveform with beat markers
    - Draggable start marker (left handle)
@@ -75,12 +82,14 @@ This document outlines the plan and implementation details for adding a new UI s
 #### File: `backend/app/models/song.py`
 
 Add new fields to `Song` model:
+
 ```python
 selected_start_sec: Optional[float] = Field(default=None, ge=0)
 selected_end_sec: Optional[float] = Field(default=None, ge=0)
 ```
 
 **Constraints**:
+
 - Both fields are optional (backward compatible)
 - `selected_start_sec` must be >= 0
 - `selected_end_sec` must be > `selected_start_sec` (enforced in validation)
@@ -124,6 +133,7 @@ def downgrade():
 #### File: `backend/app/schemas/song.py`
 
 Add fields to `SongRead`:
+
 ```python
 selected_start_sec: Optional[float] = None
 selected_end_sec: Optional[float] = None
@@ -134,6 +144,7 @@ selected_end_sec: Optional[float] = None
 #### File: `backend/app/api/v1/routes_songs.py`
 
 Add new endpoint:
+
 ```python
 @router.patch(
     "/{song_id}/selection",
@@ -205,6 +216,7 @@ async def update_audio_selection(
 #### File: `backend/app/schemas/song.py`
 
 Add new schema:
+
 ```python
 class AudioSelectionUpdate(BaseModel):
     start_sec: float = Field(ge=0, description="Start time in seconds")
@@ -227,6 +239,7 @@ class AudioSelectionUpdate(BaseModel):
 #### File: `backend/app/services/clip_planning.py`
 
 Modify clip planning to respect selected range:
+
 ```python
 def plan_clips(
     song: Song,
@@ -254,6 +267,7 @@ def plan_clips(
 #### File: `backend/app/services/clip_generation.py`
 
 Update clip generation to use selected range:
+
 ```python
 def run_clip_generation_job(
     song_id: UUID,
@@ -762,6 +776,7 @@ useEffect(() => {
 #### File: `frontend/src/types/song.ts`
 
 Add fields to `SongRead`:
+
 ```typescript
 export interface SongRead {
   // ... existing fields ...
@@ -833,6 +848,7 @@ def extract_audio_segment(
 ## UI/UX Considerations
 
 ### Visual Design
+
 1. **Waveform Display**
    - Full waveform shown with dimmed non-selected regions
    - Selected region highlighted with accent color
@@ -856,6 +872,7 @@ def extract_audio_segment(
    - Disable "Continue" button if selection invalid
 
 ### Interaction Patterns
+
 1. **Dragging Markers**
    - Click and drag start/end markers
    - Constrain to valid range (0 to duration, max 30s)
@@ -877,6 +894,7 @@ def extract_audio_segment(
 ### Unit Tests
 
 #### Backend
+
 - `test_audio_selection_validation.py`
   - Test valid selections (1s to 30s)
   - Test invalid selections (too long, too short, negative)
@@ -889,6 +907,7 @@ def extract_audio_segment(
   - Test time offsets are correct
 
 #### Frontend
+
 - `test_AudioSelectionTimeline.tsx`
   - Test marker dragging
   - Test selection constraints
@@ -896,12 +915,14 @@ def extract_audio_segment(
   - Test playhead synchronization
 
 ### Integration Tests
+
 - Test full flow: upload → select → generate clips
 - Test selection persistence across page refresh
 - Test clip generation uses selected range
 - Test backward compatibility (songs without selection)
 
 ### Manual Testing Checklist
+
 - [ ] Upload audio file
 - [ ] Selection UI appears after analysis
 - [ ] Can drag start marker
@@ -920,6 +941,7 @@ def extract_audio_segment(
 ## Implementation Checklist
 
 ### Phase 1: Database & Backend API
+
 - [ ] Add `selected_start_sec` and `selected_end_sec` to Song model
 - [ ] Create migration file
 - [ ] Run migration
@@ -931,6 +953,7 @@ def extract_audio_segment(
 - [ ] Add unit tests for endpoint
 
 ### Phase 2: Frontend Component
+
 - [ ] Create `AudioSelectionTimeline` component
 - [ ] Implement waveform display
 - [ ] Implement draggable markers
@@ -940,6 +963,7 @@ def extract_audio_segment(
 - [ ] Add unit tests for component
 
 ### Phase 3: Integration
+
 - [ ] Update `UploadPage` to show selection step
 - [ ] Add selection state management
 - [ ] Add API call to save selection
@@ -948,12 +972,14 @@ def extract_audio_segment(
 - [ ] Test selection persistence
 
 ### Phase 4: Clip Generation Integration
+
 - [ ] Update `clip_planning.py` to use selected range
 - [ ] Update `clip_generation.py` to extract audio segment
 - [ ] Test clip generation with selection
 - [ ] Test backward compatibility (no selection)
 
 ### Phase 5: Testing & Polish
+
 - [ ] Write integration tests
 - [ ] Manual testing checklist
 - [ ] Fix edge cases
@@ -966,27 +992,32 @@ def extract_audio_segment(
 ## Edge Cases & Considerations
 
 ### 1. Songs Shorter Than 30s
+
 - **Scenario**: User uploads 15s track
 - **Solution**: Allow selection of entire track (up to available duration)
 
 ### 2. Selection Changed After Clips Generated
+
 - **Scenario**: User generates clips, then changes selection
-- **Solution**: 
+- **Solution**:
   - Option A: Prevent selection change after clips generated (disable UI)
   - Option B: Allow change, require re-generation of clips
   - **Recommended**: Option A (simpler, prevents confusion)
 
 ### 3. Selection Outside Audio Duration
+
 - **Scenario**: User somehow sets end > duration (shouldn't happen with validation)
 - **Solution**: Backend validation prevents this, frontend constrains to duration
 
 ### 4. Concurrent Selection Updates
+
 - **Scenario**: Multiple tabs open, user changes selection in one
 - **Solution**: Last write wins (standard behavior), or implement optimistic locking
 
 ### 5. Audio Preview Performance
+
 - **Scenario**: Large audio files, seeking may be slow
-- **Solution**: 
+- **Solution**:
   - Use `preload="metadata"` (already implemented)
   - Consider preloading selected segment only
   - Show loading state during seek
@@ -996,11 +1027,13 @@ def extract_audio_segment(
 ## Performance Considerations
 
 ### Frontend
+
 - **Waveform Rendering**: Limit to 512 bars (already done)
 - **Marker Dragging**: Use `requestAnimationFrame` for smooth updates
 - **Audio Playback**: Use `setInterval` with 50ms (good balance)
 
 ### Backend
+
 - **Validation**: Lightweight (just number comparisons)
 - **Database**: Two float fields, minimal storage impact
 - **Audio Extraction**: Only happens during clip generation (not on selection save)
@@ -1010,6 +1043,7 @@ def extract_audio_segment(
 ## Rollback Plan
 
 ### If Issues Arise
+
 1. **Disable Selection UI**: Hide `AudioSelectionTimeline` component
 2. **Use Full Duration**: Clip generation falls back to full duration if selection is null
 3. **Database**: Fields are nullable, no data loss
@@ -1033,6 +1067,7 @@ def extract_audio_segment(
 ## Future Enhancements
 
 ### Potential Improvements
+
 1. **Snap to Beats**: Option to snap markers to beat times
 2. **Keyboard Shortcuts**: Arrow keys for fine-tuning selection
 3. **Multiple Selections**: Allow multiple 30s segments (advanced)
@@ -1046,6 +1081,7 @@ def extract_audio_segment(
 ## Related Files Reference
 
 ### Backend Files
+
 - `backend/app/models/song.py` - Song model
 - `backend/app/schemas/song.py` - Song schemas
 - `backend/app/api/v1/routes_songs.py` - Song API routes
@@ -1054,6 +1090,7 @@ def extract_audio_segment(
 - `backend/migrations/002_add_audio_selection_fields.py` - Migration (new)
 
 ### Frontend Files
+
 - `frontend/src/components/upload/AudioSelectionTimeline.tsx` - Selection component (new)
 - `frontend/src/pages/UploadPage.tsx` - Upload page
 - `frontend/src/components/song/SongProfileView.tsx` - Song profile view
@@ -1070,4 +1107,3 @@ def extract_audio_segment(
 - Selection is optional - if user doesn't select, system uses full duration (backward compatible)
 - This feature improves user control and reduces processing time for long tracks
 - The selection step appears after analysis to ensure waveform and beat data are available
-

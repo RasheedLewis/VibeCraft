@@ -8,7 +8,7 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 import httpx
@@ -80,7 +80,7 @@ def execute_composition_pipeline(
                 raise ValueError(f"Job {job_id} not found")
             if job.status == "cancelled":
                 logger.info(f"Job {job_id} was cancelled, aborting")
-                return
+                return {"status": "cancelled", "job_id": job_id}
 
         update_job_progress(job_id, PROGRESS_VALIDATION, "processing")
 
@@ -117,31 +117,58 @@ def execute_composition_pipeline(
             audio_path.write_bytes(audio_bytes)
             logger.info(f"Downloaded audio: {len(audio_bytes)} bytes")
 
-            # Download clips
+            # Download clips in parallel (optimization #1)
             clip_paths = []
             download_progress_per_clip = (PROGRESS_DOWNLOAD_END - PROGRESS_DOWNLOAD_START) / len(clip_urls)
+            
+            # Check cancellation once before starting downloads (optimization #3: reduce session creation)
+            with session_scope() as session:
+                job = session.get(CompositionJob, job_id)
+                if job and job.status == "cancelled":
+                    logger.info(f"Job {job_id} was cancelled before download")
+                    return {"status": "cancelled", "job_id": job_id}
 
-            for i, (clip_url, clip) in enumerate(zip(clip_urls, clips)):
-                # Check cancellation
-                with session_scope() as session:
-                    job = session.get(CompositionJob, job_id)
-                    if job and job.status == "cancelled":
-                        logger.info(f"Job {job_id} was cancelled during download")
-                        return
-
+            def download_single_clip(i: int, clip_url: str) -> Path:
+                """Download a single clip."""
+                # Check cancellation periodically (every 10 clips or at start)
+                if i % 10 == 0:
+                    with session_scope() as session:
+                        job = session.get(CompositionJob, job_id)
+                        if job and job.status == "cancelled":
+                            raise RuntimeError("Job cancelled")
+                
                 clip_path = temp_path / f"clip_{i}.mp4"
                 try:
                     # Download clip from URL
                     response = httpx.get(clip_url, timeout=60.0, follow_redirects=True)
                     response.raise_for_status()
                     clip_path.write_bytes(response.content)
-                    clip_paths.append(clip_path)
                     logger.info(f"Downloaded clip {i + 1}/{len(clip_urls)}: {len(response.content)} bytes")
-
-                    progress = PROGRESS_DOWNLOAD_START + int((i + 1) * download_progress_per_clip)
-                    update_job_progress(job_id, progress, "processing")
+                    return clip_path
                 except Exception as e:
                     raise RuntimeError(f"Failed to download clip {i + 1} from {clip_url}: {e}") from e
+
+            # Download clips in parallel using ThreadPoolExecutor
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                future_to_index = {
+                    executor.submit(download_single_clip, i, clip_url): i
+                    for i, clip_url in enumerate(clip_urls)
+                }
+
+                for future in concurrent.futures.as_completed(future_to_index):
+                    i = future_to_index[future]
+                    try:
+                        clip_path = future.result(timeout=120)  # 2 minute timeout per download
+                        clip_paths.append(clip_path)
+                        progress = PROGRESS_DOWNLOAD_START + int(
+                            len(clip_paths) * download_progress_per_clip
+                        )
+                        update_job_progress(job_id, progress, "processing")
+                    except Exception as e:
+                        raise RuntimeError(f"Download failed for clip {i + 1}: {e}") from e
+            
+            # Sort clip paths by original order
+            clip_paths.sort(key=lambda p: int(p.stem.split("_")[1]))
 
             # Step 3: Normalize clips (parallel)
             logger.info(f"Normalizing {len(clip_paths)} clips for job {job_id}")
@@ -150,7 +177,10 @@ def execute_composition_pipeline(
             normalized_paths = []
             normalize_progress_per_clip = (PROGRESS_NORMALIZE_END - PROGRESS_NORMALIZE_START) / len(clip_paths)
 
-            def normalize_single_clip(i: int, clip_path: Path) -> Path:
+            # Create a list of expected durations from clips (matching clip_paths order)
+            clip_durations = [clip.duration_sec if hasattr(clip, 'duration_sec') else None for clip in clips]
+
+            def normalize_single_clip(i: int, clip_path: Path, expected_duration: Optional[float]) -> Path:
                 """Normalize a single clip."""
                 # Check cancellation
                 with session_scope() as session:
@@ -160,7 +190,7 @@ def execute_composition_pipeline(
 
                 normalized_path = temp_path / f"normalized_{i}.mp4"
                 try:
-                    normalize_clip(clip_path, normalized_path)
+                    normalize_clip(clip_path, normalized_path, target_duration_sec=expected_duration)
                     logger.info(f"Normalized clip {i + 1}/{len(clip_paths)}")
                     return normalized_path
                 except Exception as e:
@@ -169,7 +199,7 @@ def execute_composition_pipeline(
             # Normalize in parallel
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
                 future_to_index = {
-                    executor.submit(normalize_single_clip, i, clip_path): i
+                    executor.submit(normalize_single_clip, i, clip_path, clip_durations[i]): i
                     for i, clip_path in enumerate(clip_paths)
                 }
 
@@ -327,13 +357,18 @@ def execute_composition_pipeline(
             # Beat times already retrieved above for beat alignment, reuse here for filters
             
             output_path = temp_path / "composed.mp4"
+            # Get effect type from config
+            from app.core.config import get_beat_effect_config
+            effect_config = get_beat_effect_config()
+            filter_type = effect_config.effect_type if effect_config.enabled else None
+            
             composition_result = concatenate_clips(
                 normalized_clip_paths=normalized_paths,
                 audio_path=audio_path,
                 output_path=output_path,
                 song_duration_sec=song_duration,
-                beat_times=beat_times,  # NEW: Pass beat times for filters
-                filter_type="flash",  # Can be made configurable later
+                beat_times=beat_times if effect_config.enabled else None,  # Only pass if effects enabled
+                filter_type=filter_type or "flash",  # Use config or default
                 frame_rate=24.0,
             )
             logger.info(
@@ -375,7 +410,17 @@ def execute_composition_pipeline(
                 clip_ids=clip_ids,
             )
 
-            # Step 9: Complete job
+            # Step 9: Track total cost for this video (sum of all clip generation costs)
+            # Note: Individual clip costs are already tracked during clip generation
+            # This is just for logging the final total
+            final_song = SongRepository.get_by_id(song_id)
+            if final_song and final_song.total_generation_cost_usd:
+                logger.info(
+                    f"[COST-TRACKING] Final cost for song {song_id}: "
+                    f"${final_song.total_generation_cost_usd:.4f}"
+                )
+
+            # Step 10: Complete job
             complete_job(job_id, composed_video.id)
             update_job_progress(job_id, PROGRESS_COMPLETE, "completed")
 

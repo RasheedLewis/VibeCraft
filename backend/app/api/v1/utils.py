@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from app.models.song import Song
+from app.models.user import User
 from app.services.song_analysis import get_latest_analysis
 
 T = TypeVar("T")
@@ -73,3 +74,20 @@ def update_song_field(
     db.commit()
     db.refresh(song)
     return song
+
+
+def verify_song_ownership(song: Song, current_user: User) -> None:
+    """Verify song belongs to current user, raise 403 if not.
+
+    Args:
+        song: Song instance to verify
+        current_user: Current authenticated user
+
+    Raises:
+        HTTPException: 403 if song does not belong to user
+    """
+    if song.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Song does not belong to you",
+        )

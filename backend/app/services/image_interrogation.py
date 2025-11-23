@@ -116,11 +116,16 @@ Be specific about colors, shapes, and proportions. This description will be used
         
         result = json.loads(response.choices[0].message.content)
         
-        return {
+        interrogation_result = {
             "prompt": result.get("detailed_prompt", ""),
             "character_description": result.get("character_description", ""),
             "style_notes": result.get("style_notes", ""),
         }
+        
+        # Log the full API response for debugging
+        logger.info(f"[IMAGE-INTERROGATION] OpenAI API response: {json.dumps(interrogation_result, indent=2)}")
+        
+        return interrogation_result
     except Exception as e:
         logger.error(f"OpenAI image interrogation failed: {e}", exc_info=True)
         raise
@@ -152,11 +157,16 @@ def _interrogate_with_replicate(
         # Create structured response from the prompt
         # Since Replicate's img2prompt doesn't return structured JSON,
         # we use the prompt as both the detailed prompt and description
-        return {
+        interrogation_result = {
             "prompt": prompt_text,
             "character_description": prompt_text[:200] if len(prompt_text) > 200 else prompt_text,
             "style_notes": "Generated from image interrogation via Replicate",
         }
+        
+        # Log the full API response for debugging
+        logger.info(f"[IMAGE-INTERROGATION] Replicate API response: {json.dumps(interrogation_result, indent=2)}")
+        
+        return interrogation_result
     except Exception as e:
         logger.error(f"Replicate image interrogation failed: {e}", exc_info=True)
         raise

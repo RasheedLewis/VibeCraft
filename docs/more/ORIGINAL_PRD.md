@@ -58,7 +58,7 @@ This PRD captures:
 
 # **3. User Personas**
 
-### **Creator / Musician**
+## **Creator / Musician**
 
 Wants a fast way to generate visuals for Singles, EPs, YouTube, TikTok.
 
@@ -514,7 +514,7 @@ I’ll do three things:
   * FullVideo metadata
   * Jobs
 
-**Storage**
+## Storage
 
 * S3 / Cloud bucket:
 

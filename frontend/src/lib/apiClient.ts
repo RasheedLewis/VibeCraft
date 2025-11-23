@@ -37,3 +37,29 @@ export const apiClient = axios.create({
     Accept: 'application/json',
   },
 })
+
+// Add auth token interceptor
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('vibecraft_auth_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Handle 401 errors (unauthorized)
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear auth and app-specific storage on 401 (but don't redirect - let the app handle it)
+      localStorage.removeItem('vibecraft_auth_token')
+      localStorage.removeItem('vibecraft_auth_user')
+      localStorage.removeItem('vibecraft_current_song_id')
+      delete apiClient.defaults.headers.common['Authorization']
+      // Note: We don't redirect here since /login route doesn't exist
+      // The app will handle auth state changes via React Query
+    }
+    return Promise.reject(error)
+  },
+)

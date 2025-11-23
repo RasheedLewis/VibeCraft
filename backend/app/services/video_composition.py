@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import pathlib
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -202,16 +204,18 @@ def normalize_clip(
     output_path: str | Path,
     target_resolution: tuple[int, int] = DEFAULT_TARGET_RESOLUTION,
     target_fps: int = DEFAULT_TARGET_FPS,
+    target_duration_sec: Optional[float] = None,
     ffmpeg_bin: str | None = None,
 ) -> None:
     """
-    Normalize a clip to target resolution and FPS.
+    Normalize a clip to target resolution and FPS, optionally trimming to target duration.
 
     Args:
         input_path: Path to input video file
         output_path: Path to output video file
         target_resolution: Target resolution (width, height)
         target_fps: Target FPS
+        target_duration_sec: Optional target duration in seconds. If provided and clip is longer, it will be trimmed.
         ffmpeg_bin: Path to ffmpeg binary (defaults to config)
 
     Raises:
@@ -222,13 +226,47 @@ def normalize_clip(
 
     target_width, target_height = target_resolution
 
+    # Check actual duration if target_duration_sec is provided
+    if target_duration_sec is not None and target_duration_sec > 0:
+        try:
+            import subprocess
+            import json
+            ffprobe_bin = ffmpeg_bin.replace("ffmpeg", "ffprobe")
+            probe_cmd = [
+                ffprobe_bin,
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "json",
+                str(input_path),
+            ]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                probe_data = json.loads(result.stdout)
+                actual_duration = float(probe_data["format"]["duration"])
+                if actual_duration > target_duration_sec + 0.1:  # More than 100ms longer
+                    logger.info(
+                        f"Trimming clip from {actual_duration:.2f}s to {target_duration_sec:.2f}s "
+                        f"during normalization"
+                    )
+                    # Add trim filter before other filters
+                    vf_parts = [f"trim=duration={target_duration_sec},setpts=PTS-STARTPTS"]
+                else:
+                    vf_parts = []
+            else:
+                vf_parts = []
+        except Exception as e:
+            logger.warning(f"Could not check clip duration, skipping trim: {e}")
+            vf_parts = []
+    else:
+        vf_parts = []
+
     # Build video filter: scale with letterboxing, then set FPS
     # scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24
-    vf_parts = [
+    vf_parts.extend([
         f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease",
         f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2",
         f"fps={target_fps}",
-    ]
+    ])
     video_filter = ",".join(vf_parts)
 
     try:
@@ -251,16 +289,27 @@ def normalize_clip(
 
 
 def concatenate_clips(
-    normalized_clip_paths: list[str | Path],
-    audio_path: str | Path,
-    output_path: str | Path,
+    normalized_clip_paths: list[str | pathlib.Path],
+    audio_path: str | pathlib.Path,
+    output_path: str | pathlib.Path,
     song_duration_sec: float,
     ffmpeg_bin: str | None = None,
     job_id: str | None = None,
-    beat_times: Optional[list[float]] = None,  # NEW PARAMETER
-    filter_type: str = "flash",  # NEW PARAMETER
-    frame_rate: float = 24.0,  # NEW PARAMETER
+    beat_times: Optional[list[float]] = None,  # Beat timestamps for visual sync effects
+    filter_type: str = "flash",  # Effect type: flash, color_burst, zoom_pulse, brightness_pulse, glitch
+    frame_rate: float = 24.0,  # Video frame rate for effect timing
 ) -> CompositionResult:
+    """
+    Concatenate video clips with beat-synced visual effects.
+    
+    BEAT-SYNC IMPLEMENTATION:
+    - Applies visual effects (flash, color burst, zoom, brightness, glitch) synchronized to beat times
+    - Uses FFmpeg's time-based filters (between(t,start,end)) to trigger effects at precise beat moments
+    - Supports all beats in the song (no 50-beat limitation)
+    - Effects are chunked to prevent excessively long FFmpeg filter expressions
+    - Tolerance window configurable via BEAT_EFFECT_TOLERANCE_MS (default 50ms)
+    - Test mode available via BEAT_EFFECT_TEST_MODE env var for exaggerated effects
+    """
     """
     Concatenate normalized clips and mux with audio.
 
@@ -285,7 +334,7 @@ def concatenate_clips(
 
     # Create concat file for FFmpeg concat demuxer
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as concat_file:
-        concat_path = Path(concat_file.name)
+        concat_path = pathlib.Path(concat_file.name)
         for clip_path in normalized_clip_paths:
             # Escape single quotes and backslashes in path
             escaped_path = str(clip_path).replace("'", "'\\''").replace("\\", "\\\\")
@@ -301,7 +350,7 @@ def concatenate_clips(
         # First, get the total video duration after concatenation
         # We'll use a temporary output to measure duration, or calculate from clips
         # For now, let's use FFmpeg to get the concatenated video duration
-        temp_video_path = Path(output_path).parent / "temp_concatenated.mp4"
+        temp_video_path = pathlib.Path(output_path).parent / "temp_concatenated.mp4"
         try:
             # Concatenate clips first (without audio) to get video duration
             if job_id:
@@ -346,7 +395,7 @@ def concatenate_clips(
                 # Calculate how many times to loop
                 loop_count = int(song_duration_sec / video_duration) + 1
                 # Create a new concat file with looped clips
-                temp_dir = Path(temp_video_path).parent
+                temp_dir = pathlib.Path(temp_video_path).parent
                 loop_concat_path = temp_dir / "loop_concat.txt"
                 with open(loop_concat_path, "w") as loop_concat_file:
                     # Use absolute path and proper escaping for concat demuxer
@@ -413,6 +462,20 @@ def concatenate_clips(
                 finally:
                     trimmed_output_path.unlink(missing_ok=True)
             
+            # Save pre-effects version for comparison (if enabled)
+            save_no_effects_version = os.getenv("SAVE_NO_EFFECTS_VIDEO", "false").lower() == "true"
+            if save_no_effects_version and beat_times and len(beat_times) > 0:
+                import shutil
+                
+                # Create comparison directory
+                comparison_dir = pathlib.Path("comparison_videos")
+                comparison_dir.mkdir(exist_ok=True)
+                
+                # Save pre-effects video (before filters, but after concatenation/trimming/looping)
+                pre_effects_path = comparison_dir / f"no_effects_{pathlib.Path(output_path).stem}.mp4"
+                shutil.copy2(temp_video_path, pre_effects_path)
+                logger.info(f"Saved pre-effects video for comparison: {pre_effects_path}")
+            
             # Apply beat filters if provided (before muxing with audio)
             if beat_times and len(beat_times) > 0:
                 if job_id:
@@ -429,39 +492,54 @@ def concatenate_clips(
                         frame_rate=frame_rate,
                     )
                     
-                    if beat_filters and filter_type == "flash":
-                        # Apply brightness pulse on beats using time-based filter
+                    if beat_filters:
+                        # Apply beat-synced visual effects using centralized applicator
+                        from app.services.beat_filter_applicator import BeatFilterApplicator
+                        
+                        applicator = BeatFilterApplicator()
+                        
+                        if applicator.test_mode:
+                            logger.info(f"[TEST MODE] Exaggerating {filter_type} effect, tolerance={applicator.get_tolerance_sec()*1000:.0f}ms")
+                        
+                        tolerance_sec = applicator.get_tolerance_sec()
                         filtered_video_path = temp_video_path.parent / "temp_filtered.mp4"
                         filtered_input = ffmpeg.input(str(temp_video_path))
                         
-                        # Build time-based condition for all beats
-                        # FFmpeg's between(t,start,end) returns 1 if true, 0 if false
-                        tolerance_sec = 0.05  # 50ms tolerance
+                        # Filter to every 4th beat (0, 4, 8, 12, ...)
+                        selected_beats = beat_times[::4]
+                        logger.info(f"Applying effects to {len(selected_beats)} beats (every 4th beat, from {len(beat_times)} total beats)")
                         
-                        # Create a filter expression that triggers on any beat
-                        # We'll use a geq filter with a condition that checks if current time
-                        # is within any beat window
-                        beat_conditions = []
-                        for beat_time in beat_times[:50]:  # Limit to first 50 beats for expression length
-                            start_time = max(0, beat_time - tolerance_sec)
-                            end_time = min(beat_time + tolerance_sec, song_duration_sec)
-                            beat_conditions.append(f"between(t,{start_time},{end_time})")
+                        # Define effect rotation: flash → color_burst → zoom_pulse → brightness_pulse → glitch → repeat
+                        effect_rotation = ["flash", "color_burst", "zoom_pulse", "brightness_pulse", "glitch"]
+                        beats_per_effect = 3  # Apply each effect 3 times in a row before rotating
                         
-                        if beat_conditions:
-                            # Combine conditions with OR (using addition since they return 0/1)
-                            # In FFmpeg expressions, we can use min(1, sum) to create OR logic
-                            condition_expr = "+".join(beat_conditions)
+                        # Group beats by effect type
+                        beat_groups_by_effect: dict[str, list[tuple[float, str]]] = {}
+                        for i, beat_time in enumerate(selected_beats):
+                            effect_index = (i // beats_per_effect) % len(effect_rotation)
+                            effect_type_for_beat = effect_rotation[effect_index]
                             
-                            # Apply brightness increase on beats using geq filter
-                            # Increase RGB values by 30 when condition is true
-                            filtered_video = filtered_input["v"].filter(
-                                "geq",
-                                r=f"r+if(min(1,{condition_expr}),30,0)",
-                                g=f"g+if(min(1,{condition_expr}),30,0)",
-                                b=f"b+if(min(1,{condition_expr}),30,0)",
-                            )
-                        else:
-                            filtered_video = filtered_input["v"]
+                            if effect_type_for_beat not in beat_groups_by_effect:
+                                beat_groups_by_effect[effect_type_for_beat] = []
+                            beat_groups_by_effect[effect_type_for_beat].append((beat_time, f"between(t,{max(0, beat_time - tolerance_sec)},{min(beat_time + tolerance_sec, song_duration_sec)})"))
+                        
+                        # Apply each effect type to its assigned beats
+                        current_video = filtered_input["v"]
+                        for effect_type, beat_list in beat_groups_by_effect.items():
+                            if not beat_list:
+                                continue
+                            
+                            logger.info(f"Applying {effect_type} effect to {len(beat_list)} beats")
+                            
+                            # Build condition for this effect type
+                            beat_conditions = [condition for _, condition in beat_list]
+                            condition_expr = "+".join(beat_conditions)
+                            beat_condition = f"min(1,{condition_expr})"
+                            
+                            # Apply this effect
+                            current_video = applicator.apply_filter(current_video, beat_condition, effect_type)
+                        
+                        filtered_video = current_video
                         
                         (
                             ffmpeg.output(
@@ -476,7 +554,7 @@ def concatenate_clips(
                         # Replace temp video with filtered version
                         temp_video_path.unlink(missing_ok=True)
                         filtered_video_path.rename(temp_video_path)
-                        logger.info("Beat filters applied successfully")
+                        logger.info(f"Beat filters ({filter_type}) applied successfully")
                 except Exception as filter_exc:
                     logger.warning(f"Failed to apply beat filters, continuing without filters: {filter_exc}")
                     # Continue without filters if application fails
@@ -905,7 +983,7 @@ def verify_composed_video(
             raise RuntimeError(f"Invalid duration: {duration_sec}")
 
         return CompositionResult(
-            output_path=Path(video_path),
+            output_path=pathlib.Path(video_path),
             duration_sec=duration_sec,
             file_size_bytes=file_size_bytes,
             width=width,

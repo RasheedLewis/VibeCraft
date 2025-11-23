@@ -3,6 +3,7 @@
 import logging
 import time
 from typing import Optional
+from uuid import UUID
 
 import replicate
 
@@ -27,15 +28,25 @@ def _generate_image_to_video(
     fps: Optional[int] = None,
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
+    song_id: Optional[UUID] = None,  # For prompt logging
+    clip_id: Optional[UUID] = None,  # For prompt logging
 ) -> tuple[bool, Optional[str], Optional[dict]]:
     """
     Generate video from image using image-to-video model.
     
-    Uses Minimax Hailuo 2.3 which supports image input for image-to-video generation.
+    CHARACTER CONSISTENCY IMPLEMENTATION:
+    - Uses Minimax Hailuo 2.3's image-to-video capability for character consistency
+    - Both reference image (first_frame_image) AND text prompt are used together:
+      * Image provides visual character reference (appearance, style, pose)
+      * Prompt describes scene, motion, and action
+      * They complement each other - image doesn't replace prompt
+    - The model generates video starting from the reference image, maintaining character appearance
+    - Seed parameter ensures reproducibility when regenerating the same scene
+    - Reference image should be a clear character image (uploaded via character-image endpoint)
     
     Args:
         scene_spec: SceneSpec object with prompt and parameters
-        reference_image_url: URL to reference character image
+        reference_image_url: URL to reference character image (S3 presigned URL)
         seed: Optional seed for reproducibility
         num_frames: Optional frame count override
         fps: Optional FPS override
@@ -64,15 +75,28 @@ def _generate_image_to_video(
 
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
+        logger.info(
+            f"[VIDEO-GEN] Image-to-video frame calculation: "
+            f"num_frames param={num_frames}, scene_spec.duration_sec={scene_spec.duration_sec}, "
+            f"effective_fps={effective_fps}, calculated frame_count={frame_count}"
+        )
 
+        # CHARACTER CONSISTENCY: Both image AND prompt are used together
+        # - Image provides visual character reference (appearance, style, pose)
+        # - Prompt describes scene, motion, and action
+        # - They complement each other - image doesn't replace prompt
         input_params = {
-            "first_frame_image": reference_image_url,  # Reference character image
-            "prompt": optimized_prompt,  # Scene prompt
+            "first_frame_image": reference_image_url,  # Reference character image for consistency
+            "prompt": optimized_prompt,  # Scene prompt (used together with image)
             "num_frames": max(1, min(frame_count, 120)),
             "width": 576,
             "height": 320,
             "fps": effective_fps,
         }
+        logger.info(
+            f"[VIDEO-GEN] Image-to-video API params: num_frames={input_params['num_frames']}, "
+            f"fps={input_params['fps']}, width={input_params['width']}, height={input_params['height']}"
+        )
 
         if seed is not None:
             input_params["seed"] = seed
@@ -81,8 +105,19 @@ def _generate_image_to_video(
             f"[VIDEO-GEN] Starting image-to-video generation for section {scene_spec.section_id}, "
             f"reference_image_url={'set' if reference_image_url else 'none'}"
         )
-        logger.debug(f"Using reference image: {reference_image_url[:100]}...")
-        logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
+        logger.info(f"[VIDEO-GEN] Using reference image: {reference_image_url}")
+        # Log FULL prompt for rapid iteration and debugging
+        logger.info(f"[VIDEO-GEN] FULL PROMPT (optimized): {optimized_prompt}")
+        logger.info(f"[VIDEO-GEN] FULL PROMPT (original): {scene_spec.prompt}")
+        
+        # Log optimized prompt to prompts.log file for collection
+        from app.services.prompt_logger import log_prompt_to_file
+        log_prompt_to_file(
+            prompt=optimized_prompt,
+            song_id=song_id,
+            clip_id=clip_id,
+            optimized=True,
+        )
 
         # Get model version
         model = client.models.get(IMAGE_TO_VIDEO_MODEL)
@@ -182,6 +217,8 @@ def generate_section_video(
     reference_image_urls: Optional[list[str]] = None,
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
+    song_id: Optional[UUID] = None,  # For prompt logging
+    clip_id: Optional[UUID] = None,  # For prompt logging
 ) -> tuple[bool, Optional[str], Optional[dict]]:
     """
     Generate a video from a scene specification using Replicate.
@@ -239,6 +276,8 @@ def generate_section_video(
                     fps=fps,
                     max_poll_attempts=max_poll_attempts,
                     poll_interval_sec=poll_interval_sec,
+                    song_id=song_id,  # Pass song_id for prompt logging
+                    clip_id=clip_id,  # Pass clip_id for prompt logging
                 )
             except Exception as e:
                 logger.warning(f"Image-to-video generation failed, falling back to text-to-video: {e}")
@@ -259,6 +298,11 @@ def generate_section_video(
         # Parameters: prompt, num_frames, width, height, fps, seed, image (optional)
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
+        logger.info(
+            f"[VIDEO-GEN] Text-to-video frame calculation: "
+            f"num_frames param={num_frames}, scene_spec.duration_sec={scene_spec.duration_sec}, "
+            f"effective_fps={effective_fps}, calculated frame_count={frame_count}"
+        )
         input_params = {
             "prompt": optimized_prompt,
             "num_frames": max(1, min(frame_count, 120)),
@@ -266,9 +310,15 @@ def generate_section_video(
             "height": 320,  # 16:9 aspect ratio (576x320)
             "fps": effective_fps,
         }
+        logger.info(
+            f"[VIDEO-GEN] Text-to-video API params: num_frames={input_params['num_frames']}, "
+            f"fps={input_params['fps']}, width={input_params['width']}, height={input_params['height']}"
+        )
 
-        # Add image input if provided (for image-to-video)
-        # Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
+        # CHARACTER CONSISTENCY: Add image input if provided (for image-to-video)
+        # - Both image AND prompt are used together (image = character reference, prompt = scene/motion)
+        # - They complement each other - image doesn't replace prompt
+        # - Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
         if image_urls:
             # Use first image (model only supports single image)
             input_params["first_frame_image"] = image_urls[0]
@@ -279,6 +329,7 @@ def generate_section_video(
                 )
             else:
                 logger.info(f"Using image-to-video generation with reference image: {image_urls[0]}")
+            logger.debug(f"Both image and prompt are being used: image={image_urls[0][:50]}..., prompt={optimized_prompt[:100]}...")
 
         if seed is not None:
             input_params["seed"] = seed
@@ -288,7 +339,18 @@ def generate_section_video(
             f"[VIDEO-GEN] Starting {generation_type} generation for section {scene_spec.section_id}, "
             f"has_image_urls={is_image_to_video}, image_count={len(image_urls) if image_urls else 0}"
         )
-        logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
+        # Log FULL prompt for rapid iteration and debugging
+        logger.info(f"[VIDEO-GEN] FULL PROMPT (optimized): {optimized_prompt}")
+        logger.info(f"[VIDEO-GEN] FULL PROMPT (original): {scene_spec.prompt}")
+        
+        # Log optimized prompt to prompts.log file for collection
+        from app.services.prompt_logger import log_prompt_to_file
+        log_prompt_to_file(
+            prompt=optimized_prompt,
+            song_id=song_id,
+            clip_id=clip_id,
+            optimized=True,
+        )
 
         # Start the prediction (async - use predictions.create for long-running jobs)
         # Get the model version first

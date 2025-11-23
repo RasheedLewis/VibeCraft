@@ -1,6 +1,9 @@
 # Character Consistency Implementation Plan
 
-This document provides a detailed implementation plan for **Character Consistency** feature as outlined in Section 2 of the High-Level Plan. This feature enables users to upload a reference image and generate video clips that maintain consistent character appearance across all 6 clips in a 30-second video.
+This document provides a detailed implementation plan for **Character Consistency**
+feature as outlined in Section 2 of the High-Level Plan. This feature enables users to
+upload a reference image and generate video clips that maintain consistent character
+appearance across all 6 clips in a 30-second video.
 
 ---
 
@@ -24,10 +27,15 @@ This document provides a detailed implementation plan for **Character Consistenc
 
 ### Goal
 
-Implement a multi-step workflow that ensures character consistency across all video clips by:
-1. **Image Interrogation**: Converting user-uploaded reference images into detailed descriptive prompts
-2. **Consistent Image Generation**: Creating a standardized character image using the interrogated prompt
-3. **Video Generation**: Using the consistent image as input for image-to-video generation across all 6 clips
+Implement a multi-step workflow that ensures character consistency across all video
+clips by:
+
+1. **Image Interrogation**: Converting user-uploaded reference images into detailed
+   descriptive prompts
+2. **Consistent Image Generation**: Creating a standardized character image using
+   the interrogated prompt
+3. **Video Generation**: Using the consistent image as input for image-to-video
+   generation across all 6 clips
 
 ### Constraints
 
@@ -48,7 +56,7 @@ Implement a multi-step workflow that ensures character consistency across all vi
 
 ### High-Level Flow
 
-```
+```text
 User Uploads Song + Reference Image
     ↓
 [Step 1] Image Interrogation (Multimodal LLM)
@@ -62,7 +70,7 @@ Compose Final Video
 
 ### Component Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Frontend (React)                          │
 │  - Upload reference image with song                          │
@@ -165,7 +173,8 @@ def get_character_image_s3_key(song_id: UUID, image_type: str = "reference") -> 
         raise ValueError(f"Unknown image_type: {image_type}")
 ```
 
-**Note**: Direct upload functions are not needed - upload happens in API endpoint using existing `upload_bytes_to_s3()` function.
+**Note**: Direct upload functions are not needed - upload happens in API endpoint
+using existing `upload_bytes_to_s3()` function.
 
 ---
 
@@ -469,11 +478,15 @@ def generate_consistent_character_image(
         return False, None, metadata
     
     except Exception as e:
-        logger.error(f"Error generating character image: {e}", exc_info=True)
+        logger.error(
+            f"Error generating character image: {e}", exc_info=True
+        )
         return False, None, {"error": str(e)}
 ```
 
-**Note**: The actual implementation will depend on which Replicate models support IP-Adapter or ControlNet. Research required:
+**Note**: The actual implementation will depend on which Replicate models support
+IP-Adapter or ControlNet. Research required:
+
 - Check if `stability-ai/sdxl` supports image input
 - Look for models like `lucataco/sdxl-ip-adapter` or similar
 - Consider using `runwayml/stable-diffusion-v1-5` with ControlNet if available
@@ -489,6 +502,7 @@ def generate_consistent_character_image(
 **Status**: Modified `generate_section_video()` to accept optional reference image.
 
 **Implementation**:
+
 - Added `reference_image_url: Optional[str] = None` parameter
 - When provided, adds `"image": reference_image_url` to Replicate input params
 - Uses same Hailuo 2.3 model (supports both text-to-video and image-to-video)
@@ -496,14 +510,18 @@ def generate_consistent_character_image(
 - Includes `reference_image_url` in metadata when used
 
 **Current Flow**:
+
 ```python
 # In generate_section_video():
 if reference_image_url:
     input_params["image"] = reference_image_url
-    logger.info(f"Using image-to-video generation with reference image: {reference_image_url}")
+    logger.info(
+        f"Using image-to-video generation with reference image: {reference_image_url}"
+    )
 ```
 
-**Note**: Separate `_generate_image_to_video()` function was not created - image support is integrated into main function. This can be refactored later if needed.
+**Note**: Separate `_generate_image_to_video()` function was not created - image
+support is integrated into main function. This can be refactored later if needed.
 
 Add new function for image-to-video:
 
@@ -572,7 +590,9 @@ def _generate_image_to_video(
         return False, None, {"error": str(e)}
 ```
 
-**Important**: Verify that `minimax/hailuo-2.3` supports image input. If not, research alternative image-to-video models on Replicate:
+**Important**: Verify that `minimax/hailuo-2.3` supports image input. If not,
+research alternative image-to-video models on Replicate:
+
 - `luma/ray` (if supports image input)
 - `google/veo-3.1` (if available and supports image input)
 - Other image-to-video models on Replicate
@@ -588,13 +608,16 @@ def _generate_image_to_video(
 **Status**: Modified `run_clip_generation_job()` to retrieve and use character image.
 
 **Implementation**:
-- Retrieves song to get `character_reference_image_s3_key` (uses reference image directly, not generated image)
+
+- Retrieves song to get `character_reference_image_s3_key` (uses reference image
+  directly, not generated image)
 - Checks if `character_consistency_enabled` is True
 - Generates presigned URL for character image (1 hour expiry)
 - Passes `reference_image_url` to `generate_section_video()`
 - Graceful degradation: continues without character image if URL generation fails
 
 **Current Flow**:
+
 ```python
 # In run_clip_generation_job():
 song = SongRepository.get_by_id(song_id)
@@ -619,7 +642,9 @@ success, video_url, metadata = generate_section_video(
 )
 ```
 
-**Note**: Currently uses `character_reference_image_s3_key` directly. Once Phase 3 is complete, should switch to `character_generated_image_s3_key` for better consistency.
+**Note**: Currently uses `character_reference_image_s3_key` directly. Once Phase 3
+is complete, should switch to `character_generated_image_s3_key` for better
+consistency.
 
 #### Step 5.2: Add Character Image Generation to Song Upload Flow
 
@@ -824,6 +849,7 @@ def generate_character_image_job(song_id: UUID) -> dict[str, object]:
 **Status**: Character image upload integrated into upload flow.
 
 **Implementation**:
+
 - Uses separate `CharacterImageUpload` component (see Step 6.2)
 - Only shown for `short_form` videos
 - Appears after song upload, before audio selection
@@ -832,6 +858,7 @@ def generate_character_image_job(song_id: UUID) -> dict[str, object]:
 - Updates song details after successful upload
 
 **Current Flow**:
+
 ```typescript
 // Character image upload section (conditional on videoType === 'short_form')
 {stage === 'uploaded' && videoType === 'short_form' && !audioSelectionValue && (
@@ -848,7 +875,8 @@ def generate_character_image_job(song_id: UUID) -> dict[str, object]:
 )}
 ```
 
-**Note**: Uses separate endpoint rather than form field in song upload, providing better UX and separation of concerns.
+**Note**: Uses separate endpoint rather than form field in song upload, providing
+better UX and separation of concerns.
 
 #### Step 6.2: Add Character Image Upload Component ✅ COMPLETE
 
@@ -857,6 +885,7 @@ def generate_character_image_job(song_id: UUID) -> dict[str, object]:
 **Status**: Full-featured character image upload component implemented.
 
 **Features**:
+
 - Drag-and-drop file upload area
 - File input fallback
 - Image preview before upload
@@ -866,6 +895,7 @@ def generate_character_image_job(song_id: UUID) -> dict[str, object]:
 - TypeScript with proper error handling (no `any` types)
 
 **Component API**:
+
 ```typescript
 interface CharacterImageUploadProps {
   songId: string;
@@ -875,7 +905,9 @@ interface CharacterImageUploadProps {
 }
 ```
 
-**Note**: Character preview component (for viewing uploaded images) is still TODO - can be added when needed.
+**Note**: Character preview component (for viewing uploaded images) is still TODO
+
+- can be added when needed.
 
 ---
 
@@ -886,12 +918,14 @@ interface CharacterImageUploadProps {
 **Status**: Migration created and tested. Adds all 4 character fields to songs table.
 
 **Fields Added**:
+
 - `character_reference_image_s3_key` (VARCHAR(1024)) - User's uploaded reference image
 - `character_consistency_enabled` (BOOLEAN DEFAULT FALSE) - Feature flag
 - `character_interrogation_prompt` (TEXT) - For future Phase 2 (image interrogation)
 - `character_generated_image_s3_key` (VARCHAR(1024)) - For future Phase 3 (generated character image)
 
 **Implementation Details**:
+
 - Uses SQLAlchemy inspector to check for existing columns (idempotent)
 - Supports both PostgreSQL and SQLite
 - Handles "column already exists" errors gracefully
@@ -907,6 +941,7 @@ interface CharacterImageUploadProps {
 Returns presigned URL for character reference or consistent image.
 
 **Response**:
+
 ```json
 {
   "reference_image_url": "https://...",
@@ -925,11 +960,13 @@ Returns presigned URL for character reference or consistent image.
 Uploads a character reference image for a song. Only available for `short_form` videos.
 
 **Request**:
+
 - Method: `POST`
 - Path: `/api/v1/songs/{song_id}/character-image`
 - Body: Multipart form with `image` file field
 
 **Response**:
+
 ```json
 {
   "image_url": "https://...presigned-url...",
@@ -939,13 +976,15 @@ Uploads a character reference image for a song. Only available for `short_form` 
 ```
 
 **Features**:
+
 - Validates image format (JPEG, PNG, WEBP)
 - Validates image size (max 10MB) and dimensions (256-2048px)
 - Normalizes to JPEG format
 - Uploads to S3
 - Sets `character_consistency_enabled = true` on song
 
-**Note**: Original plan was to add `character_image` to song upload endpoint, but separate endpoint was implemented for better separation of concerns.
+**Note**: Original plan was to add `character_image` to song upload endpoint, but
+separate endpoint was implemented for better separation of concerns.
 
 ---
 
@@ -1056,6 +1095,7 @@ Uploads a character reference image for a song. Only available for `short_form` 
 ### Graceful Degradation
 
 The system should always be able to generate videos even if character consistency fails:
+
 - If character image generation fails, disable feature and continue
 - If character image is missing during clip generation, use text-to-video
 - Never block video generation due to character consistency issues
@@ -1144,23 +1184,30 @@ The system should always be able to generate videos even if character consistenc
 The foundation infrastructure for character consistency has been implemented:
 
 **Completed:**
+
 - ✅ Database schema: Added all 4 character fields to Song model
 - ✅ Migration: `004_add_character_fields.py` created and tested
 - ✅ Image validation service: `image_validation.py` with format/size/dimension validation
 - ✅ Storage helpers: `get_character_image_s3_key()` in `storage.py`
 - ✅ API endpoint: `POST /songs/{song_id}/character-image` for uploading reference images
-- ✅ Video generation: Modified `generate_section_video()` to accept `reference_image_url` parameter
-- ✅ Clip generation: Modified to retrieve character image and pass to video generation
+- ✅ Video generation: Modified `generate_section_video()` to accept
+  `reference_image_url` parameter
+- ✅ Clip generation: Modified to retrieve character image and pass to video
+  generation
 - ✅ Frontend component: `CharacterImageUpload.tsx` with drag-and-drop support
 - ✅ Frontend integration: Added to `UploadPage.tsx` for short_form videos
 - ✅ Unit tests: Comprehensive test coverage for image validation (20+ tests)
 
 **What's Different from Original Plan:**
-- Image upload is via separate endpoint (`POST /songs/{song_id}/character-image`) rather than form field in song upload
-- Direct image-to-video: Reference image is passed directly to video generation (no intermediate character image generation yet)
+
+- Image upload is via separate endpoint (`POST /songs/{song_id}/character-image`)
+  rather than form field in song upload
+- Direct image-to-video: Reference image is passed directly to video generation
+  (no intermediate character image generation yet)
 - Simplified flow: No image interrogation or character image generation services yet (Phase 2 & 3)
 
 **Current Capabilities:**
+
 - Users can upload character reference images for short_form videos
 - Images are validated (format, size, dimensions) and normalized to JPEG
 - Images are stored in S3 and linked to songs
@@ -1168,6 +1215,7 @@ The foundation infrastructure for character consistency has been implemented:
 - Feature flag (`character_consistency_enabled`) is set when image is uploaded
 
 **Still TODO (Future Phases):**
+
 - Image interrogation service (Phase 2)
 - Character image generation service (Phase 3)
 - Full orchestration workflow (Phase 5)
@@ -1178,12 +1226,14 @@ The foundation infrastructure for character consistency has been implemented:
 ## Implementation Checklist
 
 ### Phase 1: Database & Storage ✅ COMPLETE
+
 - [x] Add character fields to Song model
 - [x] Create migration (`004_add_character_fields.py`)
 - [x] Add storage helper functions (`get_character_image_s3_key()`)
 - [x] Test S3 upload/download
 
 ### Phase 2: Image Interrogation
+
 - [ ] Create `image_interrogation.py` service
 - [ ] Implement OpenAI integration
 - [ ] Implement Replicate fallback
@@ -1191,6 +1241,7 @@ The foundation infrastructure for character consistency has been implemented:
 - [ ] Test with sample images
 
 ### Phase 3: Character Image Generation
+
 - [ ] Research Replicate models (SDXL, IP-Adapter, ControlNet)
 - [ ] Create `character_image_generation.py` service
 - [ ] Test model availability and parameters
@@ -1198,6 +1249,7 @@ The foundation infrastructure for character consistency has been implemented:
 - [ ] Generate test character images
 
 ### Phase 4: Video Generation Updates ✅ PARTIALLY COMPLETE
+
 - [x] Modify `generate_section_video()` to accept image (`reference_image_url` parameter)
 - [x] Basic image-to-video support (passes image to Replicate model)
 - [ ] Implement dedicated `_generate_image_to_video()` function (currently inline)
@@ -1206,6 +1258,7 @@ The foundation infrastructure for character consistency has been implemented:
 - [ ] Add fallback logic (graceful degradation if image missing)
 
 ### Phase 5: Integration ✅ PARTIALLY COMPLETE
+
 - [ ] Create `character_consistency.py` orchestration service (for full workflow)
 - [x] Character image upload endpoint (`POST /songs/{song_id}/character-image`)
 - [x] Modify `run_clip_generation_job()` to retrieve and use character images
@@ -1213,6 +1266,7 @@ The foundation infrastructure for character consistency has been implemented:
 - [ ] Test end-to-end flow (needs Phase 2 & 3 complete)
 
 ### Phase 6: Frontend ✅ PARTIALLY COMPLETE
+
 - [x] Add character image upload to UploadPage (for short_form videos)
 - [x] Create `CharacterImageUpload` component (with drag-and-drop)
 - [x] Update API client (uses separate endpoint)
@@ -1220,6 +1274,7 @@ The foundation infrastructure for character consistency has been implemented:
 - [x] Test UI flow (upload works, needs preview component)
 
 ### Phase 7: Testing & Documentation
+
 - [ ] Write unit tests
 - [ ] Write integration tests
 - [ ] Manual testing
@@ -1233,6 +1288,7 @@ The foundation infrastructure for character consistency has been implemented:
 ### Model Research Required
 
 Before implementation, research:
+
 1. Which Replicate models support IP-Adapter or ControlNet?
 2. Does `minimax/hailuo-2.3` support image input for image-to-video?
 3. What are the best models for character consistency on Replicate?
@@ -1241,6 +1297,7 @@ Before implementation, research:
 ### Feature Flag
 
 This feature should be behind a feature flag:
+
 - `CHARACTER_CONSISTENCY_ENABLED` in config
 - Allow enabling/disabling per song or globally
 - Graceful degradation if disabled
@@ -1261,4 +1318,3 @@ This feature should be behind a feature flag:
 - Replicate Models: `docs/more/REPLICATE_VIDEO_MODELS.md`
 - Current Video Generation: `backend/app/services/video_generation.py`
 - Current Clip Generation: `backend/app/services/clip_generation.py`
-

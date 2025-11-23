@@ -102,6 +102,13 @@ echo -e "${BLUE}Starting VibeCraft development environment...${NC}"
 # Function to cleanup on exit
 cleanup() {
     echo -e "\n${BLUE}Stopping services...${NC}"
+    # Kill all worker processes
+    if [ -n "${WORKER_PIDS:-}" ]; then
+        for pid in "${WORKER_PIDS[@]}"; do
+            kill "$pid" 2>/dev/null || true
+        done
+    fi
+    # Kill other background jobs
     kill $(jobs -p) 2>/dev/null || true
     exit
 }
@@ -164,15 +171,33 @@ except Exception as e:
 }
 cd ..
 
-# Start RQ worker
-echo -e "${GREEN}Starting RQ worker${NC}"
+# Start RQ workers (multiple workers for parallel processing)
+# RQ workers process one job at a time, so we need multiple workers for concurrency
+NUM_WORKERS=4  # Match DEFAULT_MAX_CONCURRENCY in constants.py
+echo -e "${GREEN}Starting ${NUM_WORKERS} RQ workers for parallel processing${NC}"
 echo -e "${BLUE}Worker logs: ${WORKER_LOG}${NC}"
 cd backend
 # Disable Objective-C fork safety checks to prevent crashes in forked processes (macOS issue)
 # This is needed when RQ workers fork and try to connect to PostgreSQL
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
-nohup rq worker ai_music_video > "${WORKER_LOG}" 2>&1 &
-WORKER_PID=$!
+# Preserve BEAT_EFFECT_TEST_MODE if set (for exaggerated beat effects testing)
+if [ -n "${BEAT_EFFECT_TEST_MODE:-}" ]; then
+    export BEAT_EFFECT_TEST_MODE="${BEAT_EFFECT_TEST_MODE}"
+    echo -e "${YELLOW}⚠ Beat effect test mode enabled (exaggerated effects)${NC}"
+fi
+# Preserve SAVE_NO_EFFECTS_VIDEO if set (for comparison video saving)
+if [ -n "${SAVE_NO_EFFECTS_VIDEO:-}" ]; then
+    export SAVE_NO_EFFECTS_VIDEO="${SAVE_NO_EFFECTS_VIDEO}"
+    echo -e "${YELLOW}⚠ Saving no-effects comparison videos enabled${NC}"
+fi
+# Start multiple worker processes for parallel job processing
+WORKER_PIDS=()
+for i in $(seq 1 ${NUM_WORKERS}); do
+    # Use env to explicitly pass environment variables to nohup (ensures they're preserved)
+    nohup env BEAT_EFFECT_TEST_MODE="${BEAT_EFFECT_TEST_MODE:-}" SAVE_NO_EFFECTS_VIDEO="${SAVE_NO_EFFECTS_VIDEO:-}" OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES rq worker ai_music_video > "${WORKER_LOG}.${i}" 2>&1 &
+    WORKER_PIDS+=($!)
+    echo -e "${BLUE}  Worker ${i} started (PID: $!)${NC}"
+done
 cd ..
 
 # Start frontend
@@ -188,7 +213,7 @@ echo -e "Backend: http://localhost:8000"
 echo -e "Frontend: http://localhost:5173"
 echo -e "\n${BLUE}Log files:${NC}"
 echo -e "  Backend: ${BACKEND_LOG}"
-echo -e "  Worker: ${WORKER_LOG}"
+echo -e "  Workers: ${WORKER_LOG}.1, ${WORKER_LOG}.2, ${WORKER_LOG}.3, ${WORKER_LOG}.4"
 echo -e "  Frontend: ${FRONTEND_LOG}"
 echo -e "  Combined: ${COMBINED_LOG}"
 echo -e "\nPress Ctrl+C to stop all services"

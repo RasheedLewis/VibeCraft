@@ -34,9 +34,12 @@ class SongRead(BaseModel):
     selected_start_sec: Optional[float] = None
     selected_end_sec: Optional[float] = None
     video_type: Optional[str] = None
+    template: Optional[str] = None
     character_reference_image_s3_key: Optional[str] = None
     character_pose_b_s3_key: Optional[str] = None
+    character_selected_pose: str = "A"
     character_consistency_enabled: bool = False
+    total_generation_cost_usd: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 
@@ -81,5 +84,30 @@ class VideoTypeUpdate(BaseModel):
     def validate_video_type(self) -> 'VideoTypeUpdate':
         if self.video_type not in VALID_VIDEO_TYPES:
             raise ValueError(f"video_type must be one of {VALID_VIDEO_TYPES}")
+        return self
+
+
+class TitleUpdate(BaseModel):
+    title: str = Field(max_length=256, description="Song title")
+
+
+class TemplateUpdate(BaseModel):
+    template: str = Field(description="Visual style template: 'abstract', 'environment', 'character', or 'minimal'")
+    
+    @model_validator(mode='after')
+    def validate_template(self) -> 'TemplateUpdate':
+        valid_templates = ["abstract", "environment", "character", "minimal"]
+        if self.template not in valid_templates:
+            raise ValueError(f"template must be one of {valid_templates}")
+        return self
+
+
+class SelectedPoseUpdate(BaseModel):
+    selected_pose: str = Field(description="Selected character pose: 'A' or 'B'")
+    
+    @model_validator(mode='after')
+    def validate_pose(self) -> 'SelectedPoseUpdate':
+        if self.selected_pose not in ("A", "B"):
+            raise ValueError("selected_pose must be 'A' or 'B'")
         return self
 

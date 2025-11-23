@@ -13,10 +13,15 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlmodel import Session, select
 
 from app.api.deps import get_db
-from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_field
+from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_field, verify_song_ownership
+from app.core.auth import get_current_user
 from app.core.config import get_settings
+from app.models.analysis import AnalysisJob, ClipGenerationJob, SongAnalysisRecord
 from app.models.clip import SongClip
-from app.models.song import DEFAULT_USER_ID, Song
+from app.models.composition import CompositionJob, ComposedVideo
+from app.models.section_video import SectionVideo
+from app.models.song import Song
+from app.models.user import User
 from app.schemas.analysis import (
     BeatAlignedBoundariesResponse,
     ClipBoundaryMetadata,
@@ -31,8 +36,11 @@ from app.schemas.clip import (
 from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
 from app.schemas.song import (
     AudioSelectionUpdate,
+    SelectedPoseUpdate,
     SongRead,
     SongUploadResponse,
+    TemplateUpdate,
+    TitleUpdate,
     VideoTypeUpdate,
 )
 from app.services import preprocess_audio
@@ -40,6 +48,8 @@ from app.core.constants import (
     ACCEPTABLE_ALIGNMENT,
     ALLOWED_CONTENT_TYPES,
     DEFAULT_MAX_CONCURRENCY,
+    MAX_AUDIO_FILE_SIZE_BYTES,
+    MAX_AUDIO_FILE_SIZE_MB,
     MAX_DURATION_SECONDS,
 )
 from app.services.beat_alignment import (
@@ -100,9 +110,19 @@ def _sanitize_filename(filename: str) -> str:
 router = APIRouter()
 
 
-@router.get("/", response_model=List[SongRead], summary="List songs")
-def list_songs(db: Session = Depends(get_db)) -> List[Song]:
-    statement = select(Song).order_by(Song.created_at.desc())
+@router.get("/", response_model=List[SongRead], summary="List songs with analysis (max 5 per user)")
+def list_songs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> List[Song]:
+    """List user's songs that have analysis, limited to 5 most recent."""
+    statement = (
+        select(Song)
+        .join(SongAnalysisRecord, Song.id == SongAnalysisRecord.song_id)
+        .where(Song.user_id == current_user.id)
+        .order_by(Song.created_at.desc())
+        .limit(5)
+    )
     return db.exec(statement).all()
 
 
@@ -114,6 +134,7 @@ def list_songs(db: Session = Depends(get_db)) -> List[Song]:
 )
 async def upload_song(
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> SongUploadResponse:
     if not file.filename:
@@ -130,10 +151,33 @@ async def upload_song(
     sanitized_filename = _sanitize_filename(file.filename)
     suffix = Path(sanitized_filename).suffix or ".mp3"
 
+    # Check file size from Content-Length header first (if available)
+    # This allows us to reject large files before reading them into memory
+    content_length = None
+    if hasattr(file, 'headers') and 'content-length' in file.headers:
+        try:
+            content_length = int(file.headers['content-length'])
+            if content_length > MAX_AUDIO_FILE_SIZE_BYTES:
+                file_size_mb = content_length / (1024 * 1024)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Audio file size ({file_size_mb:.1f}MB) exceeds maximum ({MAX_AUDIO_FILE_SIZE_MB}MB).",
+                )
+        except (ValueError, KeyError):
+            pass  # If Content-Length is invalid, continue to read file
+
     contents = await file.read()
     if not contents:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty"
+        )
+    
+    # Check file size after reading (in case Content-Length wasn't available)
+    file_size_mb = len(contents) / (1024 * 1024)
+    if len(contents) > MAX_AUDIO_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Audio file size ({file_size_mb:.1f}MB) exceeds maximum ({MAX_AUDIO_FILE_SIZE_MB}MB).",
         )
 
     try:
@@ -154,11 +198,21 @@ async def upload_song(
             detail="Audio duration must be 7 minutes or less.",
         )
 
+    # Check if user has reached the 5-project limit
+    existing_songs_count = db.exec(
+        select(Song).where(Song.user_id == current_user.id)
+    ).all()
+    if len(existing_songs_count) >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Limit of 5 reached :( Please delete a video (or create a new account)",
+        )
+
     settings = get_settings()
     song_title = Path(sanitized_filename).stem or "Untitled Song"
 
     song = Song(
-        user_id=DEFAULT_USER_ID,
+        user_id=current_user.id,
         title=song_title,
         original_filename=sanitized_filename,
         original_file_size=len(contents),
@@ -285,14 +339,236 @@ def get_song_analysis(song_id: UUID, db: Session = Depends(get_db)) -> SongAnaly
     return analysis
 
 
-@router.get("/{song_id}", response_model=SongRead, summary="Get song")
-def get_song(song_id: UUID, db: Session = Depends(get_db)) -> Song:
-    song = db.get(Song, song_id)
-    if not song:
+@router.delete(
+    "/delete-all",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete all songs for the current user",
+    response_model=None,
+)
+def delete_all_songs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete all songs and related records for the current user. Includes un-analyzed tracks."""
+    # Get all songs for the current user
+    all_songs = db.exec(
+        select(Song).where(Song.user_id == current_user.id)
+    ).all()
+    
+    if not all_songs:
+        # No songs to delete, return early
+        return
+    
+    try:
+        # Delete all related records for each song
+        for song in all_songs:
+            song_id = song.id
+            
+            # Delete clips
+            clips = db.exec(select(SongClip).where(SongClip.song_id == song_id)).all()
+            for clip in clips:
+                db.delete(clip)
+            
+            # Get analysis record first (before deleting jobs that reference it)
+            analysis_record = db.exec(
+                select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
+            ).first()
+            
+            # Delete analysis jobs that reference the analysis record by analysis_id
+            if analysis_record:
+                analysis_jobs_by_analysis_id = db.exec(
+                    select(AnalysisJob).where(AnalysisJob.analysis_id == analysis_record.id)
+                ).all()
+                for job in analysis_jobs_by_analysis_id:
+                    db.delete(job)
+            
+            # Delete analysis jobs by song_id (any remaining ones)
+            analysis_jobs = db.exec(
+                select(AnalysisJob).where(AnalysisJob.song_id == song_id)
+            ).all()
+            for job in analysis_jobs:
+                db.delete(job)
+            
+            # Now delete the analysis record (after all jobs referencing it are deleted)
+            if analysis_record:
+                db.delete(analysis_record)
+            
+            # Delete clip generation jobs
+            clip_jobs = db.exec(
+                select(ClipGenerationJob).where(ClipGenerationJob.song_id == song_id)
+            ).all()
+            for job in clip_jobs:
+                db.delete(job)
+            
+            # Delete composed videos first (get IDs before deletion)
+            composed_videos = db.exec(
+                select(ComposedVideo).where(ComposedVideo.song_id == song_id)
+            ).all()
+            composed_video_ids = [video.id for video in composed_videos]
+            
+            # Delete composition jobs that reference these composed videos
+            if composed_video_ids:
+                composition_jobs_with_video = db.exec(
+                    select(CompositionJob).where(
+                        CompositionJob.composed_video_id.in_(composed_video_ids)  # type: ignore
+                    )
+                ).all()
+                for job in composition_jobs_with_video:
+                    db.delete(job)
+            
+            # Delete composition jobs by song_id (any remaining ones)
+            composition_jobs = db.exec(
+                select(CompositionJob).where(CompositionJob.song_id == song_id)
+            ).all()
+            for job in composition_jobs:
+                db.delete(job)
+            
+            # Now delete composed videos (after all jobs referencing them are deleted)
+            for video in composed_videos:
+                db.delete(video)
+            
+            # Delete section videos
+            section_videos = db.exec(
+                select(SectionVideo).where(SectionVideo.song_id == song_id)
+            ).all()
+            for video in section_videos:
+                db.delete(video)
+            
+            # Delete the song itself
+            db.delete(song)
+        
+        db.commit()
+        logger.info(f"Deleted all songs for user {current_user.id}")
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to delete all songs for user {current_user.id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete all songs: {str(e)}",
+        ) from e
+
+
+@router.get("/{song_id}", response_model=SongRead, summary="Get song")
+def get_song(
+    song_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Song:
+    """Get a song by ID. Only returns songs owned by the current user."""
+    song = get_song_or_404(song_id, db)
+    verify_song_ownership(song, current_user)
     return song
+
+
+@router.get("/{song_id}/public", response_model=SongRead, summary="Get song (public, read-only)")
+def get_song_public(
+    song_id: UUID,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Get a song by ID for public viewing. No authentication required, read-only access."""
+    song = get_song_or_404(song_id, db)
+    return song
+
+
+@router.delete(
+    "/{song_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a song",
+    response_model=None,
+)
+def delete_song(
+    song_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete a song and all related records. Only deletes songs owned by the current user."""
+    song = get_song_or_404(song_id, db)
+    verify_song_ownership(song, current_user)
+    
+    try:
+        # Delete all related records
+        # Delete clips
+        clips = db.exec(select(SongClip).where(SongClip.song_id == song_id)).all()
+        for clip in clips:
+            db.delete(clip)
+        
+        # Get analysis record first (before deleting jobs that reference it)
+        analysis_record = db.exec(
+            select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
+        ).first()
+        
+        # Delete analysis jobs that reference the analysis record by analysis_id
+        # (must be deleted before the analysis record due to FK constraint)
+        if analysis_record:
+            analysis_jobs_by_analysis_id = db.exec(
+                select(AnalysisJob).where(AnalysisJob.analysis_id == analysis_record.id)
+            ).all()
+            for job in analysis_jobs_by_analysis_id:
+                db.delete(job)
+        
+        # Delete analysis jobs by song_id (any remaining ones)
+        analysis_jobs = db.exec(
+            select(AnalysisJob).where(AnalysisJob.song_id == song_id)
+        ).all()
+        for job in analysis_jobs:
+            db.delete(job)
+        
+        # Now delete the analysis record (after all jobs referencing it are deleted)
+        if analysis_record:
+            db.delete(analysis_record)
+        
+        # Delete clip generation jobs
+        clip_jobs = db.exec(
+            select(ClipGenerationJob).where(ClipGenerationJob.song_id == song_id)
+        ).all()
+        for job in clip_jobs:
+            db.delete(job)
+        
+        # Delete composed videos first (get IDs before deletion)
+        composed_videos = db.exec(
+            select(ComposedVideo).where(ComposedVideo.song_id == song_id)
+        ).all()
+        composed_video_ids = [video.id for video in composed_videos]
+        
+        # Delete composition jobs that reference these composed videos
+        # (must be deleted before composed videos due to FK constraint)
+        if composed_video_ids:
+            composition_jobs_with_video = db.exec(
+                select(CompositionJob).where(
+                    CompositionJob.composed_video_id.in_(composed_video_ids)  # type: ignore
+                )
+            ).all()
+            for job in composition_jobs_with_video:
+                db.delete(job)
+        
+        # Delete composition jobs by song_id (any remaining ones)
+        composition_jobs = db.exec(
+            select(CompositionJob).where(CompositionJob.song_id == song_id)
+        ).all()
+        for job in composition_jobs:
+            db.delete(job)
+        
+        # Now delete composed videos (after all jobs referencing them are deleted)
+        for video in composed_videos:
+            db.delete(video)
+        
+        # Delete section videos
+        section_videos = db.exec(
+            select(SectionVideo).where(SectionVideo.song_id == song_id)
+        ).all()
+        for video in section_videos:
+            db.delete(video)
+        
+        # Delete the song itself
+        db.delete(song)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to delete song {song_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete song: {str(e)}",
+        ) from e
 
 
 @router.patch(
@@ -317,6 +593,43 @@ def set_video_type(
     ensure_no_analysis(song_id)
 
     return update_song_field(song, "video_type", video_type.video_type, db)
+
+
+@router.patch(
+    "/{song_id}/title",
+    response_model=SongRead,
+    summary="Update song title",
+)
+def update_song_title(
+    song_id: UUID,
+    title_update: TitleUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Song:
+    """Update the title of a song. Only the song owner can update it."""
+    song = get_song_or_404(song_id, db)
+    verify_song_ownership(song, current_user)
+    
+    return update_song_field(song, "title", title_update.title, db)
+
+
+@router.patch(
+    "/{song_id}/template",
+    response_model=SongRead,
+    summary="Set visual style template for song",
+)
+def set_template(
+    song_id: UUID,
+    template: TemplateUpdate,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Set the visual style template (abstract, environment, character, minimal) for a song.
+    
+    This affects the visual style of generated video clips.
+    """
+    song = get_song_or_404(song_id, db)
+    
+    return update_song_field(song, "template", template.template, db)
 
 
 @router.patch(
@@ -370,6 +683,7 @@ def update_audio_selection(
 async def upload_character_image(
     song_id: UUID,
     image: UploadFile = File(...),
+    pose: str = "A",  # "A" for pose-a (reference), "B" for pose-b
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -377,6 +691,9 @@ async def upload_character_image(
 
     Only available for songs with video_type='short_form'.
     The image will be validated, normalized to JPEG, and stored in S3.
+    
+    Args:
+        pose: "A" for pose-a (reference/primary image) or "B" for pose-b (secondary image)
     """
     settings = get_settings()
 
@@ -388,6 +705,14 @@ async def upload_character_image(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Character consistency only available for short_form videos",
+        )
+
+    # Validate pose parameter
+    pose_upper = pose.upper()
+    if pose_upper not in ("A", "B"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="pose parameter must be 'A' or 'B'",
         )
 
     # Read image bytes
@@ -411,8 +736,11 @@ async def upload_character_image(
             detail=f"Invalid image format: {str(exc)}"
         ) from exc
 
-    # Generate S3 key
-    s3_key = get_character_image_s3_key(str(song_id), "reference")
+    # Generate S3 key based on pose
+    if pose_upper == "A":
+        s3_key = get_character_image_s3_key(str(song_id), "reference")
+    else:  # pose_upper == "B"
+        s3_key = f"songs/{song_id}/character_pose_b.jpg"
 
     # Upload to S3
     try:
@@ -431,30 +759,34 @@ async def upload_character_image(
         ) from exc
 
     # Update song record
-    song.character_reference_image_s3_key = s3_key
-    song.character_consistency_enabled = True
+    if pose_upper == "A":
+        song.character_reference_image_s3_key = s3_key
+        song.character_consistency_enabled = True
+    else:  # pose_upper == "B"
+        song.character_pose_b_s3_key = s3_key
     db.add(song)
     db.commit()
     db.refresh(song)
 
-    # Enqueue background job to generate consistent character image
-    try:
-        from app.core.queue import get_queue
-        from app.services.character_consistency import generate_character_image_job
+    # Enqueue background job to generate consistent character image (only for Pose A)
+    if pose_upper == "A":
+        try:
+            from app.core.queue import get_queue
+            from app.services.character_consistency import generate_character_image_job
 
-        queue = get_queue(
-            queue_name=f"{settings.rq_worker_queue}:character-generation",
-            timeout=300,  # 5 minutes
-        )
-        queue.enqueue(
-            generate_character_image_job,
-            song_id,
-            job_timeout=300,
-        )
-        logger.info(f"Enqueued character image generation job for song {song_id}")
-    except Exception as exc:
-        # Don't fail the upload if job enqueue fails
-        logger.warning(f"Failed to enqueue character image generation job: {exc}")
+            queue = get_queue(
+                queue_name=f"{settings.rq_worker_queue}:character-generation",
+                timeout=300,  # 5 minutes
+            )
+            queue.enqueue(
+                generate_character_image_job,
+                song_id,
+                job_timeout=300,
+            )
+            logger.info(f"Enqueued character image generation job for song {song_id}")
+        except Exception as exc:
+            # Don't fail the upload if job enqueue fails
+            logger.warning(f"Failed to enqueue character image generation job: {exc}")
 
     # Generate presigned URL
     try:
@@ -497,6 +829,7 @@ async def get_character_image_urls(
     result: dict = {
         "pose_a_url": None,
         "pose_b_url": None,
+        "selected_pose": song.character_selected_pose or "A",
     }
     
     # Get pose-a (reference image) URL
@@ -526,6 +859,48 @@ async def get_character_image_urls(
             logger.warning(f"Failed to generate presigned URL for pose-b: {exc}")
     
     return result
+
+
+@router.patch(
+    "/{song_id}/selected-pose",
+    response_model=SongRead,
+    summary="Update selected character pose",
+)
+def update_selected_pose(
+    song_id: UUID,
+    pose_update: SelectedPoseUpdate,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Update the selected character pose (A or B) for a song."""
+    song = get_song_or_404(song_id, db)
+    
+    # Only allow for short_form videos
+    if song.video_type != "short_form":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Character pose selection only available for short_form videos",
+        )
+    
+    # Validate that at least one pose exists
+    if pose_update.selected_pose == "A" and not song.character_reference_image_s3_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pose A image not available. Please upload a character reference image first.",
+        )
+    if pose_update.selected_pose == "B" and not song.character_pose_b_s3_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pose B image not available. Please upload a Pose B image first.",
+        )
+    
+    song.character_selected_pose = pose_update.selected_pose
+    db.add(song)
+    db.commit()
+    db.refresh(song)
+    
+    logger.info(f"Updated selected pose for song {song_id} to {pose_update.selected_pose}")
+    
+    return song
 
 
 @router.get(
@@ -768,13 +1143,8 @@ def get_clip_generation_status(
             status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
         )
 
-    try:
-        return get_clip_generation_summary(song_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clip plans found for this song.",
-        ) from exc
+    # get_clip_generation_summary now returns empty summary instead of raising error
+    return get_clip_generation_summary(song_id)
 
 
 @router.get(
@@ -839,6 +1209,48 @@ def generate_clip_batch(
 
 
 @router.post(
+    "/{song_id}/clips/job/{job_id}/cancel",
+    status_code=status.HTTP_200_OK,
+    summary="Cancel a clip generation job",
+)
+def cancel_clip_generation_job(
+    song_id: UUID,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """
+    Cancel a clip generation job.
+    
+    Args:
+        song_id: Song ID
+        job_id: Clip generation job ID
+        
+    Returns:
+        Dict with status message
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
+    
+    from app.services.clip_generation import cancel_clip_generation_job
+    from app.exceptions import JobNotFoundError, JobStateError
+    
+    try:
+        cancel_clip_generation_job(job_id)
+        return {"status": "cancelled", "job_id": job_id}
+    except JobNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        ) from e
+    except JobStateError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
+
+@router.post(
     "/{song_id}/clips/{clip_id}/retry",
     response_model=SongClipStatus,
     status_code=status.HTTP_202_ACCEPTED,
@@ -890,13 +1302,7 @@ async def compose_completed_clips(
             status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
         )
 
-    try:
-        summary = get_clip_generation_summary(song_id)
-    except (ValueError, ClipGenerationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clip plans found for this song.",
-        ) from exc
+    summary = get_clip_generation_summary(song_id)
 
     if summary.total_clips == 0:
         raise HTTPException(
@@ -961,13 +1367,7 @@ def compose_song_clips_async(
             status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
         )
 
-    try:
-        summary = get_clip_generation_summary(song_id)
-    except (ValueError, ClipGenerationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clip plans found for this song.",
-        ) from exc
+    summary = get_clip_generation_summary(song_id)
 
     if summary.total_clips == 0:
         raise HTTPException(

@@ -24,6 +24,8 @@ export interface SongClipStatus {
   numFrames: number
   fps: number
   videoUrl?: string
+  prompt?: string | null
+  styleSeed?: string | null
   rqJobId?: string
   replicateJobId?: string
   error?: string | null
@@ -144,9 +146,12 @@ export interface SongRead {
   selected_start_sec?: number | null
   selected_end_sec?: number | null
   video_type?: 'full_length' | 'short_form' | null
+  template?: 'abstract' | 'environment' | 'character' | 'minimal' | null
   character_reference_image_s3_key?: string | null
   character_pose_b_s3_key?: string | null
+  character_selected_pose?: 'A' | 'B'
   character_consistency_enabled?: boolean
+  total_generation_cost_usd?: number | null
   created_at: string
   updated_at: string
 }

@@ -18,7 +18,7 @@ export interface AudioSelectionTimelineProps {
 }
 
 const MAX_SELECTION_DURATION = 30.0
-const MIN_SELECTION_DURATION = 1.0
+const MIN_SELECTION_DURATION = 9.0
 const MARKER_HANDLE_WIDTH = 24 // Increased from 20 for easier grabbing
 
 export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
@@ -47,11 +47,14 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
           MAX_SELECTION_DURATION,
       ),
   )
-  const [isDragging, setIsDragging] = useState<'start' | 'end' | null>(null)
+  const [isDragging, setIsDragging] = useState<'start' | 'end' | 'range' | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [playheadSec, setPlayheadSec] = useState<number>(startSec)
   const [hoverSec, setHoverSec] = useState<number | null>(null)
   const playheadIntervalRef = useRef<number | null>(null)
+  const hasShownMinDurationAlertRef = useRef<boolean>(false)
+  const [showMinDurationMessage, setShowMinDurationMessage] = useState(false)
+  const minDurationMessageTimeoutRef = useRef<number | null>(null)
 
   // Validate and constrain selection
   useEffect(() => {
@@ -84,11 +87,14 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
   }, [startSec, endSec, durationSec])
 
   // Handle mouse drag for markers
-  const handleMouseDown = useCallback((marker: 'start' | 'end', e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(marker)
-  }, [])
+  const handleMouseDown = useCallback(
+    (marker: 'start' | 'end' | 'range', e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsDragging(marker)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!isDragging || !containerRef.current) return
@@ -102,9 +108,45 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
       const time = percent * durationSec
 
       if (isDragging === 'start') {
+        const attemptedDuration = endSec - time
+        // Check if user is trying to select less than minimum duration
+        if (
+          attemptedDuration < MIN_SELECTION_DURATION &&
+          !hasShownMinDurationAlertRef.current
+        ) {
+          setShowMinDurationMessage(true)
+          hasShownMinDurationAlertRef.current = true
+          // Clear any existing timeout
+          if (minDurationMessageTimeoutRef.current) {
+            clearTimeout(minDurationMessageTimeoutRef.current)
+          }
+          // Auto-dismiss after 4 seconds
+          minDurationMessageTimeoutRef.current = window.setTimeout(() => {
+            setShowMinDurationMessage(false)
+            minDurationMessageTimeoutRef.current = null
+          }, 4000)
+        }
         const newStart = Math.max(0, Math.min(time, endSec - MIN_SELECTION_DURATION))
         setStartSec(newStart)
       } else if (isDragging === 'end') {
+        const attemptedDuration = time - startSec
+        // Check if user is trying to select less than minimum duration
+        if (
+          attemptedDuration < MIN_SELECTION_DURATION &&
+          !hasShownMinDurationAlertRef.current
+        ) {
+          setShowMinDurationMessage(true)
+          hasShownMinDurationAlertRef.current = true
+          // Clear any existing timeout
+          if (minDurationMessageTimeoutRef.current) {
+            clearTimeout(minDurationMessageTimeoutRef.current)
+          }
+          // Auto-dismiss after 4 seconds
+          minDurationMessageTimeoutRef.current = window.setTimeout(() => {
+            setShowMinDurationMessage(false)
+            minDurationMessageTimeoutRef.current = null
+          }, 4000)
+        }
         const newEnd = Math.max(time, startSec + MIN_SELECTION_DURATION)
         const constrainedEnd = Math.min(durationSec, newEnd)
         // Ensure duration doesn't exceed max
@@ -113,6 +155,27 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
         } else {
           setEndSec(startSec + MAX_SELECTION_DURATION)
         }
+      } else if (isDragging === 'range') {
+        // Move the entire selection while maintaining duration
+        const currentDuration = endSec - startSec
+        const centerTime = time
+        const halfDuration = currentDuration / 2
+
+        // Calculate new start and end positions
+        let newStart = centerTime - halfDuration
+        let newEnd = centerTime + halfDuration
+
+        // Constrain to timeline bounds
+        if (newStart < 0) {
+          newStart = 0
+          newEnd = currentDuration
+        } else if (newEnd > durationSec) {
+          newEnd = durationSec
+          newStart = durationSec - currentDuration
+        }
+
+        setStartSec(newStart)
+        setEndSec(newEnd)
       }
     }
 
@@ -211,6 +274,9 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
       if (playheadIntervalRef.current) {
         clearInterval(playheadIntervalRef.current)
       }
+      if (minDurationMessageTimeoutRef.current) {
+        clearTimeout(minDurationMessageTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -227,6 +293,7 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
   const playheadPercent = (playheadSec / durationSec) * 100
   const hoverPercent = hoverSec !== null ? (hoverSec / durationSec) * 100 : null
   const selectionDuration = endSec - startSec
+  const rangeCenterPercent = (startPercent + endPercent) / 2
 
   return (
     <div className={clsx('space-y-4', className)}>
@@ -279,7 +346,7 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
           )}
         </button>
 
-        <div className="flex-1 text-sm text-vc-text-secondary">
+        <div className="flex-1 text-sm text-vc-text-secondary -mt-1">
           <span className="tabular-nums">
             {formatTime(Math.max(0, playheadSec - startSec))} /{' '}
             {formatTime(selectionDuration)}
@@ -290,125 +357,155 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
         </div>
       </div>
 
-      {/* Timeline */}
-      <div
-        ref={containerRef}
-        className="relative h-24 w-full cursor-pointer rounded-lg border border-vc-border/40 bg-[rgba(12,12,18,0.55)] overflow-hidden"
-        onClick={handleTimelineClick}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoverSec(null)}
-        style={{ position: 'relative' }}
-      >
-        {/* Waveform background */}
-        <div className="absolute inset-0 flex items-center gap-[2px] px-2">
-          {waveform.length > 0
-            ? waveform.slice(0, 512).map((value, idx) => {
-                const barTime = (idx / 512) * durationSec
-                const isInSelection = barTime >= startSec && barTime <= endSec
-                return (
+      {/* Timeline container with range handle above */}
+      <div className="relative">
+        {/* Range handle - positioned above timeline */}
+        <div
+          className="absolute -top-6 left-0 right-0 h-6 z-30"
+          style={{ pointerEvents: isDragging === 'range' ? 'auto' : 'auto' }}
+        >
+          <div
+            className="absolute top-0 cursor-move group z-30"
+            style={{
+              left: `${rangeCenterPercent}%`,
+              transform: 'translateX(-50%)',
+              pointerEvents: 'auto',
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleMouseDown('range', e)
+            }}
+          >
+            <div className="flex flex-col items-center">
+              {/* Handle icon/indicator */}
+              <div className="h-3 w-8 rounded-t-md border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform" />
+              {/* Connecting line to timeline */}
+              <div className="w-0.5 h-3 bg-vc-accent-primary/40" />
+            </div>
+          </div>
+        </div>
+
+        {/* Timeline */}
+        <div
+          ref={containerRef}
+          className="relative h-24 w-full cursor-pointer rounded-lg border border-vc-border/40 bg-[rgba(12,12,18,0.55)] overflow-hidden"
+          onClick={handleTimelineClick}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoverSec(null)}
+          style={{ position: 'relative' }}
+        >
+          {/* Waveform background */}
+          <div className="absolute inset-0 flex items-center gap-[2px] px-2">
+            {waveform.length > 0
+              ? waveform.slice(0, 512).map((value, idx) => {
+                  const barTime = (idx / 512) * durationSec
+                  const isInSelection = barTime >= startSec && barTime <= endSec
+                  return (
+                    <div
+                      key={`bar-${idx}`}
+                      className="w-[2px] rounded-full transition-opacity"
+                      style={{
+                        height: `${Math.max(8, value * 100)}%`,
+                        opacity: isInSelection ? 0.9 : 0.3,
+                        background: isInSelection
+                          ? 'linear-gradient(to top, #6E6BFF, #FF6FF5, #00C6C0)'
+                          : 'rgba(255, 255, 255, 0.2)',
+                      }}
+                    />
+                  )
+                })
+              : // Placeholder bars when waveform data not available
+                Array.from({ length: 100 }).map((_, idx) => (
                   <div
-                    key={`bar-${idx}`}
-                    className="w-[2px] rounded-full transition-opacity"
+                    key={`placeholder-bar-${idx}`}
+                    className="w-[2px] rounded-full bg-vc-border/20"
                     style={{
-                      height: `${Math.max(8, value * 100)}%`,
-                      opacity: isInSelection ? 0.9 : 0.3,
-                      background: isInSelection
-                        ? 'linear-gradient(to top, #6E6BFF, #FF6FF5, #00C6C0)'
-                        : 'rgba(255, 255, 255, 0.2)',
+                      height: `${20 + (idx % 3) * 10}%`,
                     }}
                   />
-                )
-              })
-            : // Placeholder bars when waveform data not available
-              Array.from({ length: 100 }).map((_, idx) => (
-                <div
-                  key={`placeholder-bar-${idx}`}
-                  className="w-[2px] rounded-full bg-vc-border/20"
-                  style={{
-                    height: `${20 + (idx % 3) * 10}%`,
-                  }}
-                />
-              ))}
-        </div>
-
-        {/* Beat markers */}
-        {beatTimes.map((beat, idx) => {
-          const beatPercent = (beat / durationSec) * 100
-          return (
-            <div
-              key={`beat-${idx}`}
-              className="absolute top-0 bottom-0 w-px bg-white/20"
-              style={{ left: `${beatPercent}%` }}
-            />
-          )
-        })}
-
-        {/* Selected region highlight */}
-        <div
-          className="absolute top-0 bottom-0 bg-vc-accent-primary/10 border-y border-vc-accent-primary/30 z-0"
-          style={{
-            left: `${startPercent}%`,
-            width: `${endPercent - startPercent}%`,
-          }}
-        />
-
-        {/* Start marker - higher z-index to ensure it's above other elements */}
-        <div
-          className="absolute top-0 bottom-0 cursor-ew-resize group z-20"
-          style={{
-            left: `${startPercent}%`,
-            width: `${MARKER_HANDLE_WIDTH}px`,
-            marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px`,
-            pointerEvents: 'auto', // Ensure it's clickable
-          }}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            handleMouseDown('start', e)
-          }}
-        >
-          <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary pointer-events-none" />
-          <div className="absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
-          <div className="absolute left-1/2 bottom-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
-        </div>
-
-        {/* End marker - higher z-index to ensure it's above other elements */}
-        <div
-          className="absolute top-0 bottom-0 cursor-ew-resize group z-20"
-          style={{
-            left: `${endPercent}%`,
-            width: `${MARKER_HANDLE_WIDTH}px`,
-            marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px`,
-            pointerEvents: 'auto', // Ensure it's clickable
-          }}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            handleMouseDown('end', e)
-          }}
-        >
-          <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary pointer-events-none" />
-          <div className="absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
-          <div className="absolute left-1/2 bottom-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
-        </div>
-
-        {/* Playhead */}
-        {playheadSec >= startSec && playheadSec <= endSec && (
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-white"
-            style={{ left: `${playheadPercent}%` }}
-          >
-            <div className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full bg-white" />
+                ))}
           </div>
-        )}
 
-        {/* Hover time indicator */}
-        {hoverSec !== null && (
+          {/* Beat markers */}
+          {beatTimes.map((beat, idx) => {
+            const beatPercent = (beat / durationSec) * 100
+            return (
+              <div
+                key={`beat-${idx}`}
+                className="absolute top-0 bottom-0 w-px bg-white/20"
+                style={{ left: `${beatPercent}%` }}
+              />
+            )
+          })}
+
+          {/* Selected region highlight */}
           <div
-            className="absolute top-0 bottom-0 w-px bg-white/40"
-            style={{ left: `${hoverPercent}%` }}
+            className="absolute top-0 bottom-0 bg-vc-accent-primary/10 border-y border-vc-accent-primary/30 z-0"
+            style={{
+              left: `${startPercent}%`,
+              width: `${endPercent - startPercent}%`,
+            }}
           />
-        )}
+
+          {/* Start marker - higher z-index to ensure it's above other elements */}
+          <div
+            className="absolute top-0 bottom-0 cursor-ew-resize group z-20"
+            style={{
+              left: `${startPercent}%`,
+              width: `${MARKER_HANDLE_WIDTH}px`,
+              marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px`,
+              pointerEvents: 'auto', // Ensure it's clickable
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleMouseDown('start', e)
+            }}
+          >
+            <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary pointer-events-none" />
+            <div className="absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
+            <div className="absolute left-1/2 bottom-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
+          </div>
+
+          {/* End marker - higher z-index to ensure it's above other elements */}
+          <div
+            className="absolute top-0 bottom-0 cursor-ew-resize group z-20"
+            style={{
+              left: `${endPercent}%`,
+              width: `${MARKER_HANDLE_WIDTH}px`,
+              marginLeft: `-${MARKER_HANDLE_WIDTH / 2}px`,
+              pointerEvents: 'auto', // Ensure it's clickable
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              handleMouseDown('end', e)
+            }}
+          >
+            <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-vc-accent-primary pointer-events-none" />
+            <div className="absolute left-1/2 top-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
+            <div className="absolute left-1/2 bottom-0 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-vc-accent-primary bg-vc-surface-primary shadow-lg hover:scale-110 transition-transform pointer-events-none" />
+          </div>
+
+          {/* Playhead */}
+          {playheadSec >= startSec && playheadSec <= endSec && (
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-white"
+              style={{ left: `${playheadPercent}%` }}
+            >
+              <div className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full bg-white" />
+            </div>
+          )}
+
+          {/* Hover time indicator */}
+          {hoverSec !== null && (
+            <div
+              className="absolute top-0 bottom-0 w-px bg-white/40"
+              style={{ left: `${hoverPercent}%` }}
+            />
+          )}
+        </div>
       </div>
 
       {/* Selection info */}
@@ -429,13 +526,28 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
         </div>
       </div>
 
+      {/* Minimum duration message */}
+      {showMinDurationMessage && (
+        <div className="mt-2 rounded-lg border border-yellow-500/40 bg-[rgba(234,179,8,0.12)] px-3 py-2 text-xs text-yellow-400 transition-opacity duration-300">
+          Minimum is 9 seconds
+        </div>
+      )}
+
       {/* Confirm button - shown at bottom when onConfirm is provided */}
       {onConfirm && (
         <div className="mt-4 flex justify-end">
           <VCButton
             variant="primary"
             size="md"
-            onClick={onConfirm}
+            onClick={(e) => {
+              // Prevent click if disabled
+              if (confirmButtonDisabled) {
+                e.preventDefault()
+                e.stopPropagation()
+                return
+              }
+              onConfirm()
+            }}
             disabled={confirmButtonDisabled}
             iconRight={<ArrowRightIcon />}
           >

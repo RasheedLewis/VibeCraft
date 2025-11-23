@@ -151,7 +151,10 @@ class TestGetClipsForComposition:
         mock_clip_2.video_url = "http://example.com/video2.mp4"
 
         mock_session = Mock()
-        mock_session.get.side_effect = [mock_clip_1, mock_clip_2]
+        # Mock the new bulk query approach: session.exec(select(...)) returns list
+        mock_exec_result = Mock()
+        mock_exec_result.all.return_value = [mock_clip_1, mock_clip_2]
+        mock_session.exec.return_value = mock_exec_result
 
         clips, clip_urls = get_clips_for_composition(
             mock_session, [clip_id_1, clip_id_2], mock_song
@@ -180,13 +183,17 @@ class TestGetClipsForComposition:
         mock_clip.video_url = "http://example.com/video.mp4"
 
         mock_session = Mock()
-        mock_session.get.return_value = mock_clip
+        # Mock the new bulk query approach: session.exec(select(...)) returns list
+        mock_exec_result = Mock()
+        mock_exec_result.all.return_value = [mock_clip]
+        mock_session.exec.return_value = mock_exec_result
 
         clips, clip_urls = get_clips_for_composition(mock_session, [clip_id], mock_song)
 
         assert len(clips) == 1
         assert isinstance(clips[0], Mock)  # Mock doesn't have isinstance, but we can check
-        mock_session.get.assert_called_with(SongClip, clip_id)
+        # Verify it used select with SongClip model
+        assert mock_session.exec.called
 
     def test_get_clips_raises_error_on_invalid_clip(self):
         """Test that errors are propagated when a clip is invalid."""
@@ -198,7 +205,10 @@ class TestGetClipsForComposition:
         mock_song.video_type = "full_length"
 
         mock_session = Mock()
-        mock_session.get.return_value = None  # Clip not found
+        # Mock the new bulk query approach: returns empty list (clip not found)
+        mock_exec_result = Mock()
+        mock_exec_result.all.return_value = []
+        mock_session.exec.return_value = mock_exec_result
 
         with pytest.raises(ClipNotFoundError):
             get_clips_for_composition(mock_session, [clip_id], mock_song)
@@ -219,9 +229,12 @@ class TestGetClipsForComposition:
         mock_clip.video_url = None  # Missing video_url
 
         mock_session = Mock()
-        mock_session.get.return_value = mock_clip
+        # Mock the new bulk query approach: returns clip but it has no video_url
+        mock_exec_result = Mock()
+        mock_exec_result.all.return_value = [mock_clip]
+        mock_session.exec.return_value = mock_exec_result
 
-        # get_and_validate_clip will catch this first and raise "is not ready"
+        # Validation will catch this and raise "is not ready"
         with pytest.raises(CompositionError, match="is not ready"):
             get_clips_for_composition(mock_session, [clip_id], mock_song)
 

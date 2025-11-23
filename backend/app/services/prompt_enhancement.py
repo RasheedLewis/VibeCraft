@@ -12,6 +12,11 @@ MOTION_TYPES = {
         "medium": "bouncing motion, rhythmic pulsing, steady vertical rhythm matching the beat",
         "fast": "rapid bouncing, energetic rhythmic motion, quick vertical pulses synchronized to tempo",
     },
+    "dancing": {
+        "slow": "gentle dancing motion, slow rhythmic movement, smooth flowing dance steps, graceful swaying",
+        "medium": "dancing motion, rhythmic dance steps, steady dance rhythm matching the beat, clear dance movements",
+        "fast": "energetic dancing, rapid rhythmic dance motion, quick dance steps synchronized to tempo, dynamic dancing",
+    },
     "pulsing": {
         "slow": "slow pulsing, gentle rhythmic expansion and contraction, breathing-like motion",
         "medium": "pulsing motion, rhythmic breathing effect, steady expansion and contraction cycles",
@@ -38,6 +43,14 @@ MOTION_TYPES = {
 BPM_SLOW = 60
 BPM_MEDIUM = 100
 BPM_FAST = 140
+
+# Tempo descriptors that capture the overall energy/feel beyond just motion type
+TEMPO_DESCRIPTORS = {
+    "slow": "slow, flowing, gentle, relaxed",
+    "medium": "steady, moderate, balanced, rhythmic",
+    "fast": "energetic, driving, dynamic, upbeat",
+    "very_fast": "frenetic, rapid, intense, high-energy",
+}
 
 
 def get_tempo_classification(bpm: float) -> str:
@@ -92,7 +105,10 @@ def enhance_prompt_with_rhythm(
     style_context: Optional[dict] = None,
 ) -> str:
     """
-    Enhance base prompt with rhythmic motion cues.
+    Enhance base prompt with rhythmic motion cues and BPM-aware tempo descriptors.
+    
+    This goes beyond literal BPM by adding tempo descriptors that capture the overall
+    energy and feel of the motion (e.g., "slow, flowing" vs "energetic, driving").
     
     Args:
         base_prompt: Original user prompt or generated prompt
@@ -101,24 +117,34 @@ def enhance_prompt_with_rhythm(
         style_context: Optional dict with mood, colors, setting
         
     Returns:
-        Enhanced prompt string with rhythmic descriptors
+        Enhanced prompt string with rhythmic descriptors and tempo-aware language
     """
     if bpm <= 0:
         logger.warning(f"Invalid BPM ({bpm}), skipping rhythm enhancement")
         return base_prompt
     
-    # Get motion descriptor
+    # Get motion descriptor (specific motion type)
     motion_descriptor = get_motion_descriptor(bpm, motion_type)
     
-    # Build rhythmic phrase
+    # Get tempo classification and descriptor (overall energy/feel)
+    tempo_class = get_tempo_classification(bpm)
+    tempo_descriptor = TEMPO_DESCRIPTORS.get(tempo_class, TEMPO_DESCRIPTORS["medium"])
+    
+    # Build enhanced rhythmic phrase with both motion and tempo descriptors
     bpm_int = int(round(bpm))
-    rhythmic_phrase = f"{motion_descriptor} synchronized to {bpm_int} BPM tempo, rhythmic motion matching the beat"
+    rhythmic_phrase = (
+        f"{tempo_descriptor} {motion_descriptor} synchronized to {bpm_int} BPM tempo, "
+        f"rhythmic motion matching the beat with clear repetitive pattern"
+    )
     
     # Combine with base prompt
     enhanced_prompt = f"{base_prompt}, {rhythmic_phrase}"
     
-    logger.debug(f"Enhanced prompt with rhythm: BPM={bpm}, motion={motion_type}")
-    logger.debug(f"Rhythmic phrase: {rhythmic_phrase}")
+    # Log full prompt for rapid iteration and debugging
+    logger.info(f"[PROMPT-ENHANCE] Enhanced prompt with rhythm: BPM={bpm}, motion={motion_type}, tempo={tempo_class}")
+    logger.info(f"[PROMPT-ENHANCE] Tempo descriptor: {tempo_descriptor}")
+    logger.info(f"[PROMPT-ENHANCE] Rhythmic phrase: {rhythmic_phrase}")
+    logger.info(f"[PROMPT-ENHANCE] FULL ENHANCED PROMPT: {enhanced_prompt}")
     
     return enhanced_prompt
 
@@ -135,11 +161,11 @@ def get_motion_type_from_genre(genre: Optional[str] = None) -> str:
     """
     genre_motion_map = {
         "electronic": "pulsing",
-        "dance": "bouncing",
+        "dance": "dancing",  # Use dancing motion type for dance genre
         "rock": "stepping",
         "jazz": "looping",
-        "hip-hop": "bouncing",
-        "pop": "bouncing",
+        "hip-hop": "dancing",  # Use dancing for hip-hop
+        "pop": "dancing",  # Use dancing for pop
     }
     
     if genre:
@@ -220,9 +246,9 @@ def select_motion_type(
     if mood_tags:
         mood_tags_lower = [tag.lower() for tag in mood_tags]
         
-        # Dance-related tags: bouncing
-        if any(tag in ["dance", "danceable", "groovy"] for tag in mood_tags_lower):
-            return "bouncing"
+        # Dance-related tags: use dancing motion type
+        if any(tag in ["dance", "danceable", "groovy", "dancing"] for tag in mood_tags_lower):
+            return "dancing"  # Use dedicated dancing motion type for better dance prompts
         
         # Electronic/techno tags: pulsing
         if any(tag in ["electronic", "techno", "synth"] for tag in mood_tags_lower):
@@ -315,7 +341,8 @@ def optimize_prompt_for_api(
             logger.debug(f"Extracted BPM {bpm} from prompt")
         else:
             # No BPM available, skip API-specific optimization
-            logger.debug("No BPM available for API optimization, returning original prompt")
+            logger.info("[PROMPT-OPTIMIZE] No BPM available for API optimization, returning original prompt")
+            logger.info(f"[PROMPT-OPTIMIZE] FULL PROMPT (no optimization): {prompt}")
             return prompt
     
     # Normalize API name for matching
@@ -328,12 +355,14 @@ def optimize_prompt_for_api(
         # It benefits from explicit tempo references, but avoid duplication if already in prompt
         if f"{bpm_int} BPM" not in prompt:
             optimized = f"{prompt}. Camera: static. Motion: synchronized to {bpm_int} BPM."
-            logger.debug("Optimized prompt for Minimax Hailuo: added explicit BPM reference")
+            logger.info("[PROMPT-OPTIMIZE] Optimized prompt for Minimax Hailuo: added explicit BPM reference")
+            logger.info(f"[PROMPT-OPTIMIZE] FULL OPTIMIZED PROMPT: {optimized}")
             return optimized
         else:
             # BPM already in prompt, just add camera/motion directive
             optimized = f"{prompt}. Camera: static."
-            logger.debug("Optimized prompt for Minimax Hailuo: added camera directive")
+            logger.info("[PROMPT-OPTIMIZE] Optimized prompt for Minimax Hailuo: added camera directive")
+            logger.info(f"[PROMPT-OPTIMIZE] FULL OPTIMIZED PROMPT: {optimized}")
             return optimized
     
     # Runway Gen-3 (future support)

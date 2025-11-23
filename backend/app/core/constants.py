@@ -3,13 +3,15 @@
 from enum import Enum
 
 # Job configuration
-DEFAULT_MAX_CONCURRENCY = 2
+DEFAULT_MAX_CONCURRENCY = 4  # Increased from 2 to allow more parallel clip generation
 QUEUE_TIMEOUT_SEC = 20 * 60  # 20 minutes per clip generation
 ANALYSIS_QUEUE_TIMEOUT_SEC = 30 * 60  # 30 minutes for analysis
 COMPOSITION_QUEUE_TIMEOUT_SEC = 30 * 60  # 30 minutes for composition
 
 # Upload limits
 MAX_DURATION_SECONDS = 7 * 60  # 7 minutes
+MAX_AUDIO_FILE_SIZE_MB = 100  # 100 MB maximum file size for audio uploads
+MAX_AUDIO_FILE_SIZE_BYTES = MAX_AUDIO_FILE_SIZE_MB * 1024 * 1024
 
 ALLOWED_CONTENT_TYPES = {
     "audio/mpeg",
@@ -61,5 +63,5 @@ VALID_VIDEO_TYPES = [VIDEO_TYPE_FULL_LENGTH, VIDEO_TYPE_SHORT_FORM]
 
 # Audio selection constants
 MAX_AUDIO_SELECTION_DURATION_SEC = 30.0
-MIN_AUDIO_SELECTION_DURATION_SEC = 1.0
+MIN_AUDIO_SELECTION_DURATION_SEC = 9.0  # Minimum 9 seconds to support 3 clips × 3 seconds minimum
 

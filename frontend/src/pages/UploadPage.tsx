@@ -53,6 +53,8 @@ import { SelectedTemplateDisplay } from '../components/upload/SelectedTemplateDi
 import { SongProfileView } from '../components/song/SongProfileView'
 import { ProjectsModal } from '../components/projects/ProjectsModal'
 import { AuthModal } from '../components/auth/AuthModal'
+import { ErrorBoundary } from 'react-error-boundary'
+import { SectionErrorFallback } from '../components/SectionErrorFallback'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
 
@@ -1423,7 +1425,8 @@ export const UploadPage: React.FC = () => {
             (videoType === 'short_form' && audioSelectionValue)) &&
             analysisData &&
             songDetails && (
-              <SongProfileView
+              <ErrorBoundary FallbackComponent={SectionErrorFallback}>
+                <SongProfileView
                 analysisData={analysisData}
                 songDetails={songDetails}
                 clipSummary={clipSummary}
@@ -1448,6 +1451,7 @@ export const UploadPage: React.FC = () => {
                 onSectionSelect={handleSectionSelect}
                 onTitleUpdate={handleTitleUpdate}
               />
+              </ErrorBoundary>
             )}
         </div>
       )}

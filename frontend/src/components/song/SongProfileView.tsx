@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { ErrorBoundary } from 'react-error-boundary'
 import { SectionCard, VCCard, VCButton } from '../vibecraft'
 import type {
   ClipGenerationSummary,
@@ -17,6 +18,8 @@ import { MoodVectorMeter } from './MoodVectorMeter'
 import { ClipGenerationPanel } from './ClipGenerationPanel'
 import { ArrowRightIcon } from '../upload/Icons'
 import { useFeatureFlags } from '../../hooks/useFeatureFlags'
+import { SectionErrorFallback } from '../SectionErrorFallback'
+import { VideoPlayerErrorFallback } from '../VideoPlayerErrorFallback'
 
 interface SongProfileViewProps {
   analysisData: SongAnalysis
@@ -291,45 +294,54 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
               ? ` (${clipSummary.completedClips}/${clipSummary.totalClips} clips)`
               : null}
           </div>
-          <MainVideoPlayer
-            videoUrl={playerVideoUrl}
-            audioUrl={playerAudioUrl ?? undefined}
-            posterUrl={playerPosterUrl}
-            durationSec={playerDurationSec}
-            clips={playerClips}
-            activeClipId={activePlayerClip?.id ?? undefined}
-            onClipSelect={onPlayerClipSelect}
-            beatGrid={playerBeatGrid}
-            lyrics={playerLyrics}
-            waveform={waveformValues}
-            onDownload={
-              playerVideoUrl
-                ? () => window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
-                : undefined
-            }
-          />
+          <ErrorBoundary
+            FallbackComponent={VideoPlayerErrorFallback}
+            onReset={() => {
+              // Reset video player state if needed
+            }}
+          >
+            <MainVideoPlayer
+              videoUrl={playerVideoUrl}
+              audioUrl={playerAudioUrl ?? undefined}
+              posterUrl={playerPosterUrl}
+              durationSec={playerDurationSec}
+              clips={playerClips}
+              activeClipId={activePlayerClip?.id ?? undefined}
+              onClipSelect={onPlayerClipSelect}
+              beatGrid={playerBeatGrid}
+              lyrics={playerLyrics}
+              waveform={waveformValues}
+              onDownload={
+                playerVideoUrl
+                  ? () => window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
+                  : undefined
+              }
+            />
+          </ErrorBoundary>
         </section>
       ) : null}
 
       {/* Show ClipGenerationPanel if we have clips OR if there's an active job */}
-      {(clipSummary ||
-        (clipJobId &&
-          (clipJobStatus === 'queued' || clipJobStatus === 'processing'))) && (
-        <ClipGenerationPanel
-          clipSummary={clipSummary}
-          clipJobId={clipJobId}
-          clipJobStatus={clipJobStatus}
-          clipJobProgress={clipJobProgress}
-          clipJobError={clipJobError}
-          isComposing={isComposing}
-          composeJobProgress={composeJobProgress}
-          onCancel={onCancelClipJob}
-          onCompose={onCompose}
-          onPreviewClip={onPreviewClip}
-          onRegenerateClip={onRegenerateClip}
-          onRetryClip={onRetryClip}
-        />
-      )}
+      <ErrorBoundary FallbackComponent={SectionErrorFallback}>
+        {(clipSummary ||
+          (clipJobId &&
+            (clipJobStatus === 'queued' || clipJobStatus === 'processing'))) && (
+          <ClipGenerationPanel
+            clipSummary={clipSummary}
+            clipJobId={clipJobId}
+            clipJobStatus={clipJobStatus}
+            clipJobProgress={clipJobProgress}
+            clipJobError={clipJobError}
+            isComposing={isComposing}
+            composeJobProgress={composeJobProgress}
+            onCancel={onCancelClipJob}
+            onCompose={onCompose}
+            onPreviewClip={onPreviewClip}
+            onRegenerateClip={onRegenerateClip}
+            onRetryClip={onRetryClip}
+          />
+        )}
+      </ErrorBoundary>
 
       <section className="space-y-2">
         <div className="vc-label">Waveform</div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../lib/apiClient'
 import { useAuth } from '../../hooks/useAuth'
 import { VCButton } from '../vibecraft'
@@ -120,6 +120,27 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
     enabled: isAuthenticated && isOpen,
   })
 
+  const updateAnimationsMutation = useMutation({
+    mutationFn: async (animationsDisabled: boolean) => {
+      const response = await apiClient.patch('/auth/me/animations', {
+        animations_disabled: animationsDisabled,
+      })
+      return response.data
+    },
+    onSuccess: (data) => {
+      // Update localStorage with new user info
+      const userStr = localStorage.getItem('vibecraft_auth_user')
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        user.animations_disabled = data.animations_disabled
+        localStorage.setItem('vibecraft_auth_user', JSON.stringify(user))
+      }
+      // Invalidate and refetch user query to refresh user info
+      queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
+      queryClient.refetchQueries({ queryKey: ['auth', 'me'] })
+    },
+  })
+
   // Close modal on Escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -158,6 +179,17 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
               className="text-white/70 hover:text-white transition-colors cursor-pointer italic disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Delete all projects and un-analyzed tracks.
+            </button>
+            <button
+              onClick={() =>
+                updateAnimationsMutation.mutate(!currentUser?.animations_disabled)
+              }
+              disabled={updateAnimationsMutation.isPending}
+              className="text-white/70 hover:text-white transition-colors cursor-pointer italic disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {currentUser?.animations_disabled
+                ? 'Turn on page animations.'
+                : 'Turn off page animations.'}
             </button>
           </div>
           <div className="flex gap-3">

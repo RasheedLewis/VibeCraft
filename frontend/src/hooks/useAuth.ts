@@ -13,6 +13,7 @@ interface UserInfo {
   user_id: string
   email: string
   display_name?: string
+  animations_disabled?: boolean
 }
 
 interface LoginRequest {

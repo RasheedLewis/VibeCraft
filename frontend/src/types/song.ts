@@ -150,6 +150,7 @@ export interface SongRead {
   character_reference_image_s3_key?: string | null
   character_pose_b_s3_key?: string | null
   character_consistency_enabled?: boolean
+  total_generation_cost_usd?: number | null
   created_at: string
   updated_at: string
 }

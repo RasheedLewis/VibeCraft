@@ -1,0 +1,219 @@
+steps: 
+1   done
+2   
+3   
+4   
+5   
+6   
+7   
+8   
+9A  
+9B  
+9C  
+final-notes. 
+
+
+## Step 1: Start services
+
+Run:
+```bash
+make start-dev
+```
+
+**What to look for:**
+- "⚠ Beat effect test mode enabled (exaggerated effects)"
+- "⚠ Saving no-effects comparison videos enabled"
+- All services start (backend, 4 workers, frontend)
+- No errors in the startup logs
+
+Once you see "All services started!", proceed.
+
+---
+
+## Step 2: Open the app and upload
+
+1. Open http://localhost:5173
+2. Log in/register
+3. Upload a test song (30-60 seconds, clear beats — electronic/hip-hop works well)
+
+**What to look for:**
+- Upload completes successfully
+- Waveform appears
+- No errors in browser console
+
+---
+
+## Step 3: Start analysis
+
+1. Select video type: "Short Form" or "Full Length"
+2. Click "Start Analysis"
+3. Wait 3-5 minutes
+
+**What to look for:**
+- Analysis completes
+- Sections appear on timeline (if Full Length)
+- No errors
+
+---
+
+## Step 4: Select audio range (if Short Form)
+
+1. If you chose "Short Form", select a 15-30 second range on the timeline
+2. Confirm the selection
+
+---
+
+## Step 5: Choose character (optional)
+
+1. Select a template character OR upload a custom character image
+2. This affects cost tracking (adds ~$0.03 if enabled)
+
+---
+
+## Step 6: Select visual style template
+
+1. Choose a visual style: Abstract, Environment, Character, or Minimal
+2. Defaults to "Abstract" if not selected
+
+---
+
+## Step 7: Generate clips — watch for cost tracking
+
+1. Click "Generate Clips"
+2. While waiting (5-10 minutes), open a new terminal and run:
+
+```bash
+tail -f logs/worker.log | grep -E "COST|cost"
+```
+
+**What to look for:**
+- `[COST] Estimated cost for 1 clips using minimax/hailuo-2.3: $X.XXXX`
+- `[COST-TRACKING] Stored cost $X.XXXX for song {song_id} (total: $X.XXXX)`
+- You should see one cost log per clip as they generate
+- Expected: ~$0.05 per clip + $0.03 if character consistency enabled
+
+**Also check prompts:**
+```bash
+tail -f video-api-testing/prompts.log
+```
+
+**What to look for:**
+- Each clip should log a prompt
+- All prompts should include: `"the figure is dancing dynamically, varying the limbs that they move, and at some point turning around"`
+- Verify this phrase appears in the prompts
+
+---
+
+## Step 8: Compose video — watch for beat effects
+
+1. After all clips are generated, click "Compose Video"
+2. While waiting (3-5 minutes), watch logs:
+
+```bash
+tail -f logs/worker.log | grep -E "beat|BEAT|flash|effect|Applying|TEST MODE"
+```
+
+**What to look for:**
+- `Applying flash beat filters for {N} beats`
+- `Applying color_burst beat filters for {N} beats`
+- `Applying zoom_pulse beat filters for {N} beats`
+- `Applying brightness_pulse beat filters for {N} beats`
+- `Applying glitch beat filters for {N} beats`
+- `[TEST MODE] Exaggerating {effect_type} effect` (since test mode is enabled)
+- Effects should rotate: flash (3x) → color_burst (3x) → zoom_pulse (3x) → brightness_pulse (3x) → glitch (3x) → repeat
+- Effects applied to every 4th beat (not every beat)
+
+---
+
+## Step 9: Verify results
+
+### A. Check cost tracking in database
+
+After composition completes, verify the total cost was stored:
+
+```bash
+# Check worker logs for final cost
+grep "COST-TRACKING.*Stored cost" logs/worker.log | tail -5
+```
+
+**What to look for:**
+- Multiple cost entries (one per clip)
+- Total cost accumulating (e.g., if 6 clips: ~$0.30, with character: ~$0.33)
+
+### B. Check dancing prompts
+
+```bash
+grep "dancing dynamically" video-api-testing/prompts.log | head -3
+```
+
+**What to look for:**
+- The new dancing instruction appears in all prompts
+- Visually: watch the generated clips — figures should dance more dynamically with varied movement
+
+### C. Compare visual effects
+
+1. Check if comparison video was saved:
+```bash
+ls -lh comparison_videos/
+```
+
+**What to look for:**
+- Should see: `no_effects_{video_name}.mp4`
+
+2. Compare the two videos:
+   - `comparison_videos/no_effects_*.mp4` = AI-generated video (no FFmpeg effects)
+   - Final composed video = Same video + FFmpeg beat-sync effects
+
+3. Watch both side-by-side and look for:
+   - Effects on every 4th beat
+   - Effects rotating: flash → color_burst → zoom_pulse → brightness_pulse → glitch
+   - Effects synchronized with music beats
+   - Clear difference between the two videos (effects should be visible, especially in test mode)
+
+---
+
+## Quick verification checklist
+
+After everything completes, verify:
+
+- [ ] Cost tracking logs appeared during clip generation
+- [ ] Total cost stored in database/API response
+- [ ] Dancing instruction appears in all prompts
+- [ ] Figures dance more dynamically in clips
+- [ ] Beat effect logs appeared during composition
+- [ ] Comparison video saved in `comparison_videos/`
+- [ ] Visual effects visible in final video (especially in test mode)
+- [ ] Effects synchronized with beats
+
+---
+
+Tell me when you've started `make start-dev` and I'll guide you through each step.
+
+```shellscript
+make start-dev
+```
+
+```shellscript
+tail -f logs/worker.log | grep -E "COST|cost"
+```
+
+```shellscript
+tail -f video-api-testing/prompts.log
+```
+
+```shellscript
+tail -f logs/worker.log | grep -E "beat|BEAT|flash|effect|Applying|TEST MODE"
+```
+
+```shellscript
+# Check worker logs for final cost
+grep "COST-TRACKING.*Stored cost" logs/worker.log | tail -5
+```
+
+```shellscript
+grep "dancing dynamically" video-api-testing/prompts.log | head -3
+```
+
+```shellscript
+ls -lh comparison_videos/
+```

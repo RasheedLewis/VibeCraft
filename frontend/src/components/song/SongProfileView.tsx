@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
-import { SectionCard, VCCard, VCButton } from '../vibecraft'
+import { SectionCard, VCCard } from '../vibecraft'
 import type {
   ClipGenerationSummary,
   SongAnalysis,
@@ -16,7 +16,6 @@ import { SongTimeline } from './SongTimeline'
 import { WaveformDisplay } from './WaveformDisplay'
 import { MoodVectorMeter } from './MoodVectorMeter'
 import { ClipGenerationPanel } from './ClipGenerationPanel'
-import { ArrowRightIcon } from '../upload/Icons'
 import { useFeatureFlags } from '../../hooks/useFeatureFlags'
 import { SectionErrorFallback } from '../SectionErrorFallback'
 import { VideoPlayerErrorFallback } from '../VideoPlayerErrorFallback'
@@ -90,12 +89,28 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   const [titleValue, setTitleValue] = useState(displayTitle)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const [isSavingTitle, setIsSavingTitle] = useState(false)
+  const [showTitleHint, setShowTitleHint] = useState(false)
 
   // Update title value when songDetails changes
   useEffect(() => {
     const newDisplayTitle = songDetails.title?.trim() ? songDetails.title : defaultTitle
     setTitleValue(newDisplayTitle)
   }, [songDetails.title, defaultTitle])
+
+  // Show title hint on mount (one-time per page load, if title is editable)
+  useEffect(() => {
+    if (!onTitleUpdate) return
+
+    const hasShownHint = sessionStorage.getItem('vibecraft_title_hint_shown')
+    if (!hasShownHint) {
+      // Use setTimeout to avoid setState in effect
+      const timer = setTimeout(() => {
+        setShowTitleHint(true)
+        sessionStorage.setItem('vibecraft_title_hint_shown', 'true')
+      }, 1000) // Delay slightly to let page settle
+      return () => clearTimeout(timer)
+    }
+  }, [onTitleUpdate])
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -108,6 +123,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   const handleTitleClick = () => {
     if (onTitleUpdate) {
       setIsEditingTitle(true)
+      setShowTitleHint(false) // Hide hint when user starts editing
     }
   }
 
@@ -195,52 +211,116 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       dur: line.endSec - line.startSec,
     })) ?? []
 
-  const clipJobActive =
-    clipJobId != null && (clipJobStatus === 'queued' || clipJobStatus === 'processing')
   const clipJobCompleted =
     clipSummary &&
     clipSummary.totalClips > 0 &&
     clipSummary.completedClips === clipSummary.totalClips
-  const generateButtonLabel = clipJobActive
-    ? 'Generating…'
-    : clipJobCompleted
-      ? 'Regenerate clips'
-      : 'Generate clips'
 
   return (
-    <section className="mt-4 w-full space-y-8">
-      <header className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
+    <section className="mt-4 w-full space-y-8 pb-0">
+      <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-start">
+        <div className="space-y-2 relative md:flex-shrink-0">
           <div className="vc-label">Song profile</div>
-          {isEditingTitle ? (
-            <input
-              ref={titleInputRef}
-              type="text"
-              value={titleValue}
-              onChange={(e) => setTitleValue(e.target.value)}
-              onBlur={handleTitleBlur}
-              onKeyDown={handleTitleKeyDown}
-              disabled={isSavingTitle}
-              className="font-display text-3xl text-white md:text-4xl bg-transparent border-b-2 border-vc-accent-primary/50 focus:border-vc-accent-primary focus:outline-none w-full pb-1 disabled:opacity-50"
-              maxLength={256}
-            />
-          ) : (
-            <h1
-              onClick={handleTitleClick}
-              className={`font-display text-3xl text-white md:text-4xl ${
-                onTitleUpdate
-                  ? 'cursor-text hover:text-vc-accent-primary/80 transition-colors'
-                  : ''
-              }`}
-            >
-              {displayTitle ?? 'Untitled track'}
-            </h1>
-          )}
-          <p className="text-xs uppercase tracking-[0.16em] text-vc-text-muted">
+          <div className="relative flex items-baseline gap-4 flex-wrap">
+            <div className="relative max-w-2xl">
+              {/* Subtle pointing animation for editable title */}
+              {showTitleHint && onTitleUpdate && !isEditingTitle && (
+                <div
+                  className="absolute -left-8 top-1/2 -translate-y-1/2 pointer-events-none z-10"
+                  style={{
+                    animation: 'pointAndFadeSubtle 2.5s ease-in-out forwards',
+                  }}
+                >
+                  <div className="text-xl filter drop-shadow-md opacity-70">👆</div>
+                </div>
+              )}
+              {isEditingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={titleValue}
+                  onChange={(e) => setTitleValue(e.target.value)}
+                  onBlur={handleTitleBlur}
+                  onKeyDown={handleTitleKeyDown}
+                  disabled={isSavingTitle}
+                  className="font-display text-3xl text-white md:text-4xl bg-transparent border-b-2 border-vc-accent-primary/50 focus:border-vc-accent-primary focus:outline-none disabled:opacity-50"
+                  style={{ margin: 0, padding: 0 }}
+                  maxLength={256}
+                />
+              ) : (
+                <h1
+                  onClick={handleTitleClick}
+                  className={`font-display text-3xl text-white md:text-4xl ${
+                    onTitleUpdate
+                      ? 'cursor-text hover:text-vc-accent-primary/80 transition-colors'
+                      : ''
+                  }`}
+                  style={{ margin: 0, padding: 0, borderBottom: '2px solid transparent' }}
+                >
+                  {displayTitle ?? 'Untitled track'}
+                </h1>
+              )}
+            </div>
+          </div>
+          <p className="text-xs uppercase tracking-[0.16em] text-vc-text-muted mb-1">
             Source file: {songDetails.original_filename}
           </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-vc-text-muted">Visual Style:</span>
+            {songDetails.template ? (
+              <span className="text-xs font-medium text-vc-text-primary capitalize">
+                {songDetails.template}
+              </span>
+            ) : (
+              <span className="text-xs text-vc-text-secondary">Not set</span>
+            )}
+            {/* Cost indicator - only show after video is composed */}
+            {composedVideoUrl && (
+              <>
+                <span className="text-xs text-vc-text-muted">•</span>
+                <div className="text-xs text-vc-text-muted whitespace-nowrap">
+                  {songDetails.total_generation_cost_usd != null &&
+                  songDetails.total_generation_cost_usd > 0 ? (
+                    <>
+                      <span>~${songDetails.total_generation_cost_usd.toFixed(2)}</span>
+                      <span className="ml-1.5">but free for you!</span>
+                      <span
+                        className={`ml-1 ${
+                          songDetails.template
+                            ? 'text-vc-text-primary'
+                            : 'text-vc-text-muted'
+                        }`}
+                      >
+                        ♡
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>free for you!</span>
+                      <span
+                        className={`ml-1 ${
+                          songDetails.template
+                            ? 'text-vc-text-primary'
+                            : 'text-vc-text-muted'
+                        }`}
+                      >
+                        ♡
+                      </span>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+          {!clipJobCompleted && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-vc-text-muted mb-1">
+                Kick off clip generation to visualize this song in multiple scenes.
+              </p>
+            </div>
+          )}
         </div>
-        <VCCard className="w-full space-y-2 border-vc-border/40 bg-[rgba(12,12,18,0.75)] p-4 md:w-72">
+        <VCCard className="w-full space-y-2 border-vc-border/40 bg-[rgba(12,12,18,0.75)] p-4 md:w-72 md:flex-shrink-0">
           <div className="vc-label">Genre & mood</div>
           <div className="text-sm font-medium text-white">{primaryGenre}</div>
           <div className="text-xs text-vc-text-secondary">{moodLabel}</div>
@@ -252,39 +332,6 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
           </div>
         </VCCard>
       </header>
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-vc-text-muted">Visual Style:</span>
-            {songDetails.template ? (
-              <span className="text-xs font-medium text-vc-text-primary capitalize">
-                {songDetails.template}
-              </span>
-            ) : (
-              <span className="text-xs text-vc-text-secondary">Not set</span>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-vc-text-muted">
-            Kick off clip generation to visualize this song in multiple scenes.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <VCButton
-              variant="primary"
-              iconRight={<ArrowRightIcon />}
-              onClick={onGenerateClips}
-              disabled={clipJobActive}
-            >
-              {generateButtonLabel}
-            </VCButton>
-            {clipJobError && (
-              <span className="text-xs text-vc-state-error">{clipJobError}</span>
-            )}
-          </div>
-        </div>
-      </div>
 
       {playerVideoUrl && playerDurationSec ? (
         <section className="space-y-3">
@@ -339,11 +386,12 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
             onPreviewClip={onPreviewClip}
             onRegenerateClip={onRegenerateClip}
             onRetryClip={onRetryClip}
+            onRegenerateClips={onGenerateClips}
           />
         )}
       </ErrorBoundary>
 
-      <section className="space-y-2">
+      <section className="space-y-2 pb-0">
         <div className="vc-label">Waveform</div>
         <WaveformDisplay
           waveform={waveformValues}

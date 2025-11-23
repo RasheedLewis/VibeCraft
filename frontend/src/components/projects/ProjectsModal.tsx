@@ -229,9 +229,12 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
                 </h3>
                 <p className="text-white/70 text-sm mb-1">{song.original_filename}</p>
                 <div className="flex items-center gap-3">
-                  {song.duration_sec && (
+                  {(song.composed_video_duration_sec ?? song.duration_sec) && (
                     <p className="text-white/50 text-xs">
-                      {Math.round(song.duration_sec)}s
+                      {Math.round(
+                        song.composed_video_duration_sec ?? song.duration_sec ?? 0,
+                      )}
+                      s
                     </p>
                   )}
                   {song.composed_video_s3_key && (

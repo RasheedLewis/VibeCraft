@@ -38,6 +38,7 @@ class SongRead(BaseModel):
     character_reference_image_s3_key: Optional[str] = None
     character_pose_b_s3_key: Optional[str] = None
     character_consistency_enabled: bool = False
+    total_generation_cost_usd: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 

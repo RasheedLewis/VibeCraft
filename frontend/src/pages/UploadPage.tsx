@@ -1312,7 +1312,7 @@ export const UploadPage: React.FC = () => {
       {/* For full_length videos, analysis starts automatically after video type selection */}
 
       {analysisState === 'completed' && analysisData && songDetails && (
-        <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
+        <div className="vc-app-main mx-auto w-full max-w-6xl px-4 pt-12 pb-0">
           {/* Fallback: If videoType is not set, show a message */}
           {!videoType && (
             <div className="mb-8 rounded-3xl border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-7">
@@ -1327,7 +1327,7 @@ export const UploadPage: React.FC = () => {
           )}
           {/* Character Image Upload Step - only for short-form videos */}
           {videoType === 'short_form' && result?.songId && !hideCharacterConsistency && (
-            <section className="mb-2 space-y-4 -mt-8">
+            <section className="mb-2 space-y-4 -mt-16">
               <div className="vc-label text-center">Character Consistency (Optional)</div>
               {songDetails?.character_consistency_enabled &&
               (songDetails.character_reference_image_s3_key ||
@@ -1444,11 +1444,18 @@ export const UploadPage: React.FC = () => {
           {/* Template Selector - shown when video type is selected */}
           {videoType && (
             <section className="mb-4">
-              <div className="vc-label mb-2">Visual Style</div>
-              <TemplateSelector
-                onSelect={handleTemplateUpdate}
-                selectedTemplate={template}
-              />
+              <div className="vc-label mb-2 text-center">Visual Style</div>
+              <div className="flex justify-center">
+                <TemplateSelector
+                  onSelect={handleTemplateUpdate}
+                  selectedTemplate={template}
+                  disabled={
+                    clipJobId != null ||
+                    clipJobStatus !== 'idle' ||
+                    (clipSummary?.totalClips ?? 0) > 0
+                  }
+                />
+              </div>
             </section>
           )}
 

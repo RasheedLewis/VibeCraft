@@ -164,7 +164,7 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
 
   const concurrencyLabel =
     clipSummary.processingClips > 1
-      ? `(${clipSummary.processingClips} concurrent)`
+      ? `(${clipSummary.processingClips} generating in parallel)`
       : undefined
 
   const hasComposedVideo = Boolean(clipSummary.composedVideoUrl)

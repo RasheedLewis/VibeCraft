@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { apiClient } from '../lib/apiClient'
 import type { CompositionJobStatusResponse } from '../types/song'
 import { extractErrorMessage } from '../utils/validation'
@@ -17,6 +17,8 @@ export const useCompositionPolling = ({
   const [progress, setProgress] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   const [isComplete, setIsComplete] = useState<boolean>(false)
+  // Poll counter for debugging (temporary)
+  const pollCountRef = useRef(0)
 
   useEffect(() => {
     if (!jobId || !songId || !enabled) return
@@ -24,14 +26,18 @@ export const useCompositionPolling = ({
     let cancelled = false
     let timeoutId: number | undefined
 
-    // Poll counter for debugging (temporary)
-    let pollCount = 0
-    
+    // Reset poll count for new job
+    pollCountRef.current = 0
+
     const poll = async () => {
       try {
-        pollCount += 1
-        console.log(`[POLL-COUNT] useCompositionPolling poll #${pollCount} for jobId: ${jobId}`)
-        
+        pollCountRef.current += 1
+        if (import.meta.env.DEV) {
+          console.log(
+            `[POLL-COUNT] useCompositionPolling poll #${pollCountRef.current} for jobId: ${jobId}`,
+          )
+        }
+
         const { data } = await apiClient.get<CompositionJobStatusResponse>(
           `/songs/${songId}/compose/${jobId}/status`,
         )

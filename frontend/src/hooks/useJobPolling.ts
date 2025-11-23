@@ -27,25 +27,29 @@ export function useJobPolling<T>({
 }: UseJobPollingOptions<T>) {
   const cancelledRef = useRef(false)
   const timeoutIdRef = useRef<number | undefined>(undefined)
+  // Poll counter for debugging (temporary)
+  const pollCountRef = useRef(0)
 
   useEffect(() => {
     if (!jobId || !enabled) return
 
     cancelledRef.current = false
+    pollCountRef.current = 0 // Reset poll count for new job
     // Clear any existing timeout before starting new polling
     if (timeoutIdRef.current !== undefined) {
       window.clearTimeout(timeoutIdRef.current)
       timeoutIdRef.current = undefined
     }
 
-    // Poll counter for debugging (temporary)
-    const pollCountRef = useRef(0)
-    
     const pollStatus = async () => {
       try {
         pollCountRef.current += 1
-        console.log(`[POLL-COUNT] useJobPolling poll #${pollCountRef.current} for jobId: ${jobId}`)
-        
+        if (import.meta.env.DEV) {
+          console.log(
+            `[POLL-COUNT] useJobPolling poll #${pollCountRef.current} for jobId: ${jobId}`,
+          )
+        }
+
         const response = await fetchStatus(jobId)
         if (cancelledRef.current) return
 

@@ -16,13 +16,17 @@ export function useAnalysisPolling(songId: string | null) {
 
   // Poll counter for debugging (temporary)
   const fetchCountRef = useRef(0)
-  
+
   const fetchAnalysis = useCallback(async (songId: string) => {
     setIsFetching(true)
     try {
       fetchCountRef.current += 1
-      console.log(`[POLL-COUNT] useAnalysisPolling fetchAnalysis #${fetchCountRef.current} for songId: ${songId}`)
-      
+      if (import.meta.env.DEV) {
+        console.log(
+          `[POLL-COUNT] useAnalysisPolling fetchAnalysis #${fetchCountRef.current} for songId: ${songId}`,
+        )
+      }
+
       const { data } = await apiClient.get<SongAnalysis>(`/songs/${songId}/analysis`)
       setData(data)
       setError(null)

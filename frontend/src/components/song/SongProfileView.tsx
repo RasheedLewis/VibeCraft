@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
-import { SectionCard, VCCard } from '../vibecraft'
+import { SectionCard, VCCard, VCButton } from '../vibecraft'
 import type {
   ClipGenerationSummary,
   SongAnalysis,
@@ -211,11 +211,6 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       dur: line.endSec - line.startSec,
     })) ?? []
 
-  const clipJobCompleted =
-    clipSummary &&
-    clipSummary.totalClips > 0 &&
-    clipSummary.completedClips === clipSummary.totalClips
-
   return (
     <section className="mt-4 w-full space-y-8 pb-0">
       <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-start">
@@ -272,7 +267,9 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
                 {songDetails.template}
               </span>
             ) : (
-              <span className="text-xs text-vc-text-secondary">Not set</span>
+              <span className="text-xs text-vc-text-secondary">
+                Not set (abstract by default)
+              </span>
             )}
             {/* Cost indicator - only show after video is composed */}
             {composedVideoUrl && (
@@ -312,13 +309,6 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
               </>
             )}
           </div>
-          {!clipJobCompleted && (
-            <div className="flex flex-col gap-2">
-              <p className="text-xs text-vc-text-muted mb-1">
-                Kick off clip generation to visualize this song in multiple scenes.
-              </p>
-            </div>
-          )}
         </div>
         <VCCard className="w-full space-y-2 border-vc-border/40 bg-[rgba(12,12,18,0.75)] p-4 md:w-72 md:flex-shrink-0">
           <div className="vc-label">Genre & mood</div>
@@ -393,6 +383,26 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
           />
         )}
       </ErrorBoundary>
+
+      {/* Generate Clips Button - shown when no clips exist and no active job */}
+      {(!clipSummary || clipSummary.totalClips === 0) &&
+        !clipJobId &&
+        clipJobStatus !== 'queued' &&
+        clipJobStatus !== 'processing' && (
+          <section className="flex flex-col items-center gap-3 py-2">
+            <p className="text-sm text-vc-text-muted text-center">
+              Kick off clip generation below!
+            </p>
+            <VCButton
+              variant="primary"
+              size="lg"
+              onClick={onGenerateClips}
+              className="bg-vc-accent-primary/60 hover:bg-vc-accent-primary/70 border border-vc-accent-primary/40"
+            >
+              Generate clips
+            </VCButton>
+          </section>
+        )}
 
       <section className="space-y-2 pb-0">
         <div className="vc-label">Waveform</div>

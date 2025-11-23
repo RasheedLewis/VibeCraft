@@ -439,27 +439,42 @@ def _build_scene_spec_for_clip(clip_id: UUID, analysis: SongAnalysis) -> SceneSp
     For short-form videos (no sections), uses song-level analysis.
     For long-form videos (with sections), uses section-specific analysis.
     """
+    from app.schemas.scene import TemplateType
+    from app.services.scene_planner import DEFAULT_TEMPLATE
+    
     clip = ClipRepository.get_by_id(clip_id)
     start_sec = clip.start_sec
     end_sec = clip.end_sec or (clip.start_sec + clip.duration_sec)
     duration_sec = clip.duration_sec
+
+    # Get template from song (default to 'abstract' if not set)
+    song = SongRepository.get_by_id(clip.song_id)
+    template: TemplateType = DEFAULT_TEMPLATE
+    if song and song.template:
+        # Validate template value
+        valid_templates = ["abstract", "environment", "character", "minimal"]
+        if song.template in valid_templates:
+            template = song.template  # type: ignore
+        else:
+            logger.warning(f"Invalid template '{song.template}' for song {clip.song_id}, using default 'abstract'")
 
     # For short-form videos, analysis may not have sections
     # Use build_clip_scene_spec which works with song-level analysis
     if not analysis.sections:
         logger.info(
             f"[CLIP-GEN] Clip {clip_id}: No sections in analysis, using clip scene spec "
-            f"(short-form mode) for {start_sec}s-{end_sec}s"
+            f"(short-form mode) for {start_sec}s-{end_sec}s, template={template}"
         )
         return build_clip_scene_spec(
             start_sec=start_sec,
             end_sec=end_sec,
             analysis=analysis,
+            template=template,
         )
 
     # For long-form videos with sections, use section-specific scene spec
     target_section = _find_section_for_clip(start_sec, analysis.sections)
-    scene_spec = build_scene_spec(target_section.id, analysis)
+    scene_spec = build_scene_spec(target_section.id, analysis, template=template)
     return scene_spec.model_copy(update={"duration_sec": duration_sec})
 
 

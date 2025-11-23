@@ -23,4 +23,3 @@ export function SectionErrorFallback({ error, resetErrorBoundary }: ErrorFallbac
     </div>
   )
 }
-

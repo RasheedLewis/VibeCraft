@@ -6,7 +6,10 @@ interface ErrorFallbackProps {
   resetErrorBoundary: () => void
 }
 
-export function VideoPlayerErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps) {
+export function VideoPlayerErrorFallback({
+  error,
+  resetErrorBoundary,
+}: ErrorFallbackProps) {
   return (
     <div className="w-full aspect-video bg-black flex items-center justify-center rounded-lg border border-vc-state-error/50">
       <div className="text-center p-6">
@@ -21,4 +24,3 @@ export function VideoPlayerErrorFallback({ error, resetErrorBoundary }: ErrorFal
     </div>
   )
 }
-

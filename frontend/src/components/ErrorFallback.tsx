@@ -37,4 +37,3 @@ export function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps)
     </div>
   )
 }
-

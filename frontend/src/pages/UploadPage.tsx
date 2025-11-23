@@ -91,7 +91,10 @@ export const UploadPage: React.FC = () => {
   const [hideCharacterConsistency, setHideCharacterConsistency] = useState(false)
   const [showNoCharacterConfirm, setShowNoCharacterConfirm] = useState(false)
   const [showProfileHint, setShowProfileHint] = useState(false)
-  const [template, setTemplate] = useState<'abstract' | 'environment' | 'character' | 'minimal' | null>(null)
+  const [template, setTemplate] = useState<
+    'abstract' | 'environment' | 'character' | 'minimal'
+  >('abstract')
+  const templateInitializedRef = useRef(false)
 
   // Use custom hooks for video type and audio selection
   const videoTypeSelection = useVideoTypeSelection({
@@ -117,15 +120,27 @@ export const UploadPage: React.FC = () => {
   const videoType = videoTypeSelection.videoType
   // const isSettingVideoType = videoTypeSelection.isSetting
 
-  // Sync template from songDetails
+  // Sync template from songDetails (only once when songDetails loads)
   useEffect(() => {
-    if (songDetails?.template) {
-      setTemplate(songDetails.template as 'abstract' | 'environment' | 'character' | 'minimal')
-    } else if (songDetails && !songDetails.template) {
-      // Default to 'abstract' if no template is set
-      setTemplate('abstract')
+    if (!songDetails || templateInitializedRef.current) return
+
+    const songTemplate = songDetails.template as
+      | 'abstract'
+      | 'environment'
+      | 'character'
+      | 'minimal'
+      | null
+      | undefined
+
+    // Only update if song has a template set, otherwise keep default 'abstract'
+    // Use requestAnimationFrame to avoid synchronous setState in effect
+    if (songTemplate && songTemplate !== template) {
+      requestAnimationFrame(() => {
+        setTemplate(songTemplate)
+      })
     }
-  }, [songDetails])
+    templateInitializedRef.current = true
+  }, [songDetails, template])
 
   // Hide video type selector 3 seconds after analysis begins (fade out)
   // COMMENTED OUT: Timing logic for fade-out
@@ -467,12 +482,14 @@ export const UploadPage: React.FC = () => {
     setPlayerClipSelectionLocked(false)
     setVideoTypeSelectorVisible(true)
     autoScrollCompletedRef.current = false // Reset scroll flag for new upload
+    templateInitializedRef.current = false // Reset template initialization flag
 
     // Clear persisted state
     localStorage.removeItem('vibecraft_current_song_id')
 
     videoTypeSelection.reset()
     audioSelection.reset()
+    setTemplate('abstract') // Reset to default
     // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
     // if (highlightTimeoutRef.current) {
     //   window.clearTimeout(highlightTimeoutRef.current)
@@ -513,7 +530,9 @@ export const UploadPage: React.FC = () => {
       if (!result?.songId) return
       try {
         setTemplate(newTemplate)
-        await apiClient.patch(`/songs/${result.songId}/template`, { template: newTemplate })
+        await apiClient.patch(`/songs/${result.songId}/template`, {
+          template: newTemplate,
+        })
         // Refresh song details to get updated template
         await fetchSongDetails(result.songId)
       } catch (err) {
@@ -1427,30 +1446,30 @@ export const UploadPage: React.FC = () => {
             songDetails && (
               <ErrorBoundary FallbackComponent={SectionErrorFallback}>
                 <SongProfileView
-                analysisData={analysisData}
-                songDetails={songDetails}
-                clipSummary={clipSummary}
-                clipJobId={clipJobId}
-                clipJobStatus={clipJobStatus}
-                clipJobProgress={clipJobProgress}
-                clipJobError={clipJobError}
-                isComposing={isComposing}
-                composeJobProgress={composeJobProgress}
-                playerActiveClipId={playerActiveClipId}
-                highlightedSectionId={highlightedSectionId}
-                metadata={metadata}
-                lyricsBySection={lyricsBySection}
-                audioUrl={result?.audioUrl ?? null}
-                onGenerateClips={handleGenerateClips}
-                onCancelClipJob={handleCancelClipJob}
-                onCompose={handleComposeClips}
-                onPreviewClip={handlePreviewClip}
-                onRegenerateClip={handleRegenerateClip}
-                onRetryClip={handleRetryClip}
-                onPlayerClipSelect={handlePlayerClipSelect}
-                onSectionSelect={handleSectionSelect}
-                onTitleUpdate={handleTitleUpdate}
-              />
+                  analysisData={analysisData}
+                  songDetails={songDetails}
+                  clipSummary={clipSummary}
+                  clipJobId={clipJobId}
+                  clipJobStatus={clipJobStatus}
+                  clipJobProgress={clipJobProgress}
+                  clipJobError={clipJobError}
+                  isComposing={isComposing}
+                  composeJobProgress={composeJobProgress}
+                  playerActiveClipId={playerActiveClipId}
+                  highlightedSectionId={highlightedSectionId}
+                  metadata={metadata}
+                  lyricsBySection={lyricsBySection}
+                  audioUrl={result?.audioUrl ?? null}
+                  onGenerateClips={handleGenerateClips}
+                  onCancelClipJob={handleCancelClipJob}
+                  onCompose={handleComposeClips}
+                  onPreviewClip={handlePreviewClip}
+                  onRegenerateClip={handleRegenerateClip}
+                  onRetryClip={handleRetryClip}
+                  onPlayerClipSelect={handlePlayerClipSelect}
+                  onSectionSelect={handleSectionSelect}
+                  onTitleUpdate={handleTitleUpdate}
+                />
               </ErrorBoundary>
             )}
         </div>

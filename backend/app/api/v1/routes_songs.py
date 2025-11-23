@@ -109,14 +109,15 @@ def _sanitize_filename(filename: str) -> str:
 router = APIRouter()
 
 
-@router.get("/", response_model=List[SongRead], summary="List songs (max 5 per user)")
+@router.get("/", response_model=List[SongRead], summary="List songs with analysis (max 5 per user)")
 def list_songs(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> List[Song]:
-    """List user's songs, limited to 5 most recent."""
+    """List user's songs that have analysis, limited to 5 most recent."""
     statement = (
         select(Song)
+        .join(SongAnalysisRecord, Song.id == SongAnalysisRecord.song_id)
         .where(Song.user_id == current_user.id)
         .order_by(Song.created_at.desc())
         .limit(5)

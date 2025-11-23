@@ -113,26 +113,9 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
   } = useQuery<SongRead[]>({
     queryKey: ['songs'],
     queryFn: async () => {
+      // Backend now filters to only return songs with analysis
       const response = await apiClient.get<SongRead[]>('/songs/')
-      const allSongs = response.data
-
-      // Filter to only show songs with complete analysis
-      // Check if analysis exists for each song by attempting to fetch it
-      const songsWithAnalysis = await Promise.allSettled(
-        allSongs.map(async (song) => {
-          try {
-            await apiClient.get(`/songs/${song.id}/analysis`)
-            return song
-          } catch {
-            return null
-          }
-        }),
-      )
-
-      // Return only songs where analysis fetch succeeded
-      return songsWithAnalysis
-        .map((result) => (result.status === 'fulfilled' ? result.value : null))
-        .filter((song): song is SongRead => song !== null)
+      return response.data
     },
     enabled: isAuthenticated && isOpen,
   })

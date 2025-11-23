@@ -123,6 +123,7 @@ class BeatEffectConfig(BaseSettings):
         env_file=ENV_FILE_PATH,
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # Ignore extra environment variables
     )
     
     enabled: bool = Field(default=True, alias="BEAT_EFFECTS_ENABLED")
@@ -139,7 +140,26 @@ class BeatEffectConfig(BaseSettings):
     tolerance_ms: float = Field(default=20.0, alias="BEAT_EFFECT_TOLERANCE_MS")  # Tolerance window in milliseconds
     
     # Test mode configuration
-    test_mode_enabled: bool = Field(default=False, alias="BEAT_EFFECT_TEST_MODE")  # Enable test mode for exaggerated effects
+    test_mode_enabled: bool = Field(
+        default=False,
+        alias="BEAT_EFFECT_TEST_MODE",
+        description="Enable test mode for exaggerated effects"
+    )  # Enable test mode for exaggerated effects
+    
+    @field_validator("test_mode_enabled", mode="before")
+    @classmethod
+    def parse_test_mode(cls, v: Any) -> bool:
+        """Parse test mode from various input types, handling empty strings."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            v = v.strip().lower()
+            if v in ("", "false", "0", "no", "off"):
+                return False
+            if v in ("true", "1", "yes", "on"):
+                return True
+        return False
+    
     test_mode_tolerance_multiplier: float = 3.0  # Test mode tolerance multiplier (150ms vs 50ms)
     test_mode_flash_intensity_multiplier: float = 3.0  # Test mode flash intensity multiplier
     test_mode_glitch_intensity: float = 0.8  # Test mode glitch intensity

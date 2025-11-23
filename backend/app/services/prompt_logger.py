@@ -29,6 +29,11 @@ def log_prompt_to_file(
         clip_id: Optional clip ID
         optimized: Whether this is the optimized prompt (True) or original (False)
     """
+    # Skip logging test prompts
+    if prompt and prompt.strip().lower() == "test prompt":
+        logger.debug("Skipping log for test prompt")
+        return
+    
     try:
         # Ensure directory exists
         PROMPTS_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)

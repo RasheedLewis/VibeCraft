@@ -37,6 +37,7 @@ class SongRead(BaseModel):
     template: Optional[str] = None
     character_reference_image_s3_key: Optional[str] = None
     character_pose_b_s3_key: Optional[str] = None
+    character_selected_pose: str = "A"
     character_consistency_enabled: bool = False
     total_generation_cost_usd: Optional[float] = None
     created_at: datetime
@@ -98,5 +99,15 @@ class TemplateUpdate(BaseModel):
         valid_templates = ["abstract", "environment", "character", "minimal"]
         if self.template not in valid_templates:
             raise ValueError(f"template must be one of {valid_templates}")
+        return self
+
+
+class SelectedPoseUpdate(BaseModel):
+    selected_pose: str = Field(description="Selected character pose: 'A' or 'B'")
+    
+    @model_validator(mode='after')
+    def validate_pose(self) -> 'SelectedPoseUpdate':
+        if self.selected_pose not in ("A", "B"):
+            raise ValueError("selected_pose must be 'A' or 'B'")
         return self
 

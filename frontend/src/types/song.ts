@@ -149,6 +149,7 @@ export interface SongRead {
   template?: 'abstract' | 'environment' | 'character' | 'minimal' | null
   character_reference_image_s3_key?: string | null
   character_pose_b_s3_key?: string | null
+  character_selected_pose?: 'A' | 'B'
   character_consistency_enabled?: boolean
   total_generation_cost_usd?: number | null
   created_at: string

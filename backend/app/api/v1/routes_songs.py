@@ -36,6 +36,7 @@ from app.schemas.clip import (
 from app.schemas.job import ClipGenerationJobResponse, SongAnalysisJobResponse
 from app.schemas.song import (
     AudioSelectionUpdate,
+    SelectedPoseUpdate,
     SongRead,
     SongUploadResponse,
     TemplateUpdate,
@@ -818,6 +819,7 @@ async def get_character_image_urls(
     result: dict = {
         "pose_a_url": None,
         "pose_b_url": None,
+        "selected_pose": song.character_selected_pose or "A",
     }
     
     # Get pose-a (reference image) URL
@@ -847,6 +849,48 @@ async def get_character_image_urls(
             logger.warning(f"Failed to generate presigned URL for pose-b: {exc}")
     
     return result
+
+
+@router.patch(
+    "/{song_id}/selected-pose",
+    response_model=SongRead,
+    summary="Update selected character pose",
+)
+def update_selected_pose(
+    song_id: UUID,
+    pose_update: SelectedPoseUpdate,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Update the selected character pose (A or B) for a song."""
+    song = get_song_or_404(song_id, db)
+    
+    # Only allow for short_form videos
+    if song.video_type != "short_form":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Character pose selection only available for short_form videos",
+        )
+    
+    # Validate that at least one pose exists
+    if pose_update.selected_pose == "A" and not song.character_reference_image_s3_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pose A image not available. Please upload a character reference image first.",
+        )
+    if pose_update.selected_pose == "B" and not song.character_pose_b_s3_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pose B image not available. Please upload a Pose B image first.",
+        )
+    
+    song.character_selected_pose = pose_update.selected_pose
+    db.add(song)
+    db.commit()
+    db.refresh(song)
+    
+    logger.info(f"Updated selected pose for song {song_id} to {pose_update.selected_pose}")
+    
+    return song
 
 
 @router.get(
@@ -1152,6 +1196,48 @@ def generate_clip_batch(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+
+@router.post(
+    "/{song_id}/clips/job/{job_id}/cancel",
+    status_code=status.HTTP_200_OK,
+    summary="Cancel a clip generation job",
+)
+def cancel_clip_generation_job(
+    song_id: UUID,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """
+    Cancel a clip generation job.
+    
+    Args:
+        song_id: Song ID
+        job_id: Clip generation job ID
+        
+    Returns:
+        Dict with status message
+    """
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Song not found"
+        )
+    
+    from app.services.clip_generation import cancel_clip_generation_job
+    from app.exceptions import JobNotFoundError, JobStateError
+    
+    try:
+        cancel_clip_generation_job(job_id)
+        return {"status": "cancelled", "job_id": job_id}
+    except JobNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        ) from e
+    except JobStateError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
 
 
 @router.post(

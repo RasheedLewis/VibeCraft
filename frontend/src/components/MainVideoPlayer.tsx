@@ -423,6 +423,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   const [muted, setMuted] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [pipSupported, setPipSupported] = useState(false)
+  const [actualVideoDuration, setActualVideoDuration] = useState<number | null>(null)
 
   const [aMark, setAMark] = useState<number | null>(null)
   const [bMark, setBMark] = useState<number | null>(null)
@@ -445,6 +446,10 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     return () => window.removeEventListener('keydown', handleEscape)
   }, [showSettings])
 
+  // Use actual video duration when available (for individual clip previews), otherwise use prop duration
+  const effectiveDuration =
+    actualVideoDuration && !usingExternalAudio ? actualVideoDuration : durationSec
+
   // Shared function to handle time clamping and stopping at end
   const handleTimeClamp = useCallback(
     (currentTime: number, mediaElement: HTMLAudioElement | HTMLVideoElement) => {
@@ -456,18 +461,18 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
       }
 
       // Clamp current time to duration for display
-      const clampedTime = Math.min(currentTime, durationSec)
+      const clampedTime = Math.min(currentTime, effectiveDuration)
       setCurrent(clampedTime)
 
       // If we've reached or exceeded the duration and media is playing, stop and reset
-      if (currentTime >= durationSec && !mediaElement.paused) {
+      if (currentTime >= effectiveDuration && !mediaElement.paused) {
         mediaElement.pause()
         mediaElement.currentTime = 0
         setIsPlaying(false)
         setCurrent(0)
       }
     },
-    [durationSec],
+    [effectiveDuration],
   )
 
   const resolveClipForTime = useCallback(
@@ -594,6 +599,12 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         setIsPlaying(false)
         setCurrent(0)
       }
+      const handleLoadedMetadata = () => {
+        // Use actual video duration when available (for individual clip previews)
+        if (videoEl.duration && !isNaN(videoEl.duration) && videoEl.duration > 0) {
+          setActualVideoDuration(videoEl.duration)
+        }
+      }
 
       videoEl.volume = muted ? 0 : volume
       videoEl.muted = muted
@@ -603,12 +614,14 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
       videoEl.addEventListener('play', handlePlay)
       videoEl.addEventListener('pause', handlePause)
       videoEl.addEventListener('ended', handleEnded)
+      videoEl.addEventListener('loadedmetadata', handleLoadedMetadata)
 
       return () => {
         videoEl.removeEventListener('timeupdate', handleTime)
         videoEl.removeEventListener('play', handlePlay)
         videoEl.removeEventListener('pause', handlePause)
         videoEl.removeEventListener('ended', handleEnded)
+        videoEl.removeEventListener('loadedmetadata', handleLoadedMetadata)
       }
     }
   }, [
@@ -619,6 +632,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     audioUrl,
     videoUrl,
     durationSec,
+    effectiveDuration,
     handleTimeClamp,
   ])
 
@@ -670,6 +684,90 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     }
   }, [usingExternalAudio])
 
+  // When videoUrl changes (e.g., navigating between clips), ensure video loads and plays if it was playing
+  const wasPlayingRef = useRef(false)
+  const prevVideoUrlRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!videoUrl || usingExternalAudio) {
+      prevVideoUrlRef.current = videoUrl
+      setActualVideoDuration(null) // Reset when URL changes
+      return
+    }
+
+    const videoEl = videoRef.current
+    if (!videoEl) {
+      prevVideoUrlRef.current = videoUrl
+      setActualVideoDuration(null) // Reset when URL changes
+      return
+    }
+
+    // Check if videoUrl actually changed
+    const urlChanged = prevVideoUrlRef.current !== videoUrl
+    prevVideoUrlRef.current = videoUrl
+
+    if (!urlChanged) return
+
+    // Reset actual duration when URL changes (will be set when metadata loads)
+    setActualVideoDuration(null)
+
+    // Store if we were playing before URL change
+    const shouldResume = wasPlayingRef.current
+
+    const handleCanPlay = () => {
+      // If we were playing before, resume playback
+      if (shouldResume) {
+        videoEl.play().catch((err) => {
+          console.error(
+            '[MainVideoPlayer] Failed to resume playback after URL change:',
+            err,
+          )
+          setIsPlaying(false)
+        })
+      }
+    }
+
+    const handleLoadedData = () => {
+      // Also try to play on loadeddata as a fallback
+      if (shouldResume && videoEl.paused) {
+        videoEl.play().catch((err) => {
+          console.error(
+            '[MainVideoPlayer] Failed to resume playback after URL change (loadeddata):',
+            err,
+          )
+          setIsPlaying(false)
+        })
+      }
+    }
+
+    videoEl.addEventListener('canplay', handleCanPlay)
+    videoEl.addEventListener('loadeddata', handleLoadedData)
+
+    // Trigger load if needed
+    if (videoEl.readyState < 2) {
+      videoEl.load()
+    } else if (shouldResume && videoEl.paused) {
+      // Video is already loaded, try to play immediately
+      videoEl.play().catch((err) => {
+        console.error(
+          '[MainVideoPlayer] Failed to resume playback (already loaded):',
+          err,
+        )
+        setIsPlaying(false)
+      })
+    }
+
+    return () => {
+      videoEl.removeEventListener('canplay', handleCanPlay)
+      videoEl.removeEventListener('loadeddata', handleLoadedData)
+    }
+  }, [videoUrl, usingExternalAudio])
+
+  // Track playing state to resume after URL changes
+  useEffect(() => {
+    wasPlayingRef.current = isPlaying
+  }, [isPlaying])
+
   const togglePlay = () => {
     const audioEl = usingExternalAudio ? audioRef.current : null
     const videoEl = videoRef.current
@@ -708,7 +806,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
       videoEl.pause()
     } else {
       // If video is at or past the end, reset to beginning before playing
-      if (videoEl.currentTime >= durationSec) {
+      if (videoEl.currentTime >= effectiveDuration) {
         videoEl.currentTime = 0
         setCurrent(0)
         justResetRef.current = true // Flag to ignore next timeupdate
@@ -722,7 +820,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   }
 
   const jump = (delta: number) => {
-    const target = clampValue(current + delta, 0, durationSec)
+    const target = clampValue(current + delta, 0, effectiveDuration)
     seekTo(target)
   }
 
@@ -738,7 +836,28 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     // Find the next clip that starts after the current time
     const nextClip = sortedClips.find((clip) => clip.startSec > current)
     if (nextClip) {
+      const wasPlaying = isPlaying
       seekTo(nextClip.startSec)
+      // Also update the active clip selection when previewing individual clips
+      if (onClipSelect) {
+        onClipSelect(nextClip.id)
+      }
+      // If we were playing, ensure playback resumes after video loads
+      if (wasPlaying && !usingExternalAudio) {
+        const videoEl = videoRef.current
+        if (videoEl) {
+          const tryPlay = () => {
+            if (videoEl.readyState >= 2) {
+              videoEl.play().catch((err) => {
+                console.error('[MainVideoPlayer] Failed to resume playback:', err)
+              })
+            } else {
+              videoEl.addEventListener('canplay', tryPlay, { once: true })
+            }
+          }
+          tryPlay()
+        }
+      }
     } else {
       // Already past all clips, jump to end or forward 5s
       jump(5)
@@ -761,11 +880,54 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
       // Find the previous clip
       const currentIndex = sortedClips.findIndex((c) => c.id === currentClip.id)
       if (currentIndex > 0) {
-        seekTo(sortedClips[currentIndex - 1].startSec)
+        const prevClip = sortedClips[currentIndex - 1]
+        const wasPlaying = isPlaying
+        seekTo(prevClip.startSec)
+        // Also update the active clip selection when previewing individual clips
+        if (onClipSelect) {
+          onClipSelect(prevClip.id)
+        }
+        // If we were playing, ensure playback resumes after video loads
+        if (wasPlaying && !usingExternalAudio) {
+          const videoEl = videoRef.current
+          if (videoEl) {
+            const tryPlay = () => {
+              if (videoEl.readyState >= 2) {
+                videoEl.play().catch((err) => {
+                  console.error('[MainVideoPlayer] Failed to resume playback:', err)
+                })
+              } else {
+                videoEl.addEventListener('canplay', tryPlay, { once: true })
+              }
+            }
+            tryPlay()
+          }
+        }
         return
       } else {
         // Already at first clip, jump to start
+        const wasPlaying = isPlaying
         seekTo(Math.max(0, currentClip.startSec))
+        // Also update the active clip selection when previewing individual clips
+        if (onClipSelect && currentClip) {
+          onClipSelect(currentClip.id)
+        }
+        // If we were playing, ensure playback resumes after video loads
+        if (wasPlaying && !usingExternalAudio) {
+          const videoEl = videoRef.current
+          if (videoEl) {
+            const tryPlay = () => {
+              if (videoEl.readyState >= 2) {
+                videoEl.play().catch((err) => {
+                  console.error('[MainVideoPlayer] Failed to resume playback:', err)
+                })
+              } else {
+                videoEl.addEventListener('canplay', tryPlay, { once: true })
+              }
+            }
+            tryPlay()
+          }
+        }
         return
       }
     }
@@ -781,7 +943,28 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     }
 
     if (prevClip) {
+      const wasPlaying = isPlaying
       seekTo(prevClip.startSec)
+      // Also update the active clip selection when previewing individual clips
+      if (onClipSelect) {
+        onClipSelect(prevClip.id)
+      }
+      // If we were playing, ensure playback resumes after video loads
+      if (wasPlaying && !usingExternalAudio) {
+        const videoEl = videoRef.current
+        if (videoEl) {
+          const tryPlay = () => {
+            if (videoEl.readyState >= 2) {
+              videoEl.play().catch((err) => {
+                console.error('[MainVideoPlayer] Failed to resume playback:', err)
+              })
+            } else {
+              videoEl.addEventListener('canplay', tryPlay, { once: true })
+            }
+          }
+          tryPlay()
+        }
+      }
     } else {
       // Before all clips, jump to start or backward 5s
       jump(-5)
@@ -789,7 +972,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   }
 
   const seekTo = (time: number) => {
-    const newTime = clampValue(time, 0, durationSec)
+    const newTime = clampValue(time, 0, effectiveDuration)
     if (usingExternalAudio && audioRef.current) {
       audioRef.current.currentTime = newTime
       setVideoPlaybackTime(newTime)
@@ -803,7 +986,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     if (!railRef.current) return
     const rect = railRef.current.getBoundingClientRect()
     const ratio = clampValue((clientX - rect.left) / rect.width, 0, 1)
-    const target = ratio * durationSec
+    const target = ratio * effectiveDuration
     seekTo(target)
   }
 
@@ -818,7 +1001,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     if (!railRef.current) return
     const rect = railRef.current.getBoundingClientRect()
     const ratio = clampValue((e.clientX - rect.left) / rect.width, 0, 1)
-    setHoverSec(ratio * durationSec)
+    setHoverSec(ratio * effectiveDuration)
   }
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -992,7 +1175,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           </TransportButton>
           {/* Time Display: Shows current time / total duration */}
           <span className="ml-2 text-[11px] text-white/90 bg-black/40 rounded px-1 py-0.5">
-            {fmtTime(current)} / {fmtTime(durationSec)}
+            {fmtTime(current)} / {fmtTime(effectiveDuration)}
           </span>
         </div>
 

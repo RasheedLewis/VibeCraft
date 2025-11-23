@@ -248,10 +248,21 @@ export const UploadPage: React.FC = () => {
     composeJobId,
   ])
 
-  const handleCancelClipJob = useCallback(() => {
-    if (!clipJobId) return
-    clipPolling.setError('Canceling clip generation is not available yet.')
-  }, [clipJobId, clipPolling])
+  const handleCancelClipJob = useCallback(async () => {
+    if (!clipJobId || !result?.songId) return
+
+    try {
+      await apiClient.post(`/songs/${result.songId}/clips/job/${clipJobId}/cancel`)
+      // The polling will pick up the cancelled status
+      clipPolling.setError(null)
+    } catch (err) {
+      const errorMessage = extractErrorMessage(
+        err,
+        'Failed to cancel clip generation job.',
+      )
+      clipPolling.setError(errorMessage)
+    }
+  }, [clipJobId, result?.songId, clipPolling])
 
   const handleComposeClips = useCallback(async () => {
     if (!result?.songId || !clipSummary) {
@@ -1351,7 +1362,14 @@ export const UploadPage: React.FC = () => {
                       </div>
                     </div>
                   )} */}
-                  <SelectedTemplateDisplay songId={result.songId} />
+                  <SelectedTemplateDisplay
+                    songId={result.songId}
+                    disabled={
+                      clipJobId != null ||
+                      clipJobStatus !== 'idle' ||
+                      (clipSummary?.totalClips ?? 0) > 0
+                    }
+                  />
                 </>
               ) : (
                 // Show upload/template selection UI
@@ -1379,6 +1397,11 @@ export const UploadPage: React.FC = () => {
                       setError(error)
                     }}
                     onTemplateSelect={() => setTemplateModalOpen(true)}
+                    disabled={
+                      clipJobId != null ||
+                      clipJobStatus !== 'idle' ||
+                      (clipSummary?.totalClips ?? 0) > 0
+                    }
                   />
                   <TemplateCharacterModal
                     isOpen={templateModalOpen}

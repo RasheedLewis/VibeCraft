@@ -8,6 +8,7 @@ export interface CharacterImageUploadProps {
   onUploadError?: (error: string) => void
   onTemplateSelect?: () => void
   className?: string
+  disabled?: boolean
 }
 
 const MAX_FILE_SIZE_MB = 10
@@ -37,6 +38,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
   onUploadError,
   onTemplateSelect,
   className,
+  disabled = false,
 }) => {
   const [uploading, setUploading] = useState(false)
   const [uploadingPoseB, setUploadingPoseB] = useState(false)
@@ -44,6 +46,21 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
   const [poseBUrl, setPoseBUrl] = useState<string | null>(null)
   const [selectedPose, setSelectedPose] = useState<'A' | 'B'>('A')
   const [error, setError] = useState<string | null>(null)
+
+  // Save selected pose to backend
+  const saveSelectedPose = useCallback(
+    async (pose: 'A' | 'B') => {
+      try {
+        await apiClient.patch(`/songs/${songId}/selected-pose`, {
+          selected_pose: pose,
+        })
+      } catch (err) {
+        console.error('Failed to save selected pose:', err)
+        // Don't show error to user - this is a background operation
+      }
+    },
+    [songId],
+  )
   const fileInputRef = useRef<HTMLInputElement>(null)
   const poseBInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -59,6 +76,10 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
         }
         if (response.data.pose_b_url) {
           setPoseBUrl(response.data.pose_b_url)
+        }
+        // Load selected pose from backend
+        if (response.data.selected_pose) {
+          setSelectedPose(response.data.selected_pose as 'A' | 'B')
         }
       } catch {
         // Silently fail - images may not exist yet
@@ -206,18 +227,20 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
         <div className="flex-1">
           <div
             className={clsx(
-              'relative rounded-lg border-2 border-dashed transition-all duration-300 cursor-pointer',
-              isDragging
+              'relative rounded-lg border-2 border-dashed transition-all duration-300',
+              disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+              !disabled && isDragging
                 ? 'border-vc-accent-primary/90 shadow-vc3 bg-vc-accent-primary/10'
-                : 'border-vc-border/70 hover:border-vc-accent-primary/60 hover:shadow-vc2',
+                : 'border-vc-border/70',
+              !disabled && 'hover:border-vc-accent-primary/60 hover:shadow-vc2',
               'bg-[rgba(20,20,32,0.68)]/60 backdrop-blur-xl',
               uploading && 'pointer-events-none opacity-60',
               error && 'border-red-500/50',
             )}
-            onDrop={(e) => handleDrop(e, false)}
-            onDragOver={(e) => handleDragOver(e, false)}
-            onDragLeave={(e) => handleDragLeave(e, false)}
-            onClick={() => handleClick(false)}
+            onDrop={disabled ? undefined : (e) => handleDrop(e, false)}
+            onDragOver={disabled ? undefined : (e) => handleDragOver(e, false)}
+            onDragLeave={disabled ? undefined : (e) => handleDragLeave(e, false)}
+            onClick={disabled ? undefined : () => handleClick(false)}
           >
             <input
               ref={fileInputRef}
@@ -233,11 +256,15 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
                   'flex items-center justify-center rounded-xl overflow-hidden p-1',
                   imageSize,
                   selectedPose === 'A' &&
-                    'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10',
+                    (disabled
+                      ? 'ring-2 ring-vc-accent-primary/50 bg-vc-accent-primary/5'
+                      : 'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10'),
                 )}
                 onClick={(e) => {
+                  if (disabled) return
                   e.stopPropagation()
                   setSelectedPose('A')
+                  saveSelectedPose('A')
                 }}
               >
                 <img
@@ -285,23 +312,29 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
             <div className="flex flex-col items-center">
               <div
                 className={clsx(
-                  'relative rounded-lg border-2 border-dashed transition-all duration-300 cursor-pointer',
+                  'relative rounded-lg border-2 border-dashed transition-all duration-300',
                   imageSize,
-                  isDraggingPoseB
+                  disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                  !disabled && isDraggingPoseB
                     ? 'border-vc-accent-primary/90 shadow-vc3 bg-vc-accent-primary/10'
-                    : 'border-vc-border/40 hover:border-vc-border/60',
+                    : 'border-vc-border/40',
+                  !disabled && 'hover:border-vc-border/60',
                   'bg-[rgba(20,20,32,0.4)]/40',
                   uploadingPoseB && 'pointer-events-none opacity-60',
                   poseBUrl &&
                     selectedPose === 'B' &&
-                    'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10',
+                    (disabled
+                      ? 'ring-1 ring-vc-accent-primary/30 bg-vc-accent-primary/5'
+                      : 'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10'),
                 )}
-                onDrop={(e) => handleDrop(e, true)}
-                onDragOver={(e) => handleDragOver(e, true)}
-                onDragLeave={(e) => handleDragLeave(e, true)}
+                onDrop={disabled ? undefined : (e) => handleDrop(e, true)}
+                onDragOver={disabled ? undefined : (e) => handleDragOver(e, true)}
+                onDragLeave={disabled ? undefined : (e) => handleDragLeave(e, true)}
                 onClick={() => {
+                  if (disabled) return
                   if (poseBUrl) {
                     setSelectedPose('B')
+                    saveSelectedPose('B')
                   } else {
                     handleClick(true)
                   }
@@ -321,9 +354,12 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
                       'rounded-xl overflow-hidden p-1',
                       imageSize,
                       selectedPose === 'B' &&
-                        'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10',
+                        (disabled
+                          ? 'ring-2 ring-vc-accent-primary/50 bg-vc-accent-primary/5'
+                          : 'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10'),
                     )}
                     onClick={(e) => {
+                      if (disabled) return
                       e.stopPropagation()
                       setSelectedPose('B')
                     }}
@@ -358,7 +394,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
               <InfoIcon className="h-3 w-3 text-vc-text-muted hover:text-vc-text-secondary cursor-help" />
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover:block z-10 w-64">
                 <div className="bg-black/90 text-white text-xs rounded-lg px-3 py-2 shadow-lg border border-white/10">
-                  <p className="text-white/80">
+                  <p className="text-white/60">
                     Optionally add a 'Pose B' - in the future we'll support video
                     generation with multiple images.
                   </p>
@@ -371,7 +407,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
         {/* Template selection button */}
         <button
           onClick={onTemplateSelect}
-          disabled={uploading || uploadingPoseB}
+          disabled={uploading || uploadingPoseB || disabled}
           className="flex-1 px-4 py-4 bg-vc-border/30 text-vc-text-secondary rounded-lg hover:bg-vc-border/50 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex flex-col items-center justify-center"
         >
           <svg

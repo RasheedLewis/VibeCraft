@@ -75,6 +75,11 @@ def _generate_image_to_video(
 
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
+        logger.info(
+            f"[VIDEO-GEN] Image-to-video frame calculation: "
+            f"num_frames param={num_frames}, scene_spec.duration_sec={scene_spec.duration_sec}, "
+            f"effective_fps={effective_fps}, calculated frame_count={frame_count}"
+        )
 
         # CHARACTER CONSISTENCY: Both image AND prompt are used together
         # - Image provides visual character reference (appearance, style, pose)
@@ -88,6 +93,10 @@ def _generate_image_to_video(
             "height": 320,
             "fps": effective_fps,
         }
+        logger.info(
+            f"[VIDEO-GEN] Image-to-video API params: num_frames={input_params['num_frames']}, "
+            f"fps={input_params['fps']}, width={input_params['width']}, height={input_params['height']}"
+        )
 
         if seed is not None:
             input_params["seed"] = seed
@@ -289,6 +298,11 @@ def generate_section_video(
         # Parameters: prompt, num_frames, width, height, fps, seed, image (optional)
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
+        logger.info(
+            f"[VIDEO-GEN] Text-to-video frame calculation: "
+            f"num_frames param={num_frames}, scene_spec.duration_sec={scene_spec.duration_sec}, "
+            f"effective_fps={effective_fps}, calculated frame_count={frame_count}"
+        )
         input_params = {
             "prompt": optimized_prompt,
             "num_frames": max(1, min(frame_count, 120)),
@@ -296,6 +310,10 @@ def generate_section_video(
             "height": 320,  # 16:9 aspect ratio (576x320)
             "fps": effective_fps,
         }
+        logger.info(
+            f"[VIDEO-GEN] Text-to-video API params: num_frames={input_params['num_frames']}, "
+            f"fps={input_params['fps']}, width={input_params['width']}, height={input_params['height']}"
+        )
 
         # CHARACTER CONSISTENCY: Add image input if provided (for image-to-video)
         # - Both image AND prompt are used together (image = character reference, prompt = scene/motion)

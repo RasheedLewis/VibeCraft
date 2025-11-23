@@ -8,7 +8,7 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 import httpx
@@ -177,7 +177,10 @@ def execute_composition_pipeline(
             normalized_paths = []
             normalize_progress_per_clip = (PROGRESS_NORMALIZE_END - PROGRESS_NORMALIZE_START) / len(clip_paths)
 
-            def normalize_single_clip(i: int, clip_path: Path) -> Path:
+            # Create a list of expected durations from clips (matching clip_paths order)
+            clip_durations = [clip.duration_sec if hasattr(clip, 'duration_sec') else None for clip in clips]
+
+            def normalize_single_clip(i: int, clip_path: Path, expected_duration: Optional[float]) -> Path:
                 """Normalize a single clip."""
                 # Check cancellation
                 with session_scope() as session:
@@ -187,7 +190,7 @@ def execute_composition_pipeline(
 
                 normalized_path = temp_path / f"normalized_{i}.mp4"
                 try:
-                    normalize_clip(clip_path, normalized_path)
+                    normalize_clip(clip_path, normalized_path, target_duration_sec=expected_duration)
                     logger.info(f"Normalized clip {i + 1}/{len(clip_paths)}")
                     return normalized_path
                 except Exception as e:
@@ -196,7 +199,7 @@ def execute_composition_pipeline(
             # Normalize in parallel
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
                 future_to_index = {
-                    executor.submit(normalize_single_clip, i, clip_path): i
+                    executor.submit(normalize_single_clip, i, clip_path, clip_durations[i]): i
                     for i, clip_path in enumerate(clip_paths)
                 }
 

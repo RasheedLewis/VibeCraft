@@ -5,6 +5,7 @@ import { apiClient } from '../../lib/apiClient'
 export interface SelectedTemplateDisplayProps {
   songId: string
   className?: string
+  disabled?: boolean
 }
 
 const MAX_FILE_SIZE_MB = 10
@@ -31,6 +32,7 @@ const InfoIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => (
 export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = ({
   songId,
   className,
+  disabled = false,
 }) => {
   const [poseAUrl, setPoseAUrl] = useState<string | null>(null)
   const [poseBUrl, setPoseBUrl] = useState<string | null>(null)
@@ -41,6 +43,21 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
   const [isDraggingPoseB, setIsDraggingPoseB] = useState(false)
   const poseBInputRef = useRef<HTMLInputElement>(null)
 
+  // Save selected pose to backend
+  const saveSelectedPose = useCallback(
+    async (pose: 'A' | 'B') => {
+      try {
+        await apiClient.patch(`/songs/${songId}/selected-pose`, {
+          selected_pose: pose,
+        })
+      } catch (err) {
+        console.error('Failed to save selected pose:', err)
+        // Don't show error to user - this is a background operation
+      }
+    },
+    [songId],
+  )
+
   useEffect(() => {
     const fetchImageUrls = async () => {
       try {
@@ -49,8 +66,10 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
         const response = await apiClient.get(`/songs/${songId}/character-image/url`)
         setPoseAUrl(response.data.pose_a_url)
         setPoseBUrl(response.data.pose_b_url)
-        // Set default selection to Pose A if it exists
-        if (response.data.pose_a_url) {
+        // Load selected pose from backend, or default to Pose A if it exists
+        if (response.data.selected_pose) {
+          setSelectedPose(response.data.selected_pose as 'A' | 'B')
+        } else if (response.data.pose_a_url) {
           setSelectedPose('A')
         } else if (response.data.pose_b_url) {
           setSelectedPose('B')
@@ -207,12 +226,22 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
             <div className="flex flex-col items-center">
               <div
                 className={clsx(
-                  'rounded-xl bg-vc-border/20 border border-vc-border/30 cursor-pointer transition-all overflow-hidden p-1',
+                  'rounded-xl bg-vc-border/20 border border-vc-border/30 transition-all overflow-hidden p-1',
                   imageSize,
+                  disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
                   selectedPose === 'A' &&
-                    'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10 border-vc-accent-primary/50',
+                    (disabled
+                      ? 'ring-2 ring-vc-accent-primary/50 bg-vc-accent-primary/5 border-vc-accent-primary/30'
+                      : 'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10 border-vc-accent-primary/50'),
                 )}
-                onClick={() => setSelectedPose('A')}
+                onClick={
+                  disabled
+                    ? undefined
+                    : () => {
+                        setSelectedPose('A')
+                        saveSelectedPose('A')
+                      }
+                }
               >
                 <img
                   src={poseAUrl}
@@ -231,12 +260,22 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
               {poseBUrl ? (
                 <div
                   className={clsx(
-                    'rounded-xl bg-vc-border/20 border border-vc-border/30 cursor-pointer transition-all overflow-hidden p-1',
+                    'rounded-xl bg-vc-border/20 border border-vc-border/30 transition-all overflow-hidden p-1',
                     imageSize,
+                    disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
                     selectedPose === 'B' &&
-                      'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10 border-vc-accent-primary/50',
+                      (disabled
+                        ? 'ring-2 ring-vc-accent-primary/50 bg-vc-accent-primary/5 border-vc-accent-primary/30'
+                        : 'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10 border-vc-accent-primary/50'),
                   )}
-                  onClick={() => setSelectedPose('B')}
+                  onClick={
+                    disabled
+                      ? undefined
+                      : () => {
+                          setSelectedPose('B')
+                          saveSelectedPose('B')
+                        }
+                  }
                 >
                   <img
                     src={poseBUrl}
@@ -251,19 +290,21 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
               ) : (
                 <div
                   className={clsx(
-                    'relative rounded-lg border-2 border-dashed transition-all duration-300 cursor-pointer',
+                    'relative rounded-lg border-2 border-dashed transition-all duration-300',
                     imageSize,
-                    isDraggingPoseB
+                    disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                    !disabled && isDraggingPoseB
                       ? 'border-vc-accent-primary/90 shadow-vc3 bg-vc-accent-primary/10'
-                      : 'border-vc-border/40 hover:border-vc-border/60',
+                      : 'border-vc-border/40',
+                    !disabled && 'hover:border-vc-border/60',
                     'bg-[rgba(20,20,32,0.4)]/40',
                     uploadingPoseB && 'pointer-events-none opacity-60',
                     'flex items-center justify-center',
                   )}
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onClick={handleClick}
+                  onDrop={disabled ? undefined : handleDrop}
+                  onDragOver={disabled ? undefined : handleDragOver}
+                  onDragLeave={disabled ? undefined : handleDragLeave}
+                  onClick={disabled ? undefined : handleClick}
                 >
                   <input
                     ref={poseBInputRef}
@@ -289,9 +330,8 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
               <InfoIcon className="h-3 w-3 text-vc-text-muted hover:text-vc-text-secondary cursor-help" />
               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover:block z-10 w-64">
                 <div className="bg-black/90 text-white text-xs rounded-lg px-3 py-2 shadow-lg border border-white/10">
-                  <p className="text-white/80">
-                    In the future we'll support video generation with multiple images, and
-                    also add more templates.
+                  <p className="text-white/60">
+                    In the future we'll support video generation with multiple images.
                   </p>
                 </div>
               </div>

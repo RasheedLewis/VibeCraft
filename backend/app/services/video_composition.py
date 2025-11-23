@@ -204,16 +204,18 @@ def normalize_clip(
     output_path: str | Path,
     target_resolution: tuple[int, int] = DEFAULT_TARGET_RESOLUTION,
     target_fps: int = DEFAULT_TARGET_FPS,
+    target_duration_sec: Optional[float] = None,
     ffmpeg_bin: str | None = None,
 ) -> None:
     """
-    Normalize a clip to target resolution and FPS.
+    Normalize a clip to target resolution and FPS, optionally trimming to target duration.
 
     Args:
         input_path: Path to input video file
         output_path: Path to output video file
         target_resolution: Target resolution (width, height)
         target_fps: Target FPS
+        target_duration_sec: Optional target duration in seconds. If provided and clip is longer, it will be trimmed.
         ffmpeg_bin: Path to ffmpeg binary (defaults to config)
 
     Raises:
@@ -224,13 +226,47 @@ def normalize_clip(
 
     target_width, target_height = target_resolution
 
+    # Check actual duration if target_duration_sec is provided
+    if target_duration_sec is not None and target_duration_sec > 0:
+        try:
+            import subprocess
+            import json
+            ffprobe_bin = ffmpeg_bin.replace("ffmpeg", "ffprobe")
+            probe_cmd = [
+                ffprobe_bin,
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "json",
+                str(input_path),
+            ]
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                probe_data = json.loads(result.stdout)
+                actual_duration = float(probe_data["format"]["duration"])
+                if actual_duration > target_duration_sec + 0.1:  # More than 100ms longer
+                    logger.info(
+                        f"Trimming clip from {actual_duration:.2f}s to {target_duration_sec:.2f}s "
+                        f"during normalization"
+                    )
+                    # Add trim filter before other filters
+                    vf_parts = [f"trim=duration={target_duration_sec},setpts=PTS-STARTPTS"]
+                else:
+                    vf_parts = []
+            else:
+                vf_parts = []
+        except Exception as e:
+            logger.warning(f"Could not check clip duration, skipping trim: {e}")
+            vf_parts = []
+    else:
+        vf_parts = []
+
     # Build video filter: scale with letterboxing, then set FPS
     # scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=24
-    vf_parts = [
+    vf_parts.extend([
         f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease",
         f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2",
         f"fps={target_fps}",
-    ]
+    ])
     video_filter = ",".join(vf_parts)
 
     try:

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ErrorBoundary } from 'react-error-boundary'
 import { SectionCard, VCCard, VCButton } from '../vibecraft'
 import type {
@@ -71,6 +72,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   audioUrl,
   onTitleUpdate,
 }) => {
+  const navigate = useNavigate()
   const { data: featureFlags } = useFeatureFlags()
   const sectionsEnabled = featureFlags?.sections ?? true // Default to true for backward compatibility
   const sectionsWithDisplay = buildSectionsWithDisplayNames(analysisData.sections)
@@ -187,9 +189,16 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       ? Math.max(...clipSummary.clips.map((c) => c.endSec)) -
         Math.min(...clipSummary.clips.map((c) => c.startSec))
       : null
+  // When previewing individual clips (not composed video), use the active clip's duration
+  const individualClipDuration =
+    !composedVideoUrl && activePlayerClip
+      ? activePlayerClip.endSec - activePlayerClip.startSec
+      : null
+
   const playerDurationSec =
     selectedDuration ??
     composedDuration ??
+    individualClipDuration ?? // Use individual clip duration when previewing clips
     clipsDuration ??
     durationValue ??
     activePlayerClip?.endSec ??
@@ -262,260 +271,276 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       })) ?? []
 
   return (
-    <section className="mt-4 w-full space-y-8 pb-0">
-      <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-start">
-        <div className="space-y-2 relative md:flex-shrink-0">
-          <div className="vc-label">Song profile</div>
-          <div className="relative flex items-baseline gap-4 flex-wrap">
-            <div className="relative max-w-2xl">
-              {/* Subtle pointing animation for editable title */}
-              {showTitleHint && onTitleUpdate && !isEditingTitle && (
-                <div
-                  className="absolute -left-8 top-1/2 -translate-y-1/2 pointer-events-none z-10"
-                  style={{
-                    animation: 'pointAndFadeSubtle 2.5s ease-in-out forwards',
-                  }}
-                >
-                  <div className="text-xl filter drop-shadow-md opacity-70">👆</div>
-                </div>
-              )}
-              {isEditingTitle ? (
-                <input
-                  ref={titleInputRef}
-                  type="text"
-                  value={titleValue}
-                  onChange={(e) => setTitleValue(e.target.value)}
-                  onBlur={handleTitleBlur}
-                  onKeyDown={handleTitleKeyDown}
-                  disabled={isSavingTitle}
-                  className="font-display text-3xl text-white md:text-4xl bg-transparent border-b-2 border-vc-accent-primary/50 focus:border-vc-accent-primary focus:outline-none disabled:opacity-50"
-                  style={{ margin: 0, padding: 0 }}
-                  maxLength={256}
-                />
-              ) : (
-                <h1
-                  onClick={handleTitleClick}
-                  className={`font-display text-3xl text-white md:text-4xl ${
-                    onTitleUpdate
-                      ? 'cursor-text hover:text-vc-accent-primary/80 transition-colors'
-                      : ''
-                  }`}
-                  style={{ margin: 0, padding: 0, borderBottom: '2px solid transparent' }}
-                >
-                  {displayTitle ?? 'Untitled track'}
-                </h1>
-              )}
-            </div>
-          </div>
-          <p className="text-xs uppercase tracking-[0.16em] text-vc-text-muted mb-1">
-            Source file: {songDetails.original_filename}
-          </p>
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-vc-text-muted">Visual Style:</span>
-            {songDetails.template ? (
-              <span className="text-xs font-medium text-vc-text-primary capitalize">
-                {songDetails.template}
-              </span>
-            ) : (
-              <span className="text-xs text-vc-text-secondary">
-                Not set (abstract by default)
-              </span>
-            )}
-            {/* Cost indicator - only show after video is composed */}
-            {composedVideoUrl && (
-              <>
-                <span className="text-xs text-vc-text-muted">•</span>
-                <div className="text-xs text-vc-text-muted whitespace-nowrap">
-                  {songDetails.total_generation_cost_usd != null &&
-                  songDetails.total_generation_cost_usd > 0 ? (
-                    <>
-                      <span>~${songDetails.total_generation_cost_usd.toFixed(2)}</span>
-                      <span className="ml-1.5">but free for you!</span>
-                      <span
-                        className={`ml-1 ${
-                          songDetails.template
-                            ? 'text-vc-text-primary'
-                            : 'text-vc-text-muted'
-                        }`}
-                      >
-                        ♡
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span>free for you!</span>
-                      <span
-                        className={`ml-1 ${
-                          songDetails.template
-                            ? 'text-vc-text-primary'
-                            : 'text-vc-text-muted'
-                        }`}
-                      >
-                        ♡
-                      </span>
-                    </>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-        <VCCard className="w-full space-y-2 border-vc-border/40 bg-[rgba(12,12,18,0.75)] p-4 md:w-72 md:flex-shrink-0">
-          <div className="vc-label">Genre & mood</div>
-          <div className="text-sm font-medium text-white">{primaryGenre}</div>
-          <div className="text-xs text-vc-text-secondary">{moodLabel}</div>
-          <div className="text-xs text-vc-text-muted">
-            {[bpmLabel, durationLabel].filter(Boolean).join(' • ')}
-          </div>
-          <div className="pt-2">
-            <MoodVectorMeter moodVector={analysisData.moodVector} />
-          </div>
-        </VCCard>
-      </header>
-
-      {playerVideoUrl && playerDurationSec ? (
-        <section className="space-y-3">
-          <div className="vc-label">
-            {composedVideoUrl
-              ? 'Your Final Video'
-              : `Preview${
-                  clipSummary?.completedClips && clipSummary.totalClips
-                    ? ` (${clipSummary.completedClips}/${clipSummary.totalClips} clips)`
-                    : ''
-                }`}
-          </div>
-          <ErrorBoundary
-            FallbackComponent={VideoPlayerErrorFallback}
-            onReset={() => {
-              // Reset video player state if needed
-            }}
+    <>
+      {composedVideoUrl && (
+        <div className="w-full flex justify-center py-12">
+          <VCButton
+            onClick={() => navigate('/')}
+            className="bg-vc-accent-primary/60 hover:bg-vc-accent-primary/70 border border-vc-accent-primary/40 text-white px-8 py-4 text-lg font-medium"
           >
-            <MainVideoPlayer
-              videoUrl={playerVideoUrl}
-              audioUrl={playerAudioUrl ?? undefined}
-              posterUrl={playerPosterUrl}
-              durationSec={playerDurationSec}
-              clips={playerClips}
-              activeClipId={activePlayerClip?.id ?? undefined}
-              onClipSelect={onPlayerClipSelect}
-              beatGrid={playerBeatGrid}
-              lyrics={playerLyrics}
-              waveform={waveformValues}
-              onDownload={
-                playerVideoUrl
-                  ? () => window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
-                  : undefined
-              }
-            />
-          </ErrorBoundary>
-        </section>
-      ) : null}
-
-      {/* Show ClipGenerationPanel if we have clips OR if there's an active job */}
-      <ErrorBoundary FallbackComponent={SectionErrorFallback}>
-        {(clipSummary ||
-          (clipJobId &&
-            (clipJobStatus === 'queued' || clipJobStatus === 'processing'))) && (
-          <ClipGenerationPanel
-            clipSummary={clipSummary}
-            clipJobId={clipJobId}
-            clipJobStatus={clipJobStatus}
-            clipJobProgress={clipJobProgress}
-            clipJobError={clipJobError}
-            isComposing={isComposing}
-            composeJobProgress={composeJobProgress}
-            onCancel={onCancelClipJob}
-            onCompose={onCompose}
-            onPreviewClip={onPreviewClip}
-            onRegenerateClip={onRegenerateClip}
-            onRetryClip={onRetryClip}
-            onRegenerateClips={onGenerateClips}
-          />
-        )}
-      </ErrorBoundary>
-
-      {/* Generate Clips Button - shown when no clips exist and no active job */}
-      {(!clipSummary || clipSummary.totalClips === 0) &&
-        !clipJobId &&
-        clipJobStatus !== 'queued' &&
-        clipJobStatus !== 'processing' && (
-          <section className="flex flex-col items-center gap-3 py-2">
-            <p className="text-sm text-vc-text-muted text-center">
-              Kick off clip generation below!
-            </p>
-            <VCButton
-              variant="primary"
-              size="lg"
-              onClick={onGenerateClips}
-              className="bg-vc-accent-primary/60 hover:bg-vc-accent-primary/70 border border-vc-accent-primary/40"
-            >
-              Generate clips
-            </VCButton>
-          </section>
-        )}
-
-      <section className="space-y-2 pb-0">
-        <div className="vc-label">Waveform</div>
-        <WaveformDisplay
-          waveform={waveformValues}
-          beatTimes={analysisData.beatTimes}
-          duration={songDetails.duration_sec || durationValue || 1}
-          selectedStartSec={songDetails.selected_start_sec}
-          selectedEndSec={songDetails.selected_end_sec}
-        />
-      </section>
-
-      {sectionsEnabled && analysisData.sections.length > 0 && (
-        <>
-          <section className="space-y-2">
-            <div className="vc-label">Song structure</div>
-            <SongTimeline
-              sections={sectionsWithDisplay}
-              duration={durationValue || 1}
-              onSelect={onSectionSelect}
-            />
-          </section>
-
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="vc-label">Sections</div>
-              <div className="text-xs text-vc-text-muted">
-                {analysisData.sections.length} section
-                {analysisData.sections.length === 1 ? '' : 's'}
+            Start new project
+          </VCButton>
+        </div>
+      )}
+      <section className="mt-4 w-full space-y-8 pb-0">
+        <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-start">
+          <div className="space-y-2 relative md:flex-shrink-0">
+            <div className="vc-label">Song profile</div>
+            <div className="relative flex items-baseline gap-4 flex-wrap">
+              <div className="relative max-w-2xl">
+                {/* Subtle pointing animation for editable title */}
+                {showTitleHint && onTitleUpdate && !isEditingTitle && (
+                  <div
+                    className="absolute -left-8 top-1/2 -translate-y-1/2 pointer-events-none z-10"
+                    style={{
+                      animation: 'pointAndFadeSubtle 2.5s ease-in-out forwards',
+                    }}
+                  >
+                    <div className="text-xl filter drop-shadow-md opacity-70">👆</div>
+                  </div>
+                )}
+                {isEditingTitle ? (
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    value={titleValue}
+                    onChange={(e) => setTitleValue(e.target.value)}
+                    onBlur={handleTitleBlur}
+                    onKeyDown={handleTitleKeyDown}
+                    disabled={isSavingTitle}
+                    className="font-display text-3xl text-white md:text-4xl bg-transparent border-b-2 border-vc-accent-primary/50 focus:border-vc-accent-primary focus:outline-none disabled:opacity-50"
+                    style={{ margin: 0, padding: 0 }}
+                    maxLength={256}
+                  />
+                ) : (
+                  <h1
+                    onClick={handleTitleClick}
+                    className={`font-display text-3xl text-white md:text-4xl ${
+                      onTitleUpdate
+                        ? 'cursor-text hover:text-vc-accent-primary/80 transition-colors'
+                        : ''
+                    }`}
+                    style={{
+                      margin: 0,
+                      padding: 0,
+                      borderBottom: '2px solid transparent',
+                    }}
+                  >
+                    {displayTitle ?? 'Untitled track'}
+                  </h1>
+                )}
               </div>
             </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              {sectionsWithDisplay.map((section) => {
-                const lyric = lyricsBySection.get(section.id) ?? undefined
-                const highlightClass =
-                  highlightedSectionId === section.id
-                    ? 'ring-2 ring-vc-accent-primary ring-offset-2 ring-offset-[rgba(12,12,18,0.9)]'
-                    : ''
-
-                return (
-                  <div
-                    key={section.id}
-                    id={`section-${section.id}`}
-                    className={highlightClass}
-                  >
-                    <SectionCard
-                      name={section.displayName}
-                      startSec={section.startSec}
-                      endSec={section.endSec}
-                      mood={sectionMood}
-                      lyricSnippet={lyric}
-                      hasVideo={false}
-                      audioUrl={audioUrl ?? undefined}
-                      className="h-full bg-[rgba(12,12,18,0.78)]"
-                    />
+            <p className="text-xs uppercase tracking-[0.16em] text-vc-text-muted mb-1">
+              Source file: {songDetails.original_filename}
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-vc-text-muted">Visual Style:</span>
+              {songDetails.template ? (
+                <span className="text-xs font-medium text-vc-text-primary capitalize">
+                  {songDetails.template}
+                </span>
+              ) : (
+                <span className="text-xs text-vc-text-secondary">
+                  Not set (abstract by default)
+                </span>
+              )}
+              {/* Cost indicator - only show after video is composed */}
+              {composedVideoUrl && (
+                <>
+                  <span className="text-xs text-vc-text-muted">•</span>
+                  <div className="text-xs text-vc-text-muted whitespace-nowrap">
+                    {songDetails.total_generation_cost_usd != null &&
+                    songDetails.total_generation_cost_usd > 0 ? (
+                      <>
+                        <span>~${songDetails.total_generation_cost_usd.toFixed(2)}</span>
+                        <span className="ml-1.5">but free for you!</span>
+                        <span
+                          className={`ml-1 ${
+                            songDetails.template
+                              ? 'text-vc-text-primary'
+                              : 'text-vc-text-muted'
+                          }`}
+                        >
+                          ♡
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>free for you!</span>
+                        <span
+                          className={`ml-1 ${
+                            songDetails.template
+                              ? 'text-vc-text-primary'
+                              : 'text-vc-text-muted'
+                          }`}
+                        >
+                          ♡
+                        </span>
+                      </>
+                    )}
                   </div>
-                )
-              })}
+                </>
+              )}
             </div>
+          </div>
+          <VCCard className="w-full space-y-2 border-vc-border/40 bg-[rgba(12,12,18,0.75)] p-4 md:w-72 md:flex-shrink-0">
+            <div className="vc-label">Genre & mood</div>
+            <div className="text-sm font-medium text-white">{primaryGenre}</div>
+            <div className="text-xs text-vc-text-secondary">{moodLabel}</div>
+            <div className="text-xs text-vc-text-muted">
+              {[bpmLabel, durationLabel].filter(Boolean).join(' • ')}
+            </div>
+            <div className="pt-2">
+              <MoodVectorMeter moodVector={analysisData.moodVector} />
+            </div>
+          </VCCard>
+        </header>
+
+        {playerVideoUrl && playerDurationSec ? (
+          <section className="space-y-3">
+            <div className="vc-label">
+              {composedVideoUrl
+                ? 'Your Final Video'
+                : `Preview${
+                    clipSummary?.completedClips && clipSummary.totalClips
+                      ? ` (${clipSummary.completedClips}/${clipSummary.totalClips} clips)`
+                      : ''
+                  }`}
+            </div>
+            <ErrorBoundary
+              FallbackComponent={VideoPlayerErrorFallback}
+              onReset={() => {
+                // Reset video player state if needed
+              }}
+            >
+              <MainVideoPlayer
+                videoUrl={playerVideoUrl}
+                audioUrl={playerAudioUrl ?? undefined}
+                posterUrl={playerPosterUrl}
+                durationSec={playerDurationSec}
+                clips={playerClips}
+                activeClipId={activePlayerClip?.id ?? undefined}
+                onClipSelect={onPlayerClipSelect}
+                beatGrid={playerBeatGrid}
+                lyrics={playerLyrics}
+                waveform={waveformValues}
+                onDownload={
+                  playerVideoUrl
+                    ? () => window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
+                    : undefined
+                }
+              />
+            </ErrorBoundary>
           </section>
-        </>
-      )}
-    </section>
+        ) : null}
+
+        {/* Show ClipGenerationPanel if we have clips OR if there's an active job */}
+        <ErrorBoundary FallbackComponent={SectionErrorFallback}>
+          {(clipSummary ||
+            (clipJobId &&
+              (clipJobStatus === 'queued' || clipJobStatus === 'processing'))) && (
+            <ClipGenerationPanel
+              clipSummary={clipSummary}
+              clipJobId={clipJobId}
+              clipJobStatus={clipJobStatus}
+              clipJobProgress={clipJobProgress}
+              clipJobError={clipJobError}
+              isComposing={isComposing}
+              composeJobProgress={composeJobProgress}
+              onCancel={onCancelClipJob}
+              onCompose={onCompose}
+              onPreviewClip={onPreviewClip}
+              onRegenerateClip={onRegenerateClip}
+              onRetryClip={onRetryClip}
+              onRegenerateClips={onGenerateClips}
+            />
+          )}
+        </ErrorBoundary>
+
+        {/* Generate Clips Button - shown when no clips exist and no active job */}
+        {(!clipSummary || clipSummary.totalClips === 0) &&
+          !clipJobId &&
+          clipJobStatus !== 'queued' &&
+          clipJobStatus !== 'processing' && (
+            <section className="flex flex-col items-center gap-3 py-2">
+              <p className="text-sm text-vc-text-muted text-center">
+                Kick off clip generation below!
+              </p>
+              <VCButton
+                variant="primary"
+                size="lg"
+                onClick={onGenerateClips}
+                className="bg-vc-accent-primary/60 hover:bg-vc-accent-primary/70 border border-vc-accent-primary/40"
+              >
+                Generate clips
+              </VCButton>
+            </section>
+          )}
+
+        <section className="space-y-2 pb-0">
+          <div className="vc-label">Waveform</div>
+          <WaveformDisplay
+            waveform={waveformValues}
+            beatTimes={analysisData.beatTimes}
+            duration={songDetails.duration_sec || durationValue || 1}
+            selectedStartSec={songDetails.selected_start_sec}
+            selectedEndSec={songDetails.selected_end_sec}
+          />
+        </section>
+
+        {sectionsEnabled && analysisData.sections.length > 0 && (
+          <>
+            <section className="space-y-2">
+              <div className="vc-label">Song structure</div>
+              <SongTimeline
+                sections={sectionsWithDisplay}
+                duration={durationValue || 1}
+                onSelect={onSectionSelect}
+              />
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="vc-label">Sections</div>
+                <div className="text-xs text-vc-text-muted">
+                  {analysisData.sections.length} section
+                  {analysisData.sections.length === 1 ? '' : 's'}
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                {sectionsWithDisplay.map((section) => {
+                  const lyric = lyricsBySection.get(section.id) ?? undefined
+                  const highlightClass =
+                    highlightedSectionId === section.id
+                      ? 'ring-2 ring-vc-accent-primary ring-offset-2 ring-offset-[rgba(12,12,18,0.9)]'
+                      : ''
+
+                  return (
+                    <div
+                      key={section.id}
+                      id={`section-${section.id}`}
+                      className={highlightClass}
+                    >
+                      <SectionCard
+                        name={section.displayName}
+                        startSec={section.startSec}
+                        endSec={section.endSec}
+                        mood={sectionMood}
+                        lyricSnippet={lyric}
+                        hasVideo={false}
+                        audioUrl={audioUrl ?? undefined}
+                        className="h-full bg-[rgba(12,12,18,0.78)]"
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          </>
+        )}
+      </section>
+    </>
   )
 }

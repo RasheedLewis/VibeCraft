@@ -38,6 +38,7 @@ class Song(SQLModel, table=True):
     template: Optional[str] = Field(default=None, max_length=32)
     character_reference_image_s3_key: Optional[str] = Field(default=None, max_length=1024)
     character_pose_b_s3_key: Optional[str] = Field(default=None, max_length=1024)
+    character_selected_pose: str = Field(default="A", max_length=1)  # "A" or "B"
     character_consistency_enabled: bool = Field(default=False)
     character_interrogation_prompt: Optional[str] = Field(default=None)
     character_generated_image_s3_key: Optional[str] = Field(default=None, max_length=1024)

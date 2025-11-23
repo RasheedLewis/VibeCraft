@@ -47,6 +47,7 @@ class UserInfoResponse(BaseModel):
     user_id: str
     email: str
     display_name: Optional[str] = None
+    animations_disabled: bool = False
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -132,5 +133,33 @@ def get_current_user_info(
         user_id=current_user.id,
         email=current_user.email,
         display_name=current_user.display_name,
+        animations_disabled=getattr(current_user, 'animations_disabled', False),
+    )
+
+
+class AnimationsPreferenceUpdate(BaseModel):
+    """Update animations preference."""
+
+    animations_disabled: bool
+
+
+@router.patch("/me/animations", response_model=UserInfoResponse)
+def update_animations_preference(
+    preference: AnimationsPreferenceUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserInfoResponse:
+    """Update user's animations preference."""
+    # Merge user into this session since it came from a different session
+    user = db.merge(current_user)
+    user.animations_disabled = preference.animations_disabled
+    db.commit()
+    db.refresh(user)
+    
+    return UserInfoResponse(
+        user_id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        animations_disabled=user.animations_disabled,
     )
 

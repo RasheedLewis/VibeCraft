@@ -25,6 +25,7 @@ class User(SQLModel, table=True):
     id: str = Field(primary_key=True, max_length=128)
     email: Optional[str] = Field(default=None, unique=True, index=True, max_length=256)
     display_name: Optional[str] = Field(default=None, max_length=128)
+    animations_disabled: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

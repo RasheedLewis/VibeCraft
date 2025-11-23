@@ -833,9 +833,11 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
 
         # Download clips and normalize them
         total_clips = len(completed_clips)
+        source_paths: list[tuple[int, Path]] = []  # (clip_index, path) tuples to preserve order
+        
+        # Step 1: Download all clips (sequential for now, could be parallelized later)
         for idx, clip in enumerate(completed_clips):
             source_path = temp_dir / f"clip_{clip.clip_index:03}.mp4"
-            normalized_path = temp_dir / f"clip_{clip.clip_index:03}_normalized.mp4"
 
             # Try to download from S3 key first (more reliable than presigned URL)
             # S3 key pattern: songs/{song_id}/clips/{clip_index:03d}.mp4
@@ -893,18 +895,53 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
                         )
                     _download_clip_to_path(clip.video_url, source_path)
             
+            source_paths.append((clip.clip_index, source_path))
+            
             # Update progress: 20-40% for downloading clips
             if job_id:
                 download_progress = 20 + int((idx + 1) / total_clips * 20)
                 update_job_progress(job_id, download_progress, "processing")
-            
-            normalize_clip(str(source_path), str(normalized_path))
-            normalized_paths.append(normalized_path)
-            
-            # Update progress: 40-65% for normalizing clips
-            if job_id:
-                normalize_progress = 40 + int((idx + 1) / total_clips * 25)
-                update_job_progress(job_id, normalize_progress, "processing")
+        
+        # Step 2: Normalize clips in parallel (optimization #8)
+        if job_id:
+            update_job_progress(job_id, 40, "processing")  # Starting normalization
+        
+        def normalize_single_clip(clip_index: int, source_path: Path) -> tuple[int, Path]:
+            """Normalize a single clip and return (clip_index, normalized_path)."""
+            normalized_path = temp_dir / f"clip_{clip_index:03}_normalized.mp4"
+            try:
+                normalize_clip(str(source_path), str(normalized_path))
+                logger.info(f"Normalized clip {clip_index}")
+                return (clip_index, normalized_path)
+            except Exception as e:
+                raise RuntimeError(f"Failed to normalize clip {clip_index}: {e}") from e
+
+        # Normalize in parallel using ThreadPoolExecutor
+        import concurrent.futures
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_clip_index = {
+                executor.submit(normalize_single_clip, clip_index, source_path): clip_index
+                for clip_index, source_path in source_paths
+            }
+
+            normalized_results = []
+            for future in concurrent.futures.as_completed(future_to_clip_index):
+                clip_index = future_to_clip_index[future]
+                try:
+                    result = future.result(timeout=300)  # 5 minute timeout per clip
+                    normalized_results.append(result)
+                    
+                    # Update progress: 40-65% for normalizing clips
+                    if job_id:
+                        normalize_progress = 40 + int((len(normalized_results) / total_clips) * 25)
+                        update_job_progress(job_id, normalize_progress, "processing")
+                except Exception as e:
+                    raise RuntimeError(f"Normalization failed for clip {clip_index}: {e}") from e
+
+        # Sort normalized paths by clip_index to preserve order
+        normalized_results.sort(key=lambda x: x[0])
+        normalized_paths = [path for _, path in normalized_results]
 
         # Download audio (key has already been validated to exist in S3 above)
         audio_bytes = download_bytes_from_s3(bucket_name=bucket, key=audio_key)

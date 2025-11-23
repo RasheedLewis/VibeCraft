@@ -461,3 +461,4 @@ def infer_section_types(
         )
 
     return merged_sections
+

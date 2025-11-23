@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -34,9 +34,9 @@ class SongClip(SQLModel, table=True):
     replicate_job_id: Optional[str] = Field(default=None, max_length=256)
     error: Optional[str] = Field(default=None)
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(UTC)},
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
     )
 

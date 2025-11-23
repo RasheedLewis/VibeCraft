@@ -415,7 +415,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         videoEl.removeEventListener('pause', handlePause)
       }
     }
-  }, [usingExternalAudio, volume, muted, playbackRate, audioUrl, videoUrl])
+  }, [usingExternalAudio, volume, muted, playbackRate, audioUrl])
 
   useEffect(() => {
     if (!usingExternalAudio) return

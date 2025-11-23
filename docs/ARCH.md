@@ -6,7 +6,7 @@ flowchart LR
 
   %% BACKEND
   subgraph Backend["Python Backend (FastAPI + Workers)"]
-    API[REST API Layer\n/songs, /songs/{id}/analysis, /songs/{id}/clips/*, /jobs, /health]
+    API[REST API Layer\n/songs, /analysis, /sections, /videos, /jobs]
 
     subgraph AudioPipeline["Audio & Music Intelligence"]
       APS[Audio Preprocess Service\n(ffmpeg + librosa)]
@@ -14,20 +14,19 @@ flowchart LR
     end
 
     subgraph VideoPipeline["Video Planning & Generation"]
-      CP[Clip Planner\n(beat-aligned boundaries)]
-      SP[Scene Planner\n(builds prompts from analysis)]
+      SP[Scene Planner\n(full song + per-section)]
       VGE[Video Generation Engine\nReplicate wrappers]
       CE[Composition Engine\nffmpeg concat + transitions + mux]
     end
 
-    JS[Job Orchestrator / Workers\nRQ (Redis Queue)]
-    DB[(Postgres / DB\nSongs · Analyses · SongClips · Jobs)]
+    JS[Job Orchestrator / Workers\nRQ/Celery]
+    DB[(Postgres / DB\nSongs · Analyses · SectionVideos · Jobs)]
     ST[(Object Storage\nS3: audio · clips · finals)]
   end
 
   %% EXTERNAL SERVICES
   subgraph External["External AI / Music APIs"]
-    REP[Video Models on Replicate\n(minimax/hailuo-2.3)]
+    REP[Video Models on Replicate]
     LYR[Lyrics / Music APIs\n(Whisper, Musixmatch, etc.)]
   end
 
@@ -45,27 +44,28 @@ flowchart LR
 
   U -->|"2. Fetch analysis\n& Song Profile UI"| API --> DB
 
-  %% Clip generation
-  U -->|"3. Plan Clips"| API
-  API -->|"calculate beat-aligned boundaries"| CP
-  CP -->|"store clip plans"| DB
-  
-  U -->|"4. Generate Clips"| API
-  API -->|"enqueue clip generation jobs"| JS
-  JS -->|"build SceneSpec from\nSongAnalysis + clip"| SP
+  %% Section-level generation
+  U -->|"3. Generate Section Video"| API
+  API -->|"enqueue section job"| JS
+  JS -->|"build SceneSpec from\nSongAnalysis + template"| SP
   SP --> VGE
   VGE -->|"call video model"| REP
   REP -->|"clip video"| VGE
-  VGE -->|"store clip video"| ST
-  VGE -->|"SongClip metadata"| DB
-  U -->|"preview clips"| API --> ST
+  VGE -->|"store section clip"| ST
+  VGE -->|"SectionVideo metadata"| DB
+  U -->|"preview section clip"| API --> ST
 
-  %% Composition
-  U -->|"5. Compose Video"| API
-  API -->|"enqueue composition job"| JS
-  JS -->|"get all completed SongClips"| DB
-  JS -->|"compose timeline\nwith beat-aligned cuts"| CE
-  CE -->|"final 1080p MP4 (H.264/AAC)"| ST
+  %% Full-song generation
+  U -->|"4. Generate Full Music Video"| API
+  API -->|"enqueue full-video job"| JS
+  JS -->|"assemble full-scene plan\n(reuse approved sections)"| SP
+  SP -->|"missing scenes → generate"| VGE
+  VGE --> REP
+  REP --> VGE
+  VGE -->|"all section clips"| ST
+
+  JS -->|"compose timeline\n+ beat-synced transitions"| CE
+  CE -->|"final 1080p MP4/WebM"| ST
   ST -->|"download/stream URL"| U
 
   %% Data persistence paths

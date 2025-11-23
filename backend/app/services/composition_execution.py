@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
-import json
 import logging
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -16,9 +14,8 @@ import httpx
 from app.core.config import get_settings
 from app.core.database import session_scope
 from app.models.composition import CompositionJob
-from app.repositories import SongRepository
-from app.services.clip_model_selector import get_clips_for_composition
-from app.services.song_analysis import get_latest_analysis
+from app.models.section_video import SectionVideo
+from app.models.song import Song
 from app.services.composition_job import (
     complete_job,
     create_composed_video,
@@ -64,7 +61,7 @@ def execute_composition_pipeline(
     Args:
         job_id: Composition job ID
         song_id: Song ID
-        clip_ids: List of SectionVideo or SongClip IDs (depending on feature flag)
+        clip_ids: List of SectionVideo IDs
         clip_metadata: List of metadata dicts with clipId, startFrame, endFrame
 
     Raises:
@@ -86,16 +83,27 @@ def execute_composition_pipeline(
 
         # Step 1: Validate inputs
         logger.info(f"Validating composition inputs for job {job_id}")
-        song = SongRepository.get_by_id(song_id)
-
-        if song.duration_sec and song.duration_sec > MAX_DURATION_SECONDS:
-            raise ValueError(
-                f"Song duration ({song.duration_sec}s) exceeds maximum ({MAX_DURATION_SECONDS}s)"
-            )
-
-        # Get clips (support both SectionVideo and SongClip based on song's video_type)
         with session_scope() as session:
-            clips, clip_urls = get_clips_for_composition(session, clip_ids, song)
+            song = session.get(Song, song_id)
+            if not song:
+                raise ValueError(f"Song {song_id} not found")
+
+            if song.duration_sec and song.duration_sec > MAX_DURATION_SECONDS:
+                raise ValueError(
+                    f"Song duration ({song.duration_sec}s) exceeds maximum ({MAX_DURATION_SECONDS}s)"
+                )
+
+            # Get clips
+            clips = []
+            clip_urls = []
+            for clip_id in clip_ids:
+                clip = session.get(SectionVideo, clip_id)
+                if not clip:
+                    raise ValueError(f"SectionVideo {clip_id} not found")
+                if not clip.video_url:
+                    raise ValueError(f"SectionVideo {clip_id} has no video_url")
+                clips.append(clip)
+                clip_urls.append(clip.video_url)
 
         # Validate clip URLs
         clip_metadata_list = validate_composition_inputs(clip_urls)
@@ -188,91 +196,7 @@ def execute_composition_pipeline(
             # Sort normalized paths by original order
             normalized_paths.sort(key=lambda p: int(p.stem.split("_")[1]))
 
-            # Get beat times from analysis (used for both beat alignment and filters)
-            analysis = get_latest_analysis(song_id)
-            beat_times = None
-            if analysis and hasattr(analysis, 'beat_times') and analysis.beat_times:
-                beat_times = analysis.beat_times
-                logger.info(f"Found {len(beat_times)} beat times for beat alignment and filters")
-
-            # Step 4: Beat-aligned clip adjustment (if enabled)
-            beat_aligned = True  # Feature flag - can be made configurable
-            
-            if beat_aligned and beat_times and song.duration_sec:
-                logger.info("Calculating beat-aligned clip boundaries")
-                from app.services.beat_alignment import calculate_beat_aligned_clip_boundaries
-                from app.services.video_composition import (
-                    trim_clip_to_beat_boundary,
-                    extend_clip_to_beat_boundary,
-                )
-                
-                # Calculate beat-aligned boundaries
-                boundaries = calculate_beat_aligned_clip_boundaries(
-                    beat_times=beat_times,
-                    song_duration=song.duration_sec,
-                    num_clips=len(normalized_paths),
-                    fps=24.0,
-                )
-                
-                logger.info(f"Calculated {len(boundaries)} beat-aligned boundaries")
-                
-                # Trim/extend clips to match beat boundaries
-                aligned_paths = []
-                for i, (clip_path, boundary) in enumerate(zip(normalized_paths, boundaries)):
-                    # Get current clip duration
-                    try:
-                        probe_cmd = [
-                            settings.ffmpeg_bin.replace("ffmpeg", "ffprobe"),
-                            "-v", "error",
-                            "-show_entries", "format=duration",
-                            "-of", "json",
-                            str(clip_path),
-                        ]
-                        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True, timeout=10)
-                        probe_data = json.loads(result.stdout)
-                        current_duration = float(probe_data["format"]["duration"])
-                    except Exception as e:
-                        logger.warning(f"Failed to get clip {i} duration, skipping beat alignment: {e}")
-                        aligned_paths.append(clip_path)
-                        continue
-                    
-                    target_duration = boundary.duration_sec
-                    aligned_path = temp_path / f"aligned_clip_{i}.mp4"
-                    
-                    if abs(current_duration - target_duration) < 0.1:
-                        # Already aligned (within 100ms), no adjustment needed
-                        aligned_paths.append(clip_path)
-                    elif current_duration < target_duration:
-                        # Extend clip to beat boundary
-                        logger.debug(f"Extending clip {i} from {current_duration:.2f}s to {target_duration:.2f}s")
-                        extend_clip_to_beat_boundary(
-                            clip_path=clip_path,
-                            output_path=aligned_path,
-                            target_duration=current_duration,
-                            beat_end_time=target_duration,
-                            ffmpeg_bin=settings.ffmpeg_bin,
-                        )
-                        aligned_paths.append(aligned_path)
-                    else:
-                        # Trim clip to beat boundary
-                        logger.debug(f"Trimming clip {i} from {current_duration:.2f}s to {target_duration:.2f}s")
-                        trim_clip_to_beat_boundary(
-                            clip_path=clip_path,
-                            output_path=aligned_path,
-                            target_start_time=0.0,
-                            target_end_time=current_duration,
-                            beat_start_time=0.0,
-                            beat_end_time=target_duration,
-                            fps=24.0,
-                            ffmpeg_bin=settings.ffmpeg_bin,
-                        )
-                        aligned_paths.append(aligned_path)
-                
-                # Replace normalized paths with aligned paths
-                normalized_paths = aligned_paths
-                logger.info("Completed beat-aligned clip adjustment")
-
-            # Step 5: Handle duration mismatch
+            # Step 4: Handle duration mismatch
             total_clip_duration = sum(m.duration_sec for m in clip_metadata_list)
             song_duration = song.duration_sec or 0
 
@@ -324,17 +248,12 @@ def execute_composition_pipeline(
             logger.info(f"Stitching {len(normalized_paths)} clips for job {job_id}")
             update_job_progress(job_id, PROGRESS_STITCH, "processing")
 
-            # Beat times already retrieved above for beat alignment, reuse here for filters
-            
             output_path = temp_path / "composed.mp4"
             composition_result = concatenate_clips(
                 normalized_clip_paths=normalized_paths,
                 audio_path=audio_path,
                 output_path=output_path,
                 song_duration_sec=song_duration,
-                beat_times=beat_times,  # NEW: Pass beat times for filters
-                filter_type="flash",  # Can be made configurable later
-                frame_rate=24.0,
             )
             logger.info(
                 f"Composed video: {composition_result.duration_sec:.2f}s, "

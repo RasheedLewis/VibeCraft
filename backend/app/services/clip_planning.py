@@ -8,7 +8,6 @@ from uuid import UUID
 from sqlmodel import select
 
 from app.core.database import session_scope
-from app.exceptions import ClipPlanningError
 from app.models.clip import SongClip
 from app.schemas.analysis import SongAnalysis
 
@@ -24,6 +23,10 @@ class ClipPlan:
     num_frames: int
 
 
+class ClipPlanningError(RuntimeError):
+    """Raised when clip planning cannot generate a valid set of boundaries."""
+
+
 def plan_beat_aligned_clips(
     *,
     duration_sec: float,
@@ -32,24 +35,19 @@ def plan_beat_aligned_clips(
     min_clip_sec: float = 3.0,
     max_clip_sec: float = 6.0,
     generator_fps: int = 8,
-    selection_start_sec: Optional[float] = None,
-    selection_end_sec: Optional[float] = None,
 ) -> List[ClipPlan]:
     """Plan clip boundaries snapped to beat grid and frame intervals.
 
     Args:
-        duration_sec: Total song duration in seconds (or selection duration if selection is used).
+        duration_sec: Total song duration in seconds.
         analysis: SongAnalysis including beatTimes.
         clip_count: Desired number of clips to produce.
         min_clip_sec: Minimum allowed clip duration.
         max_clip_sec: Maximum allowed clip duration (limited by generation API).
         generator_fps: Frame rate of the generation model (defaults to 8 for Zeroscope).
-        selection_start_sec: Optional start time of audio selection (absolute time in song).
-        selection_end_sec: Optional end time of audio selection (absolute time in song).
 
     Returns:
-        A list of ClipPlan entries ordered by the clip index. Times are relative to selection start
-        if selection is provided, otherwise relative to song start.
+        A list of ClipPlan entries ordered by the clip index.
 
     Raises:
         ClipPlanningError: If planning fails to generate a valid set of clips.
@@ -69,23 +67,8 @@ def plan_beat_aligned_clips(
     duration_tolerance = max(frame_interval, 1e-3)
     raw_beats = getattr(analysis, "beat_times", []) or []
     beat_times = sorted(_unique_floats(raw_beats))
-    
-    # If selection is provided, filter beats to selection range and adjust to be relative
-    if selection_start_sec is not None and selection_end_sec is not None:
-        # Filter beats to be within selection range
-        beat_times = [
-            beat for beat in beat_times
-            if selection_start_sec - tolerance <= beat <= selection_end_sec + tolerance
-        ]
-        # Adjust beats to be relative to selection start
-        beat_times = [beat - selection_start_sec for beat in beat_times]
-        # Filter to ensure beats are within the effective duration (0 to duration_sec)
-        beat_times = [beat for beat in beat_times if -tolerance <= beat <= duration_sec + tolerance]
-        beat_times = [beat for beat in beat_times if 0.0 <= beat <= duration_sec]
-    else:
-        # No selection: filter beats to be within full duration
-        beat_times = [beat for beat in beat_times if -tolerance <= beat <= duration_sec + tolerance]
-        beat_times = [beat for beat in beat_times if 0.0 <= beat <= duration_sec]
+    beat_times = [beat for beat in beat_times if -tolerance <= beat <= duration_sec + tolerance]
+    beat_times = [beat for beat in beat_times if 0.0 <= beat <= duration_sec]
 
     if not beat_times:
         return _plan_without_beats(

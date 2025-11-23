@@ -18,19 +18,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import inspect, text
 
-from app.core.database import engine, init_db
+from app.core.database import engine
 
 
 def migrate() -> None:
     """Add composed_video columns to songs table if they don't exist."""
     inspector = inspect(engine)
     
-    # Ensure base schema exists for fresh environments
+    # Check if songs table exists
     if "songs" not in inspector.get_table_names():
-        init_db()
-        inspector = inspect(engine)
-        if "songs" not in inspector.get_table_names():
-            raise RuntimeError("songs table does not exist")
+        raise RuntimeError("songs table does not exist")
     
     # Get existing columns
     existing_columns = {col["name"] for col in inspector.get_columns("songs")}

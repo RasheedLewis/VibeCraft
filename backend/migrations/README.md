@@ -5,7 +5,6 @@ This directory contains database migration scripts that update the schema increm
 ## Migration Naming Convention
 
 Migrations must be named with a version number prefix:
-
 - `001_description.py`
 - `002_another_change.py`
 - `003_yet_another_change.py`
@@ -29,13 +28,11 @@ def migrate() -> None:
 ## Running Migrations
 
 Run all pending migrations:
-
 ```bash
 make migrate
 ```
 
 Or directly:
-
 ```bash
 cd backend
 source ../.venv/bin/activate
@@ -45,7 +42,6 @@ python -m app.core.migrations
 ## Migration Tracking
 
 The migration system tracks applied migrations in a `schema_migrations` table:
-
 - Each migration version is recorded after successful application
 - Only pending migrations (versions higher than current) are applied
 - Migrations are applied in order by version number
@@ -59,7 +55,6 @@ The migration system tracks applied migrations in a `schema_migrations` table:
 5. Commit the migration file
 
 Example:
-
 ```python
 # backend/migrations/002_add_user_email_column.py
 
@@ -75,3 +70,4 @@ def migrate() -> None:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(255)"))
 ```
+

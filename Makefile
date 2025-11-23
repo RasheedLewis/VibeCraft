@@ -1,4 +1,4 @@
-.PHONY: help lint lint-fix format format-fix lint-all build test dev start stop clean migrate mock-backend
+.PHONY: help lint lint-fix format format-fix lint-all build test dev start stop clean migrate
 
 help:
 	@echo "VibeCraft Development Commands"
@@ -15,7 +15,6 @@ help:
 	@echo "  make test         - Run all tests"
 	@echo "  make stop         - Stop all dev services (frontend, backend, RQ)"
 	@echo "  make clean        - Clean build artifacts"
-	@echo "  make mock-backend - Start mock backend server for frontend testing"
 
 dev:
 	@bash scripts/dev.sh
@@ -75,7 +74,6 @@ stop:
 	@pkill -f "uvicorn app.main:app" 2>/dev/null && echo "✓ Backend API stopped" || echo "⚠ Backend API not running"
 	@pkill -f "rq worker ai_music_video" 2>/dev/null && echo "✓ RQ worker stopped" || echo "⚠ RQ worker not running"
 	@pkill -f "vite.*--host" 2>/dev/null && echo "✓ Frontend stopped" || echo "⚠ Frontend not running"
-	@pkill -f "mock_backend.py" 2>/dev/null && echo "✓ Mock backend stopped" || echo "⚠ Mock backend not running"
 	@echo "✓ All services stopped"
 
 clean:
@@ -87,13 +85,4 @@ clean:
 	@find . -type d -name "__pycache__" -exec rm -r {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@echo "✓ Clean complete"
-
-mock-backend:
-	@if [ ! -d ".venv" ]; then \
-		echo "Error: .venv not found. Run setup first."; \
-		exit 1; \
-	fi
-	@export VIRTUAL_ENV_DISABLE_PROMPT=1 && \
-	source .venv/bin/activate && \
-	python3 scripts/mock_backend.py
 

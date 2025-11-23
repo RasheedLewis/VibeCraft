@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import ffmpeg
 
@@ -257,9 +256,6 @@ def concatenate_clips(
     song_duration_sec: float,
     ffmpeg_bin: str | None = None,
     job_id: str | None = None,
-    beat_times: Optional[list[float]] = None,  # NEW PARAMETER
-    filter_type: str = "flash",  # NEW PARAMETER
-    frame_rate: float = 24.0,  # NEW PARAMETER
 ) -> CompositionResult:
     """
     Concatenate normalized clips and mux with audio.
@@ -412,74 +408,6 @@ def concatenate_clips(
                     trimmed_output_path.rename(temp_video_path)
                 finally:
                     trimmed_output_path.unlink(missing_ok=True)
-            
-            # Apply beat filters if provided (before muxing with audio)
-            if beat_times and len(beat_times) > 0:
-                if job_id:
-                    update_job_progress(job_id, 78, "processing")  # Applying beat filters
-                logger.info(f"Applying {filter_type} beat filters for {len(beat_times)} beats")
-                
-                try:
-                    from app.services.beat_filters import generate_beat_filter_complex
-                    
-                    # Generate filter complex for beat effects
-                    beat_filters = generate_beat_filter_complex(
-                        beat_times=beat_times,
-                        filter_type=filter_type,
-                        frame_rate=frame_rate,
-                    )
-                    
-                    if beat_filters and filter_type == "flash":
-                        # Apply brightness pulse on beats using time-based filter
-                        filtered_video_path = temp_video_path.parent / "temp_filtered.mp4"
-                        filtered_input = ffmpeg.input(str(temp_video_path))
-                        
-                        # Build time-based condition for all beats
-                        # FFmpeg's between(t,start,end) returns 1 if true, 0 if false
-                        tolerance_sec = 0.05  # 50ms tolerance
-                        
-                        # Create a filter expression that triggers on any beat
-                        # We'll use a geq filter with a condition that checks if current time
-                        # is within any beat window
-                        beat_conditions = []
-                        for beat_time in beat_times[:50]:  # Limit to first 50 beats for expression length
-                            start_time = max(0, beat_time - tolerance_sec)
-                            end_time = min(beat_time + tolerance_sec, song_duration_sec)
-                            beat_conditions.append(f"between(t,{start_time},{end_time})")
-                        
-                        if beat_conditions:
-                            # Combine conditions with OR (using addition since they return 0/1)
-                            # In FFmpeg expressions, we can use min(1, sum) to create OR logic
-                            condition_expr = "+".join(beat_conditions)
-                            
-                            # Apply brightness increase on beats using geq filter
-                            # Increase RGB values by 30 when condition is true
-                            filtered_video = filtered_input["v"].filter(
-                                "geq",
-                                r=f"r+if(min(1,{condition_expr}),30,0)",
-                                g=f"g+if(min(1,{condition_expr}),30,0)",
-                                b=f"b+if(min(1,{condition_expr}),30,0)",
-                            )
-                        else:
-                            filtered_video = filtered_input["v"]
-                        
-                        (
-                            ffmpeg.output(
-                                filtered_video,
-                                str(filtered_video_path),
-                                vcodec=DEFAULT_VIDEO_CODEC,
-                            )
-                            .overwrite_output()
-                            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
-                        )
-                        
-                        # Replace temp video with filtered version
-                        temp_video_path.unlink(missing_ok=True)
-                        filtered_video_path.rename(temp_video_path)
-                        logger.info("Beat filters applied successfully")
-                except Exception as filter_exc:
-                    logger.warning(f"Failed to apply beat filters, continuing without filters: {filter_exc}")
-                    # Continue without filters if application fails
             
             # Now mux the video (which matches audio duration) with audio
             if job_id:
@@ -686,119 +614,6 @@ def trim_last_clip(
     except ffmpeg.Error as e:  # type: ignore[attr-defined]
         stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
         raise RuntimeError(f"Failed to trim clip: {stderr}") from e
-
-
-def trim_clip_to_beat_boundary(
-    clip_path: str | Path,
-    output_path: str | Path,
-    target_start_time: float,
-    target_end_time: float,
-    beat_start_time: float,
-    beat_end_time: float,
-    fps: float = 24.0,
-    ffmpeg_bin: str | None = None,
-) -> None:
-    """
-    Trim clip to align with beat boundaries.
-    
-    Args:
-        clip_path: Path to input clip
-        output_path: Path to output clip
-        target_start_time: Desired start time (may not be on beat)
-        target_end_time: Desired end time (may not be on beat)
-        beat_start_time: Nearest beat-aligned start time
-        beat_end_time: Nearest beat-aligned end time
-        fps: Video frame rate
-        ffmpeg_bin: Path to ffmpeg binary
-    """
-    settings = get_settings()
-    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
-    
-    # Calculate trim parameters relative to clip start
-    # We need to trim from target_start to beat_start, and from beat_end to target_end
-    trim_start_offset = max(0, beat_start_time - target_start_time)
-    trim_end_offset = max(0, target_end_time - beat_end_time)
-    
-    # Calculate the actual trim start and end within the clip
-    clip_start = trim_start_offset
-    clip_end = (target_end_time - target_start_time) - trim_end_offset
-    
-    # Build trim filter
-    # Format: trim=start=X:end=Y,setpts=PTS-STARTPTS
-    video_filter = f"trim=start={clip_start:.3f}:end={clip_end:.3f},setpts=PTS-STARTPTS"
-    
-    try:
-        (
-            ffmpeg.input(str(clip_path))
-            .output(
-                str(output_path),
-                vf=video_filter,
-                vcodec=DEFAULT_VIDEO_CODEC,
-                preset="medium",
-                crf=DEFAULT_CRF,
-                **{"an": None},  # Remove audio
-            )
-            .overwrite_output()
-            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
-        )
-    except ffmpeg.Error as e:  # type: ignore[attr-defined]
-        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
-        raise RuntimeError(f"Failed to trim clip to beat boundary: {stderr}") from e
-
-
-def extend_clip_to_beat_boundary(
-    clip_path: str | Path,
-    output_path: str | Path,
-    target_duration: float,
-    beat_end_time: float,
-    fadeout_duration: float = 0.5,
-    ffmpeg_bin: str | None = None,
-) -> None:
-    """
-    Extend clip to align with beat boundary using frame freeze + fadeout.
-    
-    Args:
-        clip_path: Path to input clip
-        output_path: Path to output clip
-        target_duration: Current clip duration
-        beat_end_time: Target beat-aligned end time
-        fadeout_duration: Fadeout duration in seconds
-        ffmpeg_bin: Path to ffmpeg binary
-    """
-    extension_needed = beat_end_time - target_duration
-    
-    if extension_needed <= 0:
-        # No extension needed, just trim to beat boundary with fadeout
-        trim_last_clip(clip_path, output_path, beat_end_time, fadeout_duration, ffmpeg_bin)
-        return
-    
-    # Use tpad to extend by freezing last frame
-    # Then add fadeout
-    video_filter = (
-        f"tpad=stop_mode=clone:stop_duration={extension_needed:.3f},"
-        f"fade=t=out:st={beat_end_time - fadeout_duration:.3f}:d={fadeout_duration:.3f}"
-    )
-    
-    settings = get_settings()
-    ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
-    
-    try:
-        (
-            ffmpeg.input(str(clip_path))
-            .output(
-                str(output_path),
-                vf=video_filter,
-                vcodec=DEFAULT_VIDEO_CODEC,
-                preset="medium",
-                crf=DEFAULT_CRF,
-                **{"an": None},  # Remove audio
-            )
-            .overwrite_output()
-            .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)
-        )
-    except ffmpeg.Error as e:  # type: ignore[attr-defined]
-        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
-        raise RuntimeError(f"Failed to extend clip to beat boundary: {stderr}") from e
 
 
 def verify_composed_video(

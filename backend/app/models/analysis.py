@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -16,10 +16,10 @@ class SongAnalysisRecord(SQLModel, table=True):
     duration_sec: float = Field(default=0.0, ge=0)
     bpm: Optional[float] = Field(default=None, ge=0)
     analysis_json: str = Field(default="", sa_column=Column(Text, nullable=False))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(UTC)},
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
     )
 
 
@@ -32,10 +32,10 @@ class AnalysisJob(SQLModel, table=True):
     progress: int = Field(default=0, ge=0, le=100)
     analysis_id: Optional[UUID] = Field(default=None, foreign_key="song_analyses.id")
     error: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(UTC)},
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
     )
 
 
@@ -50,10 +50,10 @@ class ClipGenerationJob(SQLModel, table=True):
     completed_clips: int = Field(default=0, ge=0)
     failed_clips: int = Field(default=0, ge=0)
     error: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(UTC)},
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
     )
 
 

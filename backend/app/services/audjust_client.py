@@ -116,7 +116,7 @@ def fetch_structure_segments(audio_path: Path) -> List[Dict[str, Any]]:
 
     try:
         structure_payload = response.json()
-    except ValueError as exc:
+    except ValueError as exc:  # noqa: B902
         raise AudjustRequestError("Audjust API response was not valid JSON") from exc
 
     sections = None

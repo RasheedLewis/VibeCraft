@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -19,10 +19,10 @@ class CompositionJob(SQLModel, table=True):
     clip_metadata: str = Field(sa_column=Column(Text, nullable=False))  # JSON array of clip metadata
     composed_video_id: Optional[UUID] = Field(default=None, foreign_key="composed_videos.id")
     error: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(UTC)},
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
     )
 
 
@@ -40,9 +40,9 @@ class ComposedVideo(SQLModel, table=True):
     clip_ids: str = Field(sa_column=Column(Text, nullable=False))  # JSON array of SectionVideo UUIDs
     status: str = Field(default="processing", max_length=32)  # processing, completed, failed
     error_message: Optional[str] = Field(default=None, max_length=1024)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        sa_column_kwargs={"onupdate": lambda: datetime.now(UTC)},
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
     )
 

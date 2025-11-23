@@ -7,7 +7,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from app.api.deps import get_db
-from app.core.config import is_sections_enabled
 from app.models.section_video import SectionVideo
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.section_video import (
@@ -45,13 +44,6 @@ async def generate_section_video_endpoint(
     Returns:
         SectionVideoGenerateResponse with job status
     """
-    # Check if sections are enabled
-    if not is_sections_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Section-based video generation is disabled. Use direct clip generation instead.",
-        )
-
     # Validate section_id matches request
     if section_id != request.section_id:
         raise HTTPException(
@@ -170,8 +162,8 @@ async def generate_section_video_endpoint(
                         session.commit()
                 except Exception:
                     pass
-            # Exit the generator after first iteration
-            break
+            finally:
+                break  # Exit the generator
 
     # Add background task
     background_tasks.add_task(generate_video_background)
@@ -199,12 +191,6 @@ async def get_section_video(
     Returns:
         SectionVideoRead with video details (includes videoUrl if completed)
     """
-    # Check if sections are enabled
-    if not is_sections_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Section-based video generation is disabled. Use direct clip generation instead.",
-        )
     # Get the most recent video for this section (any status)
     section_video = db.exec(
         select(SectionVideo).where(SectionVideo.section_id == section_id).order_by(SectionVideo.created_at.desc())

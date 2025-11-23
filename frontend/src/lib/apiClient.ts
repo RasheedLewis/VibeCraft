@@ -52,14 +52,12 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear auth on 401
+      // Clear auth on 401 (but don't redirect - let the app handle it)
       localStorage.removeItem('vibecraft_auth_token')
       localStorage.removeItem('vibecraft_auth_user')
       delete apiClient.defaults.headers.common['Authorization']
-      // Redirect to login if not already there
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login'
-      }
+      // Note: We don't redirect here since /login route doesn't exist
+      // The app will handle auth state changes via React Query
     }
     return Promise.reject(error)
   },

@@ -27,6 +27,7 @@ import { useClipPolling } from '../hooks/useClipPolling'
 import { useCompositionPolling } from '../hooks/useCompositionPolling'
 import { useVideoTypeSelection } from '../hooks/useVideoTypeSelection'
 import { useAudioSelection } from '../hooks/useAudioSelection'
+import { useAuth } from '../hooks/useAuth'
 
 // Components
 import { BackgroundOrbs } from '../components/upload/BackgroundOrbs'
@@ -44,6 +45,8 @@ import { CharacterImageUpload } from '../components/upload/CharacterImageUpload'
 import { TemplateCharacterModal } from '../components/upload/TemplateCharacterModal'
 import { SelectedTemplateDisplay } from '../components/upload/SelectedTemplateDisplay'
 import { SongProfileView } from '../components/song/SongProfileView'
+import { ProjectsModal } from '../components/projects/ProjectsModal'
+import { AuthModal } from '../components/auth/AuthModal'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
 
@@ -54,6 +57,7 @@ interface UploadMetadata {
 }
 
 export const UploadPage: React.FC = () => {
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const fileInputId = useId()
   const [stage, setStage] = useState<UploadStage>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -72,9 +76,13 @@ export const UploadPage: React.FC = () => {
   const autoScrollCompletedRef = useRef<boolean>(false)
   const uploadAbortControllerRef = useRef<AbortController | null>(null)
   const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  const [projectsModalOpen, setProjectsModalOpen] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [loginPromptModalOpen, setLoginPromptModalOpen] = useState(false)
   const [videoTypeSelectorVisible, setVideoTypeSelectorVisible] = useState(true)
   const [hideCharacterConsistency, setHideCharacterConsistency] = useState(false)
   const [showNoCharacterConfirm, setShowNoCharacterConfirm] = useState(false)
+  const [showProfileHint, setShowProfileHint] = useState(false)
 
   // Use custom hooks for video type and audio selection
   const videoTypeSelection = useVideoTypeSelection({
@@ -466,6 +474,17 @@ export const UploadPage: React.FC = () => {
     }
   }, [])
 
+  // Show profile hint on every page load (reset on refresh)
+  useEffect(() => {
+    // Always show the hint on mount - use setTimeout to avoid setState in effect
+    const timer = setTimeout(() => {
+      setShowProfileHint(true)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Animation will show on every page load/refresh
+
   // Persist songId to localStorage when it changes
   useEffect(() => {
     if (result?.songId) {
@@ -680,6 +699,12 @@ export const UploadPage: React.FC = () => {
 
   const handleFileUpload = useCallback(
     async (file: File) => {
+      // Check if user is authenticated
+      if (!isAuthenticated) {
+        setLoginPromptModalOpen(true)
+        return
+      }
+
       resetState()
 
       if (
@@ -772,7 +797,7 @@ export const UploadPage: React.FC = () => {
         setStage('error')
       }
     },
-    [resetState, fetchSongDetails, clipPolling],
+    [isAuthenticated, resetState, fetchSongDetails, clipPolling],
   )
 
   const handleFilesSelected = useCallback(
@@ -848,8 +873,44 @@ export const UploadPage: React.FC = () => {
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#0C0C12] via-[#121224] to-[#0B0B16] px-4 py-16 text-white">
       <BackgroundOrbs />
 
+      {/* Profile Button - Top Right */}
+      <div className="fixed top-6 right-6 z-50">
+        {/* Pointing Animation - One Time */}
+        {showProfileHint && (
+          <div
+            className="absolute -left-12 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{
+              animation: 'pointAndFade 3s ease-in-out forwards',
+            }}
+          >
+            <div className="text-3xl filter drop-shadow-lg">👉</div>
+          </div>
+        )}
+
+        {!isAuthLoading && (
+          <button
+            onClick={() => {
+              if (isAuthenticated) {
+                setProjectsModalOpen(true)
+              } else {
+                setAuthModalOpen(true)
+              }
+              setShowProfileHint(false)
+            }}
+            className="relative flex h-16 w-16 items-center justify-center rounded-full bg-vc-accent-primary shadow-vc2 hover:shadow-vc3 hover:bg-[#7A76FF] transition-all active:scale-[0.98] overflow-hidden"
+            aria-label={isAuthenticated ? 'Open projects' : 'Login'}
+          >
+            <img
+              src="/img/vibe_lightning_simple.png"
+              alt="Profile"
+              className="w-full h-full object-cover"
+            />
+          </button>
+        )}
+      </div>
+
       {analysisState !== 'completed' && (
-        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
+        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-4 text-center">
           <div className="space-y-3">
             {/* <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
               Upload
@@ -1124,7 +1185,7 @@ export const UploadPage: React.FC = () => {
             )
           })()}
 
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs text-vc-text-muted">
+          <div className="flex flex-wrap items-center justify-center gap-0 text-xs text-vc-text-muted -mt-2">
             <RequirementPill
               icon={<WaveformIcon />}
               label={`Accepted: ${requirementsCopy.formats}`}
@@ -1420,6 +1481,102 @@ export const UploadPage: React.FC = () => {
                 Analysis complete but missing data. State: analysisData=
                 {String(!!analysisData)}, songDetails={String(!!songDetails)}
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ProjectsModal
+        isOpen={projectsModalOpen}
+        onClose={() => setProjectsModalOpen(false)}
+        onOpenProject={(songId) => {
+          // Load the project by setting the songId in URL
+          window.history.pushState({}, '', `/?songId=${songId}`)
+          // Trigger a reload of the song details
+          if (songId) {
+            fetchSongDetails(songId)
+            setResult({ songId } as SongUploadResponse)
+          }
+        }}
+        onOpenAuth={() => setAuthModalOpen(true)}
+      />
+
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={() => {
+          // After successful login/register, close the modal
+          // The auth state will update automatically via React Query
+          setAuthModalOpen(false)
+        }}
+      />
+
+      {/* Login Prompt Modal */}
+      {loginPromptModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => {
+            setLoginPromptModalOpen(false)
+            // Re-animate the pointing hand after closing - reset to false first to force re-render
+            setShowProfileHint(false)
+            setTimeout(() => setShowProfileHint(true), 100)
+          }}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-[rgba(20,20,32,0.95)] backdrop-blur-xl border border-vc-border/50 shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => {
+                setLoginPromptModalOpen(false)
+                // Re-animate the pointing hand after closing
+                setShowProfileHint(false)
+                setTimeout(() => setShowProfileHint(true), 100)
+              }}
+              className="absolute top-4 right-4 text-vc-text-secondary hover:text-white transition-colors p-2 hover:bg-vc-border/30 rounded-lg"
+              aria-label="Close"
+            >
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-white mb-4">Login Required</h2>
+              <p className="text-white/70 mb-6">
+                Please log in or sign up to upload and create videos.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <VCButton
+                  onClick={() => {
+                    setLoginPromptModalOpen(false)
+                    setAuthModalOpen(true)
+                  }}
+                >
+                  Login / Sign Up
+                </VCButton>
+                <VCButton
+                  variant="secondary"
+                  onClick={() => {
+                    setLoginPromptModalOpen(false)
+                    // Re-animate the pointing hand after closing
+                    setShowProfileHint(false)
+                    setTimeout(() => setShowProfileHint(true), 100)
+                  }}
+                >
+                  Cancel
+                </VCButton>
+              </div>
             </div>
           </div>
         </div>

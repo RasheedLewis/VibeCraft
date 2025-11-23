@@ -19,17 +19,17 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] Navigate to app (should redirect to `/login` if not authenticated)
 - [ ] Click "Register" or toggle to registration mode
 - [ ] Enter email: `test@example.com`
-- [ ] Enter password: `testpassword123`
+- [ ] Enter password: `password`
 - [ ] Optionally enter display name: `Test User`
 - [ ] Click "Register"
-- [ ] **Expected:** Redirects to `/projects` page, user is logged in
+- [ ] **Expected:** Automatically logs in and redirects to upload page (`/`), user is logged in
 
 ### Test Login
-- [ ] Click "Logout" button (if visible)
+- [ ] Click "Logout" button (in projects modal)
 - [ ] Should redirect to `/login`
-- [ ] Enter same email and password
+- [ ] Enter email: `test@example.com` and password: `password`
 - [ ] Click "Login"
-- [ ] **Expected:** Redirects to `/projects` page
+- [ ] **Expected:** Redirects to upload page (`/`)
 
 ### Test Protected Routes
 - [ ] While logged out, try to access `/` or `/projects` directly
@@ -41,19 +41,20 @@ This checklist helps you systematically test all features implemented in this br
 
 ## 📁 Feature 2: Project Listing (Max 5)
 
-**Location:** Frontend `/projects` page, Backend `/api/v1/songs/` (GET)
+**Location:** Frontend projects modal (click 😊 button), Backend `/api/v1/songs/` (GET)
 
 ### Test Empty State
-- [ ] After login, view `/projects` page
+- [ ] After login, click the 😊 profile button (top-right)
+- [ ] **Expected:** Projects modal opens
 - [ ] **Expected:** Shows "No projects yet. Create your first one!" message
-- [ ] **Expected:** "Create New" button visible
+- [ ] **Expected:** "Create New" button visible (only one, at top)
 
 ### Test Project Creation & Listing
 - [ ] Create 1 project (upload a song, complete flow)
-- [ ] Go to `/projects` page
+- [ ] Click 😊 profile button to open projects modal
 - [ ] **Expected:** Project appears in list with title, filename, duration
 - [ ] Create 2 more projects (total 3)
-- [ ] **Expected:** All 3 projects visible
+- [ ] **Expected:** All 3 projects visible in modal
 
 ### Test 5-Project Limit
 - [ ] Create 2 more projects (total 5)
@@ -63,7 +64,8 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] **Expected:** Warning banner on projects page: "You've reached the maximum of 5 projects"
 
 ### Test Project Navigation
-- [ ] Click on a project card
+- [ ] Click on a project card in the modal
+- [ ] **Expected:** Modal closes
 - [ ] **Expected:** Navigates to upload page with `?songId=...` in URL
 - [ ] **Expected:** Project state loads correctly
 

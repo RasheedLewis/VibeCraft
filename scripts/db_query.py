@@ -632,12 +632,19 @@ def cmd_clear_all(confirm: bool = False):
     # Clear database tables (in order to respect foreign key constraints)
     with _get_session() as session:
         from app.models import (
+            AnalysisJob,
+            ClipGenerationJob,
             ComposedVideo,
             CompositionJob,
             SectionVideo,
+            Song,
             SongAnalysisRecord,
+            SongClip,
+            User,
         )
         
+        # Clear in order to respect foreign key constraints
+        # User should be cleared last since Songs reference users
         tables_to_clear = [
             ('ComposedVideo', ComposedVideo),
             ('CompositionJob', CompositionJob),
@@ -647,6 +654,7 @@ def cmd_clear_all(confirm: bool = False):
             ('SongAnalysisRecord', SongAnalysisRecord),
             ('ClipGenerationJob', ClipGenerationJob),
             ('Song', Song),
+            ('User', User),
         ]
         
         for table_name, model in tables_to_clear:

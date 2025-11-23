@@ -43,21 +43,6 @@ export function useAuth() {
     return userStr ? JSON.parse(userStr) : null
   }
 
-  // Set auth data
-  const setAuth = (token: string, user: UserInfo) => {
-    localStorage.setItem(AUTH_TOKEN_KEY, token)
-    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
-    // Update API client default headers
-    apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`
-  }
-
-  // Clear auth data
-  const clearAuth = () => {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
-    localStorage.removeItem(AUTH_USER_KEY)
-    delete apiClient.defaults.headers.common['Authorization']
-  }
-
   // Initialize token on mount (using useEffect to avoid modifying outside component)
   React.useEffect(() => {
     const token = getToken()
@@ -66,9 +51,14 @@ export function useAuth() {
     }
   }, [])
 
-  // Get current user
-  const token = getToken()
-  const { data: currentUser, isLoading: isLoadingUser } = useQuery<UserInfo>({
+  // Get current user - make token reactive so query enables when token changes
+  const [token, setToken] = React.useState<string | null>(() => getToken())
+
+  const {
+    data: currentUser,
+    isLoading: isLoadingUser,
+    refetch: refetchUser,
+  } = useQuery<UserInfo>({
     queryKey: ['auth', 'me'],
     queryFn: async () => {
       const response = await apiClient.get<UserInfo>('/auth/me')
@@ -76,8 +66,35 @@ export function useAuth() {
     },
     enabled: !!token,
     retry: false,
-    staleTime: Infinity,
+    staleTime: 0, // Always refetch when enabled
   })
+
+  // Create setAuth function that has access to refetchUser
+  const setAuth = React.useCallback(
+    (tokenValue: string, user: UserInfo) => {
+      localStorage.setItem(AUTH_TOKEN_KEY, tokenValue)
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+      // Update API client default headers
+      apiClient.defaults.headers.common['Authorization'] = `Bearer ${tokenValue}`
+      // Update token state to trigger query
+      setToken(tokenValue)
+      // Immediately set query data
+      queryClient.setQueryData(['auth', 'me'], user)
+      // Refetch to verify with backend
+      setTimeout(() => {
+        refetchUser()
+      }, 0)
+    },
+    [queryClient, refetchUser],
+  )
+
+  // Clear auth data
+  const clearAuth = React.useCallback(() => {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    localStorage.removeItem(AUTH_USER_KEY)
+    delete apiClient.defaults.headers.common['Authorization']
+    setToken(null)
+  }, [])
 
   // Login mutation
   const loginMutation = useMutation<AuthResponse, Error, LoginRequest>({
@@ -92,15 +109,23 @@ export function useAuth() {
         display_name: data.display_name,
       }
       setAuth(data.access_token, user)
-      queryClient.setQueryData(['auth', 'me'], user)
     },
   })
 
   // Register mutation
   const registerMutation = useMutation<AuthResponse, Error, RegisterRequest>({
     mutationFn: async (credentials) => {
-      const response = await apiClient.post<AuthResponse>('/auth/register', credentials)
-      return response.data
+      try {
+        const response = await apiClient.post<AuthResponse>('/auth/register', credentials)
+        return response.data
+      } catch (error) {
+        console.error('[useAuth] Register error:', error)
+        if (error && typeof error === 'object' && 'response' in error) {
+          const axiosError = error as { response?: { data?: unknown } }
+          console.error('[useAuth] Error response:', axiosError?.response?.data)
+        }
+        throw error
+      }
     },
     onSuccess: (data) => {
       const user: UserInfo = {
@@ -109,23 +134,30 @@ export function useAuth() {
         display_name: data.display_name,
       }
       setAuth(data.access_token, user)
-      queryClient.setQueryData(['auth', 'me'], user)
     },
   })
 
   // Logout
-  const logout = () => {
+  const logout = React.useCallback(() => {
     clearAuth()
+    // Clear all query data to reset app state
     queryClient.clear()
-  }
+    // Invalidate auth query to ensure it refetches as unauthenticated
+    queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
+  }, [clearAuth, queryClient])
 
-  const currentToken = getToken()
+  // Use state token, fallback to getToken() for initial render
+  const currentToken = token ?? getToken()
+  // Check if authenticated - use currentUser from query OR from localStorage
+  const user = currentUser || getUser()
+  const isAuthenticated = !!currentToken && !!user
+
   return {
-    currentUser: currentUser || getUser(),
+    currentUser: user,
     isLoading: isLoadingUser,
-    isAuthenticated: !!currentToken && !!currentUser,
-    login: loginMutation.mutate,
-    register: registerMutation.mutate,
+    isAuthenticated,
+    login: loginMutation.mutateAsync,
+    register: registerMutation.mutateAsync,
     logout,
     isLoggingIn: loginMutation.isPending,
     isRegistering: registerMutation.isPending,

@@ -1,10 +1,15 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
-import { VCButton } from '../components/vibecraft'
+import React, { useState, useEffect } from 'react'
+import { AxiosError } from 'axios'
+import { useAuth } from '../../hooks/useAuth'
+import { VCButton } from '../vibecraft'
 
-export const LoginPage: React.FC = () => {
-  const navigate = useNavigate()
+export interface AuthModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSuccess: () => void
+}
+
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { login, register, isLoggingIn, isRegistering, loginError, registerError } =
     useAuth()
   const [isLogin, setIsLogin] = useState(true)
@@ -13,29 +18,87 @@ export const LoginPage: React.FC = () => {
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, onClose])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    e.stopPropagation() // Prevent any event bubbling that might cause reload
     setError(null)
 
     try {
+      // Use mutateAsync to properly await the mutation
       if (isLogin) {
         await login({ email, password })
       } else {
         await register({ email, password, display_name: displayName || undefined })
       }
-      navigate('/')
-    } catch {
-      setError(
-        isLogin
-          ? loginError?.message || 'Login failed. Please try again.'
-          : registerError?.message || 'Registration failed. Please try again.',
-      )
+      // Wait a moment for auth state to update and React to re-render
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      onSuccess()
+      onClose()
+    } catch (err) {
+      const axiosError = err as AxiosError<{ detail?: string; message?: string }>
+      console.error('Auth error:', axiosError)
+      console.error('Auth error response:', axiosError?.response)
+      console.error('Auth error data:', axiosError?.response?.data)
+
+      // Get the actual error message from various possible locations
+      const backendError =
+        axiosError?.response?.data?.detail || axiosError?.response?.data?.message
+
+      // Handle specific error cases - only match exact backend error message
+      let errorMessage: string
+      if (backendError === 'Email already registered') {
+        errorMessage = 'Please register with a different email.'
+      } else if (backendError) {
+        errorMessage = backendError
+      } else {
+        errorMessage =
+          axiosError?.message ||
+          String(axiosError) ||
+          (isLogin
+            ? loginError?.message || 'Login failed. Please try again.'
+            : registerError?.message || 'Registration failed. Please try again.')
+      }
+      setError(errorMessage)
     }
   }
 
+  if (!isOpen) return null
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
-      <div className="w-full max-w-md p-8 bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md rounded-2xl bg-[rgba(20,20,32,0.95)] backdrop-blur-xl border border-vc-border/50 shadow-2xl p-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-vc-text-secondary hover:text-white transition-colors p-2 hover:bg-vc-border/30 rounded-lg"
+          aria-label="Close"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+
         <h1 className="text-3xl font-bold text-white mb-2 text-center">VibeCraft</h1>
         <p className="text-white/70 text-center mb-8">AI Music Video Generator</p>
 

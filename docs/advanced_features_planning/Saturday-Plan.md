@@ -60,6 +60,32 @@
 
 ---
 
+## 📋 Summary: What's Not Implemented (Excluding Beat-Sync Effects & Prompt Engineering)
+
+**Missing Infrastructure:**
+- **CloudFront/CDN Setup** (Line 96, Phase 7.6) - Currently using presigned S3 URLs directly. Need CloudFront distribution for character images and final videos. No detailed implementation plan found.
+
+**User Experience Enhancements:**
+- **Transition Effects** (Line 118, Phase 7.1) - No crossfades/dissolves between clips (only fadeout for trim/extend). Listed as future spike.
+- **Multiple Reference Images UX** (Line 106, Phase 7.4) - Code supports pose-a/pose-b, but no UX to choose "pose 2" from templates.
+
+**Advanced Features (Future Spikes):**
+- **Advanced Dancing Sync** (Line 100, Phase 7.2) - OpenCV motion detection + time stretching approach
+- **Veo Model Testing** (Line 102, Phase 7.3) - Spike on Veo/Veo3 model
+
+**Needs Verification:**
+- **Performance Optimizations** (Line 92, Phase 7.5) - Check for N+1 queries, missing indexes, eager loading opportunities, sync processes that should be async
+
+**Already Implemented ✅:**
+- Concurrent clip generation (4 clips) - `DEFAULT_MAX_CONCURRENCY = 4`
+- Actual beat detection - Using `librosa.beat.beat_track()` for real beats
+- BPM-aware prompting - `TEMPO_DESCRIPTORS` in `prompt_enhancement.py`
+- State persistence - URL params
+- Auth + project listing - `AuthModal.tsx` and `ProjectsModal.tsx` exist
+- Rate limiting, cost tracking, max file size validation
+
+---
+
 ## 🎯 What's Left
 
 **Completed:**

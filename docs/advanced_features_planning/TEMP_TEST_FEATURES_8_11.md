@@ -263,16 +263,16 @@ All should return 200 (health checks aren't rate limited).
 **Note:** Some test prompts with `songId: null` appear in the log (likely from earlier testing).
 
 ### Cost Tracking (Feature 10)
-**Status:** ⚠️ Needs Verification
+**Status:** ⚠️ Needs Investigation
 
 - **Expected behavior:** Cost tracking logs should appear with `[COST-TRACKING]` prefix in worker logs
-- **Current status:** No cost tracking logs found in recent worker logs
-- **Possible reasons:**
-  - Cost tracking is only logged at composition completion (not during clip generation)
-  - Clips may still be generating (cost tracking happens per clip)
-  - Logs may be in a different worker log file
-
-**Action needed:** Check logs after composition completes, or verify cost tracking is being called during clip generation.
+- **Current status:** No cost tracking logs found in recent worker logs, even after successful composition
+- **Bug Found:** `song.id` was used instead of `song_id` in `clip_generation.py` line 289, causing NameError when song retrieval failed silently
+- **Fix Applied:** 
+  - Changed to use `song_id` directly instead of `song.id`
+  - Added check to only track cost if `song` was successfully retrieved
+  - Added error handling with try-except around cost tracking
+- **Action needed:** Re-test after fix to verify cost tracking logs appear during clip generation
 
 ### Clip Generation Concurrency
 **Status:** ✅ Working

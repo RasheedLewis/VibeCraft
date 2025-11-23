@@ -320,7 +320,11 @@ This checklist helps you systematically test all features implemented in this br
 
 **Note:** Cost is stored but not displayed in UI yet (backend only).
 
-**Status:** ✅ Passed
+**Status:** ⚠️ Needs Investigation
+- **Issue:** Cost tracking logs not appearing during successful composition
+- **Bug Found:** `song.id` was used instead of `song_id` in `clip_generation.py` line 289, causing NameError when song retrieval failed
+- **Fix Applied:** Changed to use `song_id` directly and added error handling
+- **Action Needed:** Re-test after fix to verify cost tracking logs appear
 
 ---
 

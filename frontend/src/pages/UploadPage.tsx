@@ -479,6 +479,21 @@ export const UploadPage: React.FC = () => {
     }
   }, [])
 
+  const handleTitleUpdate = useCallback(
+    async (title: string) => {
+      if (!result?.songId) return
+      try {
+        await apiClient.patch(`/songs/${result.songId}/title`, { title })
+        // Refresh song details to get updated title
+        await fetchSongDetails(result.songId)
+      } catch (err) {
+        console.error('Failed to update title:', err)
+        throw err
+      }
+    },
+    [result?.songId, fetchSongDetails],
+  )
+
   // Show profile hint on every page load (reset on refresh)
   useEffect(() => {
     // Always show the hint on mount - use setTimeout to avoid setState in effect
@@ -1383,6 +1398,7 @@ export const UploadPage: React.FC = () => {
                 onRetryClip={handleRetryClip}
                 onPlayerClipSelect={handlePlayerClipSelect}
                 onSectionSelect={handleSectionSelect}
+                onTitleUpdate={handleTitleUpdate}
               />
             )}
         </div>

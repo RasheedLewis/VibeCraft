@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { SectionCard, VCCard, VCButton } from '../vibecraft'
 import type {
   ClipGenerationSummary,
@@ -41,6 +41,7 @@ interface SongProfileViewProps {
   highlightedSectionId: string | null
   lyricsBySection: Map<string, string>
   onSectionSelect: (sectionId: string) => void
+  onTitleUpdate?: (title: string) => Promise<void>
 }
 
 export const SongProfileView: React.FC<SongProfileViewProps> = ({
@@ -66,6 +67,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   onPlayerClipSelect,
   onSectionSelect,
   audioUrl,
+  onTitleUpdate,
 }) => {
   const { data: featureFlags } = useFeatureFlags()
   const sectionsEnabled = featureFlags?.sections ?? true // Default to true for backward compatibility
@@ -76,10 +78,68 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   const durationLabel = durationValue ? formatSeconds(durationValue) : '—'
   const primaryGenre = analysisData.primaryGenre ?? 'Unknown genre'
   const moodLabel = analysisData.moodPrimary ?? formatMoodTags(analysisData.moodTags)
-  const fileName = songDetails.title?.trim()
-    ? songDetails.title
-    : (metadata?.fileName ?? songDetails.original_filename)
+  const defaultTitle = metadata?.fileName ?? songDetails.original_filename
+  const displayTitle = songDetails.title?.trim() ? songDetails.title : defaultTitle
   const sectionMood = mapMoodToMoodKind(analysisData.moodPrimary ?? '')
+
+  // Title editing state
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleValue, setTitleValue] = useState(displayTitle)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const [isSavingTitle, setIsSavingTitle] = useState(false)
+
+  // Update title value when songDetails changes
+  useEffect(() => {
+    const newDisplayTitle = songDetails.title?.trim() ? songDetails.title : defaultTitle
+    setTitleValue(newDisplayTitle)
+  }, [songDetails.title, defaultTitle])
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (isEditingTitle && titleInputRef.current) {
+      titleInputRef.current.focus()
+      titleInputRef.current.select()
+    }
+  }, [isEditingTitle])
+
+  const handleTitleClick = () => {
+    if (onTitleUpdate) {
+      setIsEditingTitle(true)
+    }
+  }
+
+  const handleTitleBlur = async () => {
+    if (!onTitleUpdate) return
+
+    const trimmedValue = titleValue.trim()
+    const finalValue = trimmedValue || defaultTitle
+
+    if (trimmedValue !== songDetails.title) {
+      setIsSavingTitle(true)
+      try {
+        await onTitleUpdate(finalValue)
+      } catch (error) {
+        console.error('Failed to update title:', error)
+        // Revert to original value on error
+        setTitleValue(songDetails.title?.trim() ? songDetails.title : defaultTitle)
+      } finally {
+        setIsSavingTitle(false)
+      }
+    }
+
+    setIsEditingTitle(false)
+  }
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      titleInputRef.current?.blur()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setTitleValue(songDetails.title?.trim() ? songDetails.title : defaultTitle)
+      setIsEditingTitle(false)
+    }
+  }
 
   const completedClipEntries =
     clipSummary?.clips?.filter(
@@ -149,9 +209,30 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       <header className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2">
           <div className="vc-label">Song profile</div>
-          <h1 className="font-display text-3xl text-white md:text-4xl">
-            {fileName ?? 'Untitled track'}
-          </h1>
+          {isEditingTitle ? (
+            <input
+              ref={titleInputRef}
+              type="text"
+              value={titleValue}
+              onChange={(e) => setTitleValue(e.target.value)}
+              onBlur={handleTitleBlur}
+              onKeyDown={handleTitleKeyDown}
+              disabled={isSavingTitle}
+              className="font-display text-3xl text-white md:text-4xl bg-transparent border-b-2 border-vc-accent-primary/50 focus:border-vc-accent-primary focus:outline-none w-full pb-1 disabled:opacity-50"
+              maxLength={256}
+            />
+          ) : (
+            <h1
+              onClick={handleTitleClick}
+              className={`font-display text-3xl text-white md:text-4xl ${
+                onTitleUpdate
+                  ? 'cursor-text hover:text-vc-accent-primary/80 transition-colors'
+                  : ''
+              }`}
+            >
+              {displayTitle ?? 'Untitled track'}
+            </h1>
+          )}
           <p className="text-xs uppercase tracking-[0.16em] text-vc-text-muted">
             Source file: {songDetails.original_filename}
           </p>
@@ -161,7 +242,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
           <div className="text-sm font-medium text-white">{primaryGenre}</div>
           <div className="text-xs text-vc-text-secondary">{moodLabel}</div>
           <div className="text-xs text-vc-text-muted">
-            {[bpmLabel, durationLabel].filter(Boolean).join(' • ')} • Key: —
+            {[bpmLabel, durationLabel].filter(Boolean).join(' • ')}
           </div>
           <div className="pt-2">
             <MoodVectorMeter moodVector={analysisData.moodVector} />

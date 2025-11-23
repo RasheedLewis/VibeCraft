@@ -83,3 +83,7 @@ class VideoTypeUpdate(BaseModel):
             raise ValueError(f"video_type must be one of {VALID_VIDEO_TYPES}")
         return self
 
+
+class TitleUpdate(BaseModel):
+    title: str = Field(max_length=256, description="Song title")
+

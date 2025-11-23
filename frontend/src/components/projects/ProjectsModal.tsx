@@ -21,6 +21,7 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
   const { currentUser, isAuthenticated, logout } = useAuth()
   const queryClient = useQueryClient()
   const [deletingSongId, setDeletingSongId] = useState<string | null>(null)
+  const [isDeletingAll, setIsDeletingAll] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -68,6 +69,39 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
       alert('Failed to delete project. Please try again.')
     } finally {
       setDeletingSongId(null)
+    }
+  }
+
+  const handleDeleteAll = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+
+    if (
+      !confirm(
+        'Are you sure you want to delete ALL songs? This will delete all projects and un-analyzed tracks. This action cannot be undone.',
+      )
+    ) {
+      return
+    }
+
+    setIsDeletingAll(true)
+    try {
+      await apiClient.delete('/songs/delete-all')
+      // Clear the cache
+      queryClient.setQueryData<SongRead[]>(['songs'], [])
+      // Invalidate and refetch to ensure consistency
+      await queryClient.invalidateQueries({ queryKey: ['songs'] })
+      await refetch()
+    } catch (error: unknown) {
+      console.error('Failed to delete all songs:', error)
+      const errorMessage =
+        (error as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail ||
+        (error as { message?: string })?.message ||
+        'Failed to delete all songs. Please try again.'
+      await queryClient.invalidateQueries({ queryKey: ['songs'] })
+      await refetch()
+      alert(errorMessage)
+    } finally {
+      setIsDeletingAll(false)
     }
   }
 
@@ -132,9 +166,16 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
               {currentUser?.display_name || currentUser?.email}
             </p>
           </div>
-          <p className="text-white/50 text-xs italic flex-1 text-center mx-4">
-            Projects only appear once song analysis completes.
-          </p>
+          <div className="text-white/50 text-xs italic flex-1 text-center mx-4 flex flex-col gap-1">
+            <p>Projects only appear once song analysis completes.</p>
+            <button
+              onClick={handleDeleteAll}
+              disabled={isDeletingAll}
+              className="text-white/70 hover:text-white transition-colors cursor-pointer italic disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              delete all projects and un-analyzed tracks
+            </button>
+          </div>
           <div className="flex gap-3">
             {isAuthenticated ? (
               <VCButton variant="secondary" onClick={handleLogout}>

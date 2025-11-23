@@ -38,6 +38,7 @@ from app.schemas.song import (
     AudioSelectionUpdate,
     SongRead,
     SongUploadResponse,
+    TitleUpdate,
     VideoTypeUpdate,
 )
 from app.services import preprocess_audio
@@ -201,7 +202,7 @@ async def upload_song(
     if len(existing_songs_count) >= 5:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Oops—sorry! You must create a new account—limit of 5 reached :(",
+            detail="Limit of 5 reached :( Please delete a video (or create a new account)",
         )
 
     settings = get_settings()
@@ -333,6 +334,115 @@ def get_song_analysis(song_id: UUID, db: Session = Depends(get_db)) -> SongAnaly
         )
 
     return analysis
+
+
+@router.delete(
+    "/delete-all",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete all songs for the current user",
+    response_model=None,
+)
+def delete_all_songs(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete all songs and related records for the current user. Includes un-analyzed tracks."""
+    # Get all songs for the current user
+    all_songs = db.exec(
+        select(Song).where(Song.user_id == current_user.id)
+    ).all()
+    
+    if not all_songs:
+        # No songs to delete, return early
+        return
+    
+    try:
+        # Delete all related records for each song
+        for song in all_songs:
+            song_id = song.id
+            
+            # Delete clips
+            clips = db.exec(select(SongClip).where(SongClip.song_id == song_id)).all()
+            for clip in clips:
+                db.delete(clip)
+            
+            # Get analysis record first (before deleting jobs that reference it)
+            analysis_record = db.exec(
+                select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
+            ).first()
+            
+            # Delete analysis jobs that reference the analysis record by analysis_id
+            if analysis_record:
+                analysis_jobs_by_analysis_id = db.exec(
+                    select(AnalysisJob).where(AnalysisJob.analysis_id == analysis_record.id)
+                ).all()
+                for job in analysis_jobs_by_analysis_id:
+                    db.delete(job)
+            
+            # Delete analysis jobs by song_id (any remaining ones)
+            analysis_jobs = db.exec(
+                select(AnalysisJob).where(AnalysisJob.song_id == song_id)
+            ).all()
+            for job in analysis_jobs:
+                db.delete(job)
+            
+            # Now delete the analysis record (after all jobs referencing it are deleted)
+            if analysis_record:
+                db.delete(analysis_record)
+            
+            # Delete clip generation jobs
+            clip_jobs = db.exec(
+                select(ClipGenerationJob).where(ClipGenerationJob.song_id == song_id)
+            ).all()
+            for job in clip_jobs:
+                db.delete(job)
+            
+            # Delete composed videos first (get IDs before deletion)
+            composed_videos = db.exec(
+                select(ComposedVideo).where(ComposedVideo.song_id == song_id)
+            ).all()
+            composed_video_ids = [video.id for video in composed_videos]
+            
+            # Delete composition jobs that reference these composed videos
+            if composed_video_ids:
+                composition_jobs_with_video = db.exec(
+                    select(CompositionJob).where(
+                        CompositionJob.composed_video_id.in_(composed_video_ids)  # type: ignore
+                    )
+                ).all()
+                for job in composition_jobs_with_video:
+                    db.delete(job)
+            
+            # Delete composition jobs by song_id (any remaining ones)
+            composition_jobs = db.exec(
+                select(CompositionJob).where(CompositionJob.song_id == song_id)
+            ).all()
+            for job in composition_jobs:
+                db.delete(job)
+            
+            # Now delete composed videos (after all jobs referencing them are deleted)
+            for video in composed_videos:
+                db.delete(video)
+            
+            # Delete section videos
+            section_videos = db.exec(
+                select(SectionVideo).where(SectionVideo.song_id == song_id)
+            ).all()
+            for video in section_videos:
+                db.delete(video)
+            
+            # Delete the song itself
+            db.delete(song)
+        
+        db.commit()
+        logger.info(f"Deleted all songs for user {current_user.id}")
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to delete all songs for user {current_user.id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete all songs: {str(e)}",
+        ) from e
 
 
 @router.get("/{song_id}", response_model=SongRead, summary="Get song")
@@ -470,6 +580,24 @@ def set_video_type(
     ensure_no_analysis(song_id)
 
     return update_song_field(song, "video_type", video_type.video_type, db)
+
+
+@router.patch(
+    "/{song_id}/title",
+    response_model=SongRead,
+    summary="Update song title",
+)
+def update_song_title(
+    song_id: UUID,
+    title_update: TitleUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Song:
+    """Update the title of a song. Only the song owner can update it."""
+    song = get_song_or_404(song_id, db)
+    verify_song_ownership(song, current_user)
+    
+    return update_song_field(song, "title", title_update.title, db)
 
 
 @router.patch(

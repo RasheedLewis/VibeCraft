@@ -82,7 +82,8 @@
 
 /* Celebration pulse animation - makes the success message pulse */
 @keyframes celebration-pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }

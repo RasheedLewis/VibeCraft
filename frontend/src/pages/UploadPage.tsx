@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import clsx from 'clsx'
 import axios from 'axios'
 import { apiClient } from '../lib/apiClient'
@@ -25,6 +26,7 @@ import { extractErrorMessage } from '../utils/validation'
 import { mapMoodToMoodKind } from '../utils/sections'
 import { computeDuration } from '../utils/audio'
 import { normalizeClipStatus } from '../utils/status'
+import { shouldDisableAnimations } from '../utils/animations'
 
 // Hooks
 import { useAnalysisPolling } from '../hooks/useAnalysisPolling'
@@ -65,7 +67,13 @@ interface UploadMetadata {
 }
 
 export const UploadPage: React.FC = () => {
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
+  const location = useLocation()
+  const isPublicView = location.pathname === '/public'
+  const { isAuthenticated, isLoading: isAuthLoading, currentUser } = useAuth()
+  const animationsDisabled = shouldDisableAnimations(
+    isPublicView,
+    currentUser?.animations_disabled,
+  )
   const fileInputId = useId()
   const [stage, setStage] = useState<UploadStage>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -512,14 +520,22 @@ export const UploadPage: React.FC = () => {
     }
   }, [videoTypeSelection, audioSelection])
 
-  const fetchSongDetails = useCallback(async (songId: string) => {
-    try {
-      const { data } = await apiClient.get<SongRead>(`/songs/${songId}`)
-      setSongDetails(data)
-    } catch (err) {
-      console.error('Failed to load song details', err)
-    }
-  }, [])
+  const fetchSongDetails = useCallback(
+    async (songId: string) => {
+      try {
+        // Use public endpoint if on public view or not authenticated
+        const endpoint =
+          isPublicView || !isAuthenticated
+            ? `/songs/${songId}/public`
+            : `/songs/${songId}`
+        const { data } = await apiClient.get<SongRead>(endpoint)
+        setSongDetails(data)
+      } catch (err) {
+        console.error('Failed to load song details', err)
+      }
+    },
+    [isAuthenticated, isPublicView],
+  )
 
   const handleTitleUpdate = useCallback(
     async (title: string) => {
@@ -574,10 +590,10 @@ export const UploadPage: React.FC = () => {
     }
   }, [result?.songId])
 
-  // Load song from URL parameter or localStorage on mount (only if authenticated)
+  // Load song from URL parameter or localStorage on mount (works with or without auth)
   useEffect(() => {
-    // Don't try to load song if not authenticated
-    if (!isAuthenticated || isAuthLoading) {
+    // Wait for auth state to be determined
+    if (isAuthLoading) {
       return
     }
 
@@ -994,7 +1010,7 @@ export const UploadPage: React.FC = () => {
       {/* Profile Button - Top Right */}
       <div className="fixed top-6 right-6 z-50">
         {/* Pointing Animation - One Time */}
-        {showProfileHint && (
+        {!animationsDisabled && showProfileHint && (
           <div
             className="absolute -left-12 top-1/2 -translate-y-1/2 pointer-events-none"
             style={{
@@ -1005,25 +1021,27 @@ export const UploadPage: React.FC = () => {
           </div>
         )}
 
-        <button
-          onClick={() => {
-            if (isAuthenticated) {
-              setProjectsModalOpen(true)
-            } else {
-              setAuthModalOpen(true)
-            }
-            setShowProfileHint(false)
-          }}
-          className="relative flex h-16 w-16 items-center justify-center rounded-full bg-vc-accent-primary shadow-vc2 hover:shadow-vc3 hover:bg-[#7A76FF] transition-all active:scale-[0.98] overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
-          aria-label={isAuthenticated ? 'Open projects' : 'Login'}
-          disabled={isAuthLoading}
-        >
-          <img
-            src="/img/vibe_lightning_simple.png"
-            alt="Profile"
-            className="w-full h-full object-cover"
-          />
-        </button>
+        {!isPublicView && (
+          <button
+            onClick={() => {
+              if (isAuthenticated) {
+                setProjectsModalOpen(true)
+              } else {
+                setAuthModalOpen(true)
+              }
+              setShowProfileHint(false)
+            }}
+            className="relative flex h-16 w-16 items-center justify-center rounded-full bg-vc-accent-primary shadow-vc2 hover:shadow-vc3 hover:bg-[#7A76FF] transition-all active:scale-[0.98] overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label={isAuthenticated ? 'Open projects' : 'Login'}
+            disabled={isAuthLoading}
+          >
+            <img
+              src="/img/vibe_lightning_simple.png"
+              alt="Profile"
+              className="w-full h-full object-cover"
+            />
+          </button>
+        )}
       </div>
 
       {analysisState !== 'completed' && (
@@ -1503,15 +1521,28 @@ export const UploadPage: React.FC = () => {
                   metadata={metadata}
                   lyricsBySection={lyricsBySection}
                   audioUrl={result?.audioUrl ?? null}
-                  onGenerateClips={handleGenerateClips}
-                  onCancelClipJob={handleCancelClipJob}
-                  onCompose={handleComposeClips}
+                  onGenerateClips={
+                    !isPublicView && isAuthenticated ? handleGenerateClips : undefined
+                  }
+                  onCancelClipJob={
+                    !isPublicView && isAuthenticated ? handleCancelClipJob : undefined
+                  }
+                  onCompose={
+                    !isPublicView && isAuthenticated ? handleComposeClips : undefined
+                  }
                   onPreviewClip={handlePreviewClip}
-                  onRegenerateClip={handleRegenerateClip}
-                  onRetryClip={handleRetryClip}
+                  onRegenerateClip={
+                    !isPublicView && isAuthenticated ? handleRegenerateClip : undefined
+                  }
+                  onRetryClip={
+                    !isPublicView && isAuthenticated ? handleRetryClip : undefined
+                  }
                   onPlayerClipSelect={handlePlayerClipSelect}
                   onSectionSelect={handleSectionSelect}
-                  onTitleUpdate={handleTitleUpdate}
+                  onTitleUpdate={
+                    !isPublicView && isAuthenticated ? handleTitleUpdate : undefined
+                  }
+                  isPublicView={isPublicView}
                 />
               </ErrorBoundary>
             )}
@@ -1641,20 +1672,22 @@ export const UploadPage: React.FC = () => {
         </div>
       )}
 
-      <ProjectsModal
-        isOpen={projectsModalOpen}
-        onClose={() => setProjectsModalOpen(false)}
-        onOpenProject={(songId) => {
-          // Load the project by setting the songId in URL
-          window.history.pushState({}, '', `/?songId=${songId}`)
-          // Trigger a reload of the song details
-          if (songId) {
-            fetchSongDetails(songId)
-            setResult({ songId } as SongUploadResponse)
-          }
-        }}
-        onOpenAuth={() => setAuthModalOpen(true)}
-      />
+      {!isPublicView && (
+        <ProjectsModal
+          isOpen={projectsModalOpen}
+          onClose={() => setProjectsModalOpen(false)}
+          onOpenProject={(songId) => {
+            // Load the project by setting the songId in URL
+            window.history.pushState({}, '', `/?songId=${songId}`)
+            // Trigger a reload of the song details
+            if (songId) {
+              fetchSongDetails(songId)
+              setResult({ songId } as SongUploadResponse)
+            }
+          }}
+          onOpenAuth={() => setAuthModalOpen(true)}
+        />
+      )}
 
       <AuthModal
         isOpen={authModalOpen}

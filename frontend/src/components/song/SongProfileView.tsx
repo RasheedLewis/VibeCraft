@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ErrorBoundary } from 'react-error-boundary'
 import { SectionCard, VCCard, VCButton } from '../vibecraft'
 import type {
@@ -20,6 +19,8 @@ import { ClipGenerationPanel } from './ClipGenerationPanel'
 import { useFeatureFlags } from '../../hooks/useFeatureFlags'
 import { SectionErrorFallback } from '../SectionErrorFallback'
 import { VideoPlayerErrorFallback } from '../VideoPlayerErrorFallback'
+import { shouldDisableAnimations } from '../../utils/animations'
+import { useAuth } from '../../hooks/useAuth'
 
 interface SongProfileViewProps {
   analysisData: SongAnalysis
@@ -34,17 +35,18 @@ interface SongProfileViewProps {
   playerActiveClipId: string | null
   metadata: { fileName: string } | null
   audioUrl: string | null
-  onGenerateClips: () => void
-  onCancelClipJob: () => void
-  onCompose: () => void
+  onGenerateClips?: () => void
+  onCancelClipJob?: () => void
+  onCompose?: () => void
   onPreviewClip: (clip: SongClipStatus) => void
-  onRegenerateClip: (clip: SongClipStatus) => void
-  onRetryClip: (clip: SongClipStatus) => void
+  onRegenerateClip?: (clip: SongClipStatus) => void
+  onRetryClip?: (clip: SongClipStatus) => void
   onPlayerClipSelect: (clipId: string | null) => void
   highlightedSectionId: string | null
   lyricsBySection: Map<string, string>
   onSectionSelect: (sectionId: string) => void
   onTitleUpdate?: (title: string) => Promise<void>
+  isPublicView?: boolean
 }
 
 export const SongProfileView: React.FC<SongProfileViewProps> = ({
@@ -71,9 +73,14 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   onSectionSelect,
   audioUrl,
   onTitleUpdate,
+  isPublicView = false,
 }) => {
-  const navigate = useNavigate()
+  const { currentUser } = useAuth()
   const { data: featureFlags } = useFeatureFlags()
+  const animationsDisabled = shouldDisableAnimations(
+    isPublicView,
+    currentUser?.animations_disabled,
+  )
   const sectionsEnabled = featureFlags?.sections ?? true // Default to true for backward compatibility
   const sectionsWithDisplay = buildSectionsWithDisplayNames(analysisData.sections)
   const waveformValues = parseWaveformJson(songDetails.waveform_json)
@@ -109,15 +116,15 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
     // Temporarily show every time for testing - remove sessionStorage check
     // const hasShownHint = sessionStorage.getItem('vibecraft_title_hint_shown')
     // if (!hasShownHint) {
-      // Use setTimeout to avoid setState in effect
-      const timer = setTimeout(() => {
-        setShowTitleHint(true)
-        // Set sessionStorage after animation completes (2.5s animation + buffer)
-        // setTimeout(() => {
-        //   sessionStorage.setItem('vibecraft_title_hint_shown', 'true')
-        // }, 3000)
-      }, 1000) // Delay slightly to let page settle
-      return () => clearTimeout(timer)
+    // Use setTimeout to avoid setState in effect
+    const timer = setTimeout(() => {
+      setShowTitleHint(true)
+      // Set sessionStorage after animation completes (2.5s animation + buffer)
+      // setTimeout(() => {
+      //   sessionStorage.setItem('vibecraft_title_hint_shown', 'true')
+      // }, 3000)
+    }, 1000) // Delay slightly to let page settle
+    return () => clearTimeout(timer)
     // }
   }, [onTitleUpdate])
 
@@ -175,8 +182,9 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
     ) ?? []
   const composedVideoUrl = clipSummary?.composedVideoUrl ?? null
 
-  // Show celebration animation once when composition completes
+  // Show celebration animation once when composition completes (not if animations disabled)
   useEffect(() => {
+    if (animationsDisabled) return // Don't show animations if disabled
     if (composedVideoUrl && !celebrationShownRef.current) {
       celebrationShownRef.current = true
       setShowCelebration(true)
@@ -200,7 +208,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       setShowCelebration(false)
       setCelebrationFading(false)
     }
-  }, [composedVideoUrl])
+  }, [composedVideoUrl, animationsDisabled])
   const composedPosterUrl = clipSummary?.composedVideoPosterUrl ?? null
   const activePlayerClip =
     completedClipEntries.find((clip) => clip.id === playerActiveClipId) ??
@@ -313,19 +321,25 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
             <div className="relative flex items-baseline gap-4 flex-wrap overflow-visible">
               <div className="relative max-w-2xl overflow-visible">
                 {/* Subtle pointing animation for editable title */}
-                {showTitleHint && onTitleUpdate && !isEditingTitle && (
-                  <div
-                    className="absolute left-full top-1/2 -translate-y-1/2 ml-2 pointer-events-none z-10 whitespace-nowrap"
-                    style={{
-                      animation: 'pointAndFadeSubtle 2.5s ease-in-out forwards',
-                    }}
-                  >
-                    <div className="text-base filter drop-shadow-md flex items-center gap-1" style={{ opacity: 0.7 }}>
-                      <span>👈</span>
-                      <span className="text-sm text-vc-text-secondary">edit</span>
+                {!animationsDisabled &&
+                  showTitleHint &&
+                  onTitleUpdate &&
+                  !isEditingTitle && (
+                    <div
+                      className="absolute left-full top-1/2 -translate-y-1/2 ml-2 pointer-events-none z-10 whitespace-nowrap"
+                      style={{
+                        animation: 'pointAndFadeSubtle 2.5s ease-in-out forwards',
+                      }}
+                    >
+                      <div
+                        className="text-base filter drop-shadow-md flex items-center gap-1"
+                        style={{ opacity: 0.7 }}
+                      >
+                        <span>👈</span>
+                        <span className="text-sm text-vc-text-secondary">edit</span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
                 {isEditingTitle ? (
                   <input
                     ref={titleInputRef}
@@ -463,8 +477,8 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
           </section>
         ) : null}
 
-        {/* Celebration animation - fires once when composition completes */}
-        {showCelebration && (
+        {/* Celebration animation - fires once when composition completes (not if animations disabled) */}
+        {!animationsDisabled && showCelebration && (
           <div
             className="relative w-full flex flex-col items-center overflow-hidden"
             style={{
@@ -474,7 +488,8 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
               maxHeight: celebrationFading ? '0' : '400px',
               paddingTop: celebrationFading ? '0' : '24px',
               paddingBottom: celebrationFading ? '0' : '24px',
-              transition: 'opacity 1200ms ease-in-out, transform 1200ms ease-in-out, max-height 1200ms ease-in-out, padding 1200ms ease-in-out',
+              transition:
+                'opacity 1200ms ease-in-out, transform 1200ms ease-in-out, max-height 1200ms ease-in-out, padding 1200ms ease-in-out',
               willChange: celebrationFading ? 'opacity, transform, max-height' : 'auto',
             }}
           >
@@ -495,17 +510,20 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
                 <p className="text-sm text-vc-text-secondary">
                   Composition complete • Ready to share
                 </p>
+                <p className="text-xs text-vc-text-muted mt-2">
+                  Shared videos are valid for 1 week
+                </p>
               </div>
             </div>
           </div>
         )}
 
         {/* Action buttons - between video player and clip generation */}
-        {composedVideoUrl && (
+        {!isPublicView && composedVideoUrl && (
           <div className="w-full flex justify-center items-center gap-4 py-4">
             <VCButton
               onClick={() => {
-                const shareUrl = `${window.location.origin}/?songId=${songDetails.id}`
+                const shareUrl = `${window.location.origin}/public?songId=${songDetails.id}`
                 // Try to copy to clipboard (gracefully fail if it doesn't work)
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                   navigator.clipboard.writeText(shareUrl).catch(() => {

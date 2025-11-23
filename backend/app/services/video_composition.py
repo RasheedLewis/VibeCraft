@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import pathlib
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -251,9 +253,9 @@ def normalize_clip(
 
 
 def concatenate_clips(
-    normalized_clip_paths: list[str | Path],
-    audio_path: str | Path,
-    output_path: str | Path,
+    normalized_clip_paths: list[str | pathlib.Path],
+    audio_path: str | pathlib.Path,
+    output_path: str | pathlib.Path,
     song_duration_sec: float,
     ffmpeg_bin: str | None = None,
     job_id: str | None = None,
@@ -296,7 +298,7 @@ def concatenate_clips(
 
     # Create concat file for FFmpeg concat demuxer
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as concat_file:
-        concat_path = Path(concat_file.name)
+        concat_path = pathlib.Path(concat_file.name)
         for clip_path in normalized_clip_paths:
             # Escape single quotes and backslashes in path
             escaped_path = str(clip_path).replace("'", "'\\''").replace("\\", "\\\\")
@@ -312,7 +314,7 @@ def concatenate_clips(
         # First, get the total video duration after concatenation
         # We'll use a temporary output to measure duration, or calculate from clips
         # For now, let's use FFmpeg to get the concatenated video duration
-        temp_video_path = Path(output_path).parent / "temp_concatenated.mp4"
+        temp_video_path = pathlib.Path(output_path).parent / "temp_concatenated.mp4"
         try:
             # Concatenate clips first (without audio) to get video duration
             if job_id:
@@ -357,7 +359,7 @@ def concatenate_clips(
                 # Calculate how many times to loop
                 loop_count = int(song_duration_sec / video_duration) + 1
                 # Create a new concat file with looped clips
-                temp_dir = Path(temp_video_path).parent
+                temp_dir = pathlib.Path(temp_video_path).parent
                 loop_concat_path = temp_dir / "loop_concat.txt"
                 with open(loop_concat_path, "w") as loop_concat_file:
                     # Use absolute path and proper escaping for concat demuxer
@@ -424,6 +426,20 @@ def concatenate_clips(
                 finally:
                     trimmed_output_path.unlink(missing_ok=True)
             
+            # Save pre-effects version for comparison (if enabled)
+            save_no_effects_version = os.getenv("SAVE_NO_EFFECTS_VIDEO", "false").lower() == "true"
+            if save_no_effects_version and beat_times and len(beat_times) > 0:
+                import shutil
+                
+                # Create comparison directory
+                comparison_dir = pathlib.Path("comparison_videos")
+                comparison_dir.mkdir(exist_ok=True)
+                
+                # Save pre-effects video (before filters, but after concatenation/trimming/looping)
+                pre_effects_path = comparison_dir / f"no_effects_{pathlib.Path(output_path).stem}.mp4"
+                shutil.copy2(temp_video_path, pre_effects_path)
+                logger.info(f"Saved pre-effects video for comparison: {pre_effects_path}")
+            
             # Apply beat filters if provided (before muxing with audio)
             if beat_times and len(beat_times) > 0:
                 if job_id:
@@ -453,38 +469,41 @@ def concatenate_clips(
                         filtered_video_path = temp_video_path.parent / "temp_filtered.mp4"
                         filtered_input = ffmpeg.input(str(temp_video_path))
                         
-                        # Build time-based condition for ALL beats (removed 50-beat limitation)
-                        # FFmpeg's between(t,start,end) returns 1 if true, 0 if false
-                        beat_conditions = []
-                        for beat_time in beat_times:  # Process ALL beats, not just first 50
-                            start_time = max(0, beat_time - tolerance_sec)
-                            end_time = min(beat_time + tolerance_sec, song_duration_sec)
-                            beat_conditions.append(f"between(t,{start_time},{end_time})")
+                        # Filter to every 4th beat (0, 4, 8, 12, ...)
+                        selected_beats = beat_times[::4]
+                        logger.info(f"Applying effects to {len(selected_beats)} beats (every 4th beat, from {len(beat_times)} total beats)")
                         
-                        if beat_conditions:
-                            # Generate filter based on effect type
+                        # Define effect rotation: flash → color_burst → zoom_pulse → brightness_pulse → glitch → repeat
+                        effect_rotation = ["flash", "color_burst", "zoom_pulse", "brightness_pulse", "glitch"]
+                        beats_per_effect = 3  # Apply each effect 3 times in a row before rotating
+                        
+                        # Group beats by effect type
+                        beat_groups_by_effect: dict[str, list[tuple[float, str]]] = {}
+                        for i, beat_time in enumerate(selected_beats):
+                            effect_index = (i // beats_per_effect) % len(effect_rotation)
+                            effect_type_for_beat = effect_rotation[effect_index]
+                            
+                            if effect_type_for_beat not in beat_groups_by_effect:
+                                beat_groups_by_effect[effect_type_for_beat] = []
+                            beat_groups_by_effect[effect_type_for_beat].append((beat_time, f"between(t,{max(0, beat_time - tolerance_sec)},{min(beat_time + tolerance_sec, song_duration_sec)})"))
+                        
+                        # Apply each effect type to its assigned beats
+                        current_video = filtered_input["v"]
+                        for effect_type, beat_list in beat_groups_by_effect.items():
+                            if not beat_list:
+                                continue
+                            
+                            logger.info(f"Applying {effect_type} effect to {len(beat_list)} beats")
+                            
+                            # Build condition for this effect type
+                            beat_conditions = [condition for _, condition in beat_list]
                             condition_expr = "+".join(beat_conditions)
                             beat_condition = f"min(1,{condition_expr})"
                             
-                            # Use centralized applicator for filter application
-                            CHUNK_SIZE = 200
-                            if applicator.should_chunk(filter_type, len(beat_conditions), CHUNK_SIZE):
-                                # Re-apply with chunking for flash and glitch
-                                logger.info(f"Chunking {len(beat_conditions)} beat conditions into {CHUNK_SIZE}-beat chunks")
-                                current_video = filtered_input["v"]
-                                
-                                for chunk_start in range(0, len(beat_conditions), CHUNK_SIZE):
-                                    chunk = beat_conditions[chunk_start:chunk_start + CHUNK_SIZE]
-                                    chunk_expr = "+".join(chunk)
-                                    chunk_condition = f"min(1,{chunk_expr})"
-                                    current_video = applicator.apply_filter(current_video, chunk_condition, filter_type)
-                                
-                                filtered_video = current_video
-                            else:
-                                # Apply filter directly (no chunking needed)
-                                filtered_video = applicator.apply_filter(filtered_input["v"], beat_condition, filter_type)
-                        else:
-                            filtered_video = filtered_input["v"]
+                            # Apply this effect
+                            current_video = applicator.apply_filter(current_video, beat_condition, effect_type)
+                        
+                        filtered_video = current_video
                         
                         (
                             ffmpeg.output(
@@ -928,7 +947,7 @@ def verify_composed_video(
             raise RuntimeError(f"Invalid duration: {duration_sec}")
 
         return CompositionResult(
-            output_path=Path(video_path),
+            output_path=pathlib.Path(video_path),
             duration_sec=duration_sec,
             file_size_bytes=file_size_bytes,
             width=width,

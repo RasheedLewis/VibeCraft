@@ -45,14 +45,14 @@ export interface ClipGenerationSummary {
   composedVideoPosterUrl?: string | null
 }
 
-export interface JobStatusResponse {
+export interface JobStatusResponse<T = SongAnalysis | ClipGenerationSummary | null> {
   jobId: string
   songId: string
   status: 'queued' | 'processing' | 'completed' | 'failed' | string
   progress?: number
   analysisId?: string | null
   error?: string | null
-  result?: SongAnalysis | ClipGenerationSummary | null
+  result?: T
 }
 
 export interface ComposeVideoResponse {
@@ -141,6 +141,12 @@ export interface SongRead {
   composed_video_poster_s3_key?: string | null
   composed_video_duration_sec?: number | null
   composed_video_fps?: number | null
+  selected_start_sec?: number | null
+  selected_end_sec?: number | null
+  video_type?: 'full_length' | 'short_form' | null
+  character_reference_image_s3_key?: string | null
+  character_pose_b_s3_key?: string | null
+  character_consistency_enabled?: boolean
   created_at: string
   updated_at: string
 }

@@ -5,7 +5,9 @@ Supports configurable FPS (defaults to 24 FPS).
 """
 
 import logging
-from typing import NamedTuple
+from typing import NamedTuple, Optional
+
+from app.core.constants import ACCEPTABLE_ALIGNMENT
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,6 @@ MAX_CLIP_DURATION = 6.0
 # These are absolute time thresholds that work well across common FPS values (8-30 FPS)
 EXCELLENT_ALIGNMENT = 0.02  # Excellent: < 20ms error
 GOOD_ALIGNMENT = 0.05  # Good: < 50ms error
-ACCEPTABLE_ALIGNMENT = 0.1  # Acceptable: < 100ms error
 
 
 class BeatFrameAlignment(NamedTuple):
@@ -316,4 +317,106 @@ def validate_boundaries(
     is_valid = max_error <= max_drift
 
     return is_valid, max_error, avg_error
+
+
+def calculate_beat_aligned_clip_boundaries(
+    beat_times: list[float],
+    song_duration: float,
+    num_clips: int = 6,
+    min_clip_duration: float = MIN_CLIP_DURATION,
+    max_clip_duration: float = MAX_CLIP_DURATION,
+    fps: float = VIDEO_FPS,
+    user_selection_start: Optional[float] = None,
+    user_selection_end: Optional[float] = None,
+) -> list[ClipBoundary]:
+    """
+    Calculate clip boundaries aligned to beats, with optional user selection.
+    
+    Args:
+        beat_times: List of beat timestamps
+        song_duration: Total song duration
+        num_clips: Target number of clips
+        min_clip_duration: Minimum clip duration
+        max_clip_duration: Maximum clip duration
+        fps: Video frame rate
+        user_selection_start: Optional start time for user-selected segment (30s selection)
+        user_selection_end: Optional end time for user-selected segment (30s selection)
+    
+    Returns:
+        List of ClipBoundary objects with beat-aligned timestamps
+    """
+    # Filter beats to user selection if provided
+    if user_selection_start is not None and user_selection_end is not None:
+        filtered_beats = [
+            beat for beat in beat_times
+            if user_selection_start <= beat <= user_selection_end
+        ]
+        effective_duration = user_selection_end - user_selection_start
+        effective_start = user_selection_start
+    else:
+        filtered_beats = beat_times
+        effective_duration = song_duration
+        effective_start = 0.0
+    
+    # Calculate boundaries using existing algorithm
+    boundaries = calculate_beat_aligned_boundaries(
+        beat_times=filtered_beats,
+        song_duration=effective_duration,
+        min_duration=min_clip_duration,
+        max_duration=max_clip_duration,
+        fps=fps
+    )
+    
+    # Adjust boundaries for user selection offset
+    if user_selection_start is not None:
+        adjusted_boundaries = []
+        for boundary in boundaries:
+            adjusted_boundaries.append(
+                ClipBoundary(
+                    start_time=boundary.start_time + effective_start,
+                    end_time=boundary.end_time + effective_start,
+                    start_beat_index=boundary.start_beat_index,
+                    end_beat_index=boundary.end_beat_index,
+                    start_frame_index=boundary.start_frame_index,
+                    end_frame_index=boundary.end_frame_index,
+                    start_alignment_error=boundary.start_alignment_error,
+                    end_alignment_error=boundary.end_alignment_error,
+                    duration_sec=boundary.duration_sec,
+                    beats_in_clip=boundary.beats_in_clip,
+                )
+            )
+        boundaries = adjusted_boundaries
+    
+    return boundaries
+
+
+def verify_beat_aligned_transitions(
+    boundaries: list[ClipBoundary],
+    beat_times: list[float],
+    tolerance_sec: float = 0.05,
+) -> tuple[bool, list[float]]:
+    """
+    Verify that all clip transitions occur on beat boundaries.
+    
+    Args:
+        boundaries: List of clip boundaries
+        beat_times: List of beat timestamps
+        tolerance_sec: Maximum allowed deviation from beat (default: 50ms)
+    
+    Returns:
+        Tuple of (all_aligned, list of alignment errors)
+    """
+    errors = []
+    
+    for i in range(len(boundaries) - 1):
+        # Transition occurs at end of current clip = start of next clip
+        transition_time = boundaries[i].end_time
+        
+        # Find nearest beat
+        nearest_beat = min(beat_times, key=lambda x: abs(x - transition_time))
+        error = abs(transition_time - nearest_beat)
+        errors.append(error)
+    
+    all_aligned = all(error <= tolerance_sec for error in errors)
+    return all_aligned, errors
 

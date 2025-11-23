@@ -1,6 +1,13 @@
 # Developer Guide
 
-This guide walks new contributors through setting up the AI Music Video project locally. It complements the architecture overview in `ARCH.md`, the roadmap in `ROADMAP.md`, and the detailed requirements in `PRD.md`.
+**Note:** This guide reflects the current implementation. The product vision has evolved since
+initial planning, and some early documentation may reference features or approaches that have
+changed.
+
+---
+
+This guide walks new contributors through setting up the AI Music Video project locally. It
+complements the architecture overview in `ARCH.md`.
 
 ---
 
@@ -55,7 +62,8 @@ pyenv local 3.12.12
 
 Run these from the repository root (`ai-music-video/`) to stand up the Python and Node environments.
 
-**Important:** Use the specific Python version you installed (e.g., `python3.12` instead of `python3` if your default `python3` is 3.13+):
+**Important:** Use the specific Python version you installed (e.g., `python3.12` instead of
+`python3` if your default `python3` is 3.13+):
 
 ```bash
 # Use python3.12 (or python3.11/python3.10) if your default python3 is too new
@@ -75,9 +83,12 @@ pip install -r backend/requirements.txt
 npm --prefix frontend install
 ```
 
-**Troubleshooting:** If `python3.12` isn't found, make sure you installed it via Homebrew and that `/opt/homebrew/bin` is in your PATH. You can also use the full path: `/opt/homebrew/bin/python3.12 -m venv .venv`
+**Troubleshooting:** If `python3.12` isn't found, make sure you installed it via Homebrew and
+that `/opt/homebrew/bin` is in your PATH. You can also use the full path:
+`/opt/homebrew/bin/python3.12 -m venv .venv`
 
-> `npm --prefix frontend install` keeps the command runnable from the repo root. `npm install` inside `frontend/` works the same if you prefer to `cd` first.
+> `npm --prefix frontend install` keeps the command runnable from the repo root. `npm install`
+> inside `frontend/` works the same if you prefer to `cd` first.
 
 ---
 
@@ -107,7 +118,9 @@ brew install poetry
 
 **Usage:**
 
-Once installed, `poetry install` from `backend/` (after generating a `pyproject.toml`) creates an isolated virtualenv automatically. Activate with `poetry shell` before running backend commands.
+Once installed, `poetry install` from `backend/` (after generating a `pyproject.toml`) creates
+an isolated virtualenv automatically. Activate with `poetry shell` before running backend
+commands.
 
 ### pnpm (Node.js)
 
@@ -125,7 +138,8 @@ brew install pnpm
 
 **Usage:**
 
-`pnpm install --dir frontend` installs frontend dependencies with pnpm's content-addressable store. Add `.npmrc` / `.pnpmfile.cjs` as needed to share settings with the team.
+`pnpm install --dir frontend` installs frontend dependencies with pnpm's content-addressable
+store. Add `.npmrc` / `.pnpmfile.cjs` as needed to share settings with the team.
 
 ---
 
@@ -146,7 +160,8 @@ Populate the blanks with your own credentials (S3, Replicate, etc.).
 
 ### 2.3 Verify Replicate API Configuration
 
-After adding your `REPLICATE_API_TOKEN` to `backend/.env`, verify that the video generation model is accessible:
+After adding your `REPLICATE_API_TOKEN` to `backend/.env`, verify that the video generation model
+is accessible:
 
 ```bash
 source .venv/bin/activate
@@ -160,12 +175,14 @@ python scripts/check_replicate_models.py --list
 ```
 
 This script will:
+
 - Check if your API token is configured
 - Verify the Zeroscope v2 XL model exists and is accessible
 - Display the latest model version and available input parameters
 - (With `--list`) Show alternative text-to-video models
 
 If the model is not found or you get permission errors, check:
+
 - Your API token is correct in `backend/.env`
 - Your Replicate account has access to the model
 - The model name hasn't changed (check [Replicate's model explorer](https://replicate.com/explore?query=text+to+video))
@@ -175,22 +192,23 @@ If the model is not found or you get permission errors, check:
 If video generation fails, you can check the Replicate job status directly:
 
 1. **Query the database for the job ID and prompt:**
+
    ```bash
-   # Postgres - Get job ID, error, and the prompt that was sent
-   docker exec ai-music-video-postgres psql -U postgres -d ai_music_video -c "SELECT replicate_job_id, error_message, status, prompt FROM section_videos WHERE status = 'failed' ORDER BY created_at DESC LIMIT 1;"
+   # PostgreSQL - Get job ID, error, and the prompt that was sent
+   docker exec ai-music-video-postgres psql -U postgres -d ai_music_video -c \
+     "SELECT replicate_job_id, error_message, status FROM song_clips WHERE status = 'failed' \
+     ORDER BY created_at DESC LIMIT 1;"
    
-   # SQLite
-   sqlite3 backend/app.db "SELECT replicate_job_id, error_message, status, prompt FROM section_videos WHERE status = 'failed' ORDER BY created_at DESC LIMIT 1;"
-   
-   # Quick prompt view (Postgres)
-   docker exec ai-music-video-postgres psql -U postgres -d ai_music_video -c "SELECT prompt FROM section_videos WHERE section_id = 'section-4' ORDER BY created_at DESC LIMIT 1;"
+   # Quick prompt view (PostgreSQL) - prompts are stored in clip generation jobs
+   docker exec ai-music-video-postgres psql -U postgres -d ai_music_video -c "SELECT id, status, error_message FROM song_clips WHERE song_id = 'your-song-uuid' ORDER BY created_at DESC LIMIT 5;"
    ```
 
 2. **View the job on Replicate:**
    - Open `https://replicate.com/p/{replicate_job_id}` in your browser
    - This shows the full job details, logs, and any error messages from Replicate
 
-3. **Check backend logs** for detailed error messages (the new code captures Replicate's actual error messages, not just "Timeout")
+3. **Check backend logs** for detailed error messages (the new code captures Replicate's actual
+   error messages, not just "Timeout")
 
 ---
 
@@ -210,7 +228,9 @@ docker rm -f ai-music-video-postgres ai-music-video-redis 2>/dev/null || true
 lsof -i :5432
 ```
 
-If another Postgres instance is using port 5432, either stop it or use a different port (e.g., `-p 5433:5432` and update `DATABASE_URL` in your `.env` file to use `127.0.0.1:5433` instead of `localhost:5432`).
+If another Postgres instance is using port 5432, either stop it or use a different port
+(e.g., `-p 5433:5432` and update `DATABASE_URL` in your `.env` file to use `127.0.0.1:5433`
+instead of `localhost:5432`).
 
 **Start the containers:**
 
@@ -222,9 +242,7 @@ docker run --name ai-music-video-postgres \
   -p 5432:5432 \
   -d postgres:16
 
-docker run --name ai-music-video-redis \
-  -p 6379:6379 \
-  -d redis:7
+docker run --name ai-music-video-redis -p 6379:6379 -d redis:7
 ```
 
 **Verify containers are running:**
@@ -233,7 +251,9 @@ docker run --name ai-music-video-redis \
 docker ps | grep -E "(ai-music-video-postgres|ai-music-video-redis)"
 ```
 
-**Note:** If you experience connection issues with psycopg3, use `127.0.0.1` instead of `localhost` in your `DATABASE_URL` (e.g., `postgresql+psycopg://postgres:postgres@127.0.0.1:5432/ai_music_video`).
+**Note:** If you experience connection issues with psycopg3, use `127.0.0.1` instead of
+`localhost` in your `DATABASE_URL` (e.g.,
+`postgresql+psycopg://postgres:postgres@127.0.0.1:5432/ai_music_video`).
 
 > You can replace these single containers with the `infra/compose.yml` workflow once it exists.
 
@@ -257,95 +277,14 @@ cd ./backend
 rq worker ai_music_video
 ```
 
-> New song analyses (PR-04) run on this RQ worker. Ensure it is running before hitting `POST /api/v1/songs/{id}/analyze`; the worker updates job progress and writes results back to Postgres.
-
+> New song analyses (PR-04) run on this RQ worker. Ensure it is running before hitting
+> `POST /api/v1/songs/{id}/analyze`; the worker updates job progress and writes results back
+> to Postgres.
 > Swap the worker command for Celery if you adopt it instead of RQ.
 
 ---
 
-## 4.1 Trigger.dev Background Tasks
-
-Trigger.dev is configured for running background tasks and workflows. Triggers are defined in `backend/triggers/` and can be used alongside or instead of RQ workers.
-
-### 4.1.1 Setup
-
-Trigger.dev dependencies are installed in the root `package.json`. Make sure you've installed root dependencies:
-
-```bash
-npm install
-```
-
-### 4.1.2 Configuration
-
-The Trigger.dev configuration is in `trigger.config.ts` at the project root:
-- Triggers are loaded from `backend/triggers/` directory
-- Project ID is configured in the config file
-- See `trigger.config.ts` for retry policies and other settings
-
-### 4.1.3 Running Triggers in Development
-
-**Option 1: Include in dev script (optional)**
-
-You can start Trigger.dev automatically with the dev script:
-
-```bash
-ENABLE_TRIGGER_DEV=1 make dev
-# or
-ENABLE_TRIGGER_DEV=1 bash scripts/dev.sh
-```
-
-**Option 2: Run manually (recommended for most cases)**
-
-Start the Trigger.dev dev server in a separate terminal:
-
-```bash
-npx trigger.dev@latest dev
-```
-
-This will:
-- Watch for changes in `backend/triggers/`
-- Connect to your Trigger.dev project
-- Allow you to test triggers locally
-
-**Test the hello-world example trigger:**
-
-The example trigger is located at `backend/triggers/example.ts`. Once the dev server is running, you can trigger it via the Trigger.dev dashboard or by calling it programmatically.
-
-**When to use Trigger.dev:**
-
-- Only needed when working on trigger-based workflows
-- For most development, RQ workers are sufficient
-- Use Trigger.dev when you need complex workflows, better observability, or cloud deployment features
-
-### 4.1.4 Creating New Triggers
-
-1. Create a new TypeScript file in `backend/triggers/`
-2. Import the Trigger.dev SDK:
-   ```typescript
-   import { logger, task, wait } from "@trigger.dev/sdk/v3";
-   ```
-3. Define your task:
-   ```typescript
-   export const myTask = task({
-     id: "my-task-id",
-     run: async (payload: any, { ctx }) => {
-       // Your task logic here
-       return { result: "success" };
-     },
-   });
-   ```
-4. The dev server will automatically pick up the new trigger
-
-### 4.1.5 Trigger.dev vs RQ Workers
-
-- **Trigger.dev**: Better for complex workflows, retries, observability, and cloud deployment
-- **RQ Workers**: Simpler, good for basic background jobs, runs locally with Redis
-
-You can use both systems in parallel - Trigger.dev for complex workflows, RQ for simple background tasks.
-
----
-
-### 4.2 Backend Project Structure
+### 4.1 Backend Project Structure
 
 The FastAPI app lives under `backend/app/`:
 
@@ -357,13 +296,17 @@ The FastAPI app lives under `backend/app/`:
 - `services/` – pipeline logic (audio analysis, scene planning, video composition, etc.)
 - `workers/` – background task entrypoints (RQ/Celery)
 
-> **Note:** Until authentication is implemented, uploaded songs are associated with a placeholder user record whose ID is `default-user`. The default user is created automatically on startup (`init_db()`); replace this once real auth is wired up.
+> **Note:** Until authentication is implemented, uploaded songs are associated with a
+> placeholder user record whose ID is `default-user`. The default user is created
+> automatically on startup (`init_db()`); replace this once real auth is wired up.
 
-`init_db()` currently auto-creates tables via SQLModel metadata on startup; swap for Alembic migrations once schemas stabilize.
+`init_db()` currently auto-creates tables via SQLModel metadata on startup; swap for Alembic
+migrations once schemas stabilize.
 
 #### 4.2.1 Video Composition Settings
 
-Video composition (MVP-03) normalizes clips to 1080p @ 24fps using H.264 encoding. Default settings are in `backend/app/services/video_composition.py`:
+Video composition (MVP-03) normalizes clips to 1080p @ 24fps using H.264 encoding. Default
+settings are in `backend/app/services/video_composition.py`:
 
 - **CRF**: 23 (quality setting, 18-28 range, lower = better quality)
 - **Preset**: "medium" (encoding speed vs compression tradeoff)
@@ -375,11 +318,14 @@ Video composition (MVP-03) normalizes clips to 1080p @ 24fps using H.264 encodin
 If composed videos are too large, you can adjust these settings:
 
 1. **Increase CRF** (smaller file, lower quality): Change `DEFAULT_CRF = 23` to `26-28` (~30-50% smaller)
-2. **Use slower preset** (better compression, slower): Change `preset="medium"` to `"slow"` or `"veryslow"` (~10-20% smaller, 2-5× slower)
-3. **Reduce resolution** (smaller file, lower resolution): Change `DEFAULT_TARGET_RESOLUTION = (1920, 1080)` to `(1280, 720)` (~40% smaller)
+2. **Use slower preset** (better compression, slower): Change `preset="medium"` to `"slow"` or
+   `"veryslow"` (~10-20% smaller, 2-5× slower)
+3. **Reduce resolution** (smaller file, lower resolution): Change
+   `DEFAULT_TARGET_RESOLUTION = (1920, 1080)` to `(1280, 720)` (~40% smaller)
 4. **Reduce FPS** (smaller file, less smooth): Change `DEFAULT_TARGET_FPS = 24` to `20` (~15% smaller)
 
-For detailed file size analysis and testing workflows, see `docs/adam/VideoCompTesting.md`.
+For file size optimization, adjust the settings in `backend/app/services/video_composition.py`
+as described above.
 
 ---
 
@@ -397,7 +343,8 @@ curl -X POST http://localhost:8000/api/v1/songs \
 curl http://localhost:8000/api/v1/songs
 ```
 
-> Rerun `pip install -r backend/requirements.txt` whenever backend dependencies change (e.g., new services or integrations).
+> Rerun `pip install -r backend/requirements.txt` whenever backend dependencies change
+> (e.g., new services or integrations).
 
 ---
 
@@ -431,7 +378,8 @@ npm run format:write # Prettier write
 
 - Tailwind config: `frontend/tailwind.config.ts` (design tokens from `DESIGN_SYSTEM.md`)
 - Global theme file: `frontend/src/styles/vibecraft-theme.css` (imported via `src/index.css`)
-- Light mode palette supported via `html.light` (or `data-theme="light"`) — defaults to OS preference when no class is set
+- Light mode palette supported via `html.light` (or `data-theme="light"`) — defaults to OS
+  preference when no class is set
 - Component library: `frontend/src/components/vibecraft/`
 - Example screen: `frontend/src/pages/SongProfilePage.tsx` rendered via `App.tsx`
 
@@ -443,13 +391,17 @@ npm run dev -- --host
 
 If you add new tokens or components, update the Tailwind config and keep docs in sync with `DESIGN_SYSTEM.md`.
 
-To preview light mode explicitly, add the `light` class to the root HTML element (e.g. `document.documentElement.classList.add('light')`). Use `dark` to force the night-studio palette. Removing both classes reverts to the default dark experience.
+To preview light mode explicitly, add the `light` class to the root HTML element (e.g.
+`document.documentElement.classList.add('light')`). Use `dark` to force the night-studio
+palette. Removing both classes reverts to the default dark experience.
 
 ---
 
 ## 5.3 Querying Song Analysis Data (Mood, Energy, Genre)
 
-Song analysis data (mood, energy, genre, sections, lyrics) is generated by PR-05 (Genre & Mood Classification) and PR-06 (Lyric Extraction). Currently, this data is **not stored in the database** - it's computed on-demand or accessed via mock data.
+Song analysis data (mood, energy, genre, sections, lyrics) is generated by PR-05 (Genre & Mood
+Classification) and PR-06 (Lyric Extraction). Currently, this data is **not stored in the
+database** - it's computed on-demand or accessed via mock data.
 
 ### 5.3.1 Current State (Before PR-04)
 
@@ -498,7 +450,8 @@ lyrics_available, section_lyrics = extract_and_align_lyrics("path/to/audio.mp3",
 
 ### 5.3.2 Future State (After PR-04)
 
-Once PR-04 is complete, `SongAnalysis` data will be stored in a database table. The table structure will likely be:
+Once PR-04 is complete, `SongAnalysis` data will be stored in a database table. The table
+structure will likely be:
 
 **Expected Table: `song_analyses`**
 
@@ -564,6 +517,7 @@ curl http://localhost:8000/api/v1/songs/{song_id}/analysis
 Sections and section lyrics are nested within `SongAnalysis`:
 
 **Via Mock Data:**
+
 ```python
 analysis = get_mock_analysis_by_song_id("song-123")
 
@@ -606,30 +560,182 @@ docker compose up --build
 
 ## 7. Deployment
 
-### 7.1 Redeploying Services
+### 7.1 System Dependencies
 
-To redeploy the backend or frontend after making changes:
+VibeCraft requires several system-level dependencies that must be installed in production:
 
-**Backend:**
-```bash
-cd backend
-railway up
+#### FFmpeg
+
+FFmpeg is required for audio/video processing. It's a system binary, not a Python package.
+
+**Dockerfile example:**
+
+```dockerfile
+FROM python:3.12-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy requirements and install Python deps
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY backend/ .
+
+# Expose port
+EXPOSE 8000
+
+# Default command
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-**Frontend:**
+#### Librosa Dependencies
+
+Librosa requires system libraries (`libsndfile1`) which are included in the Dockerfile above.
+
+### 7.2 Environment Variables
+
+**Required for Backend:**
+
+- `DATABASE_URL` - PostgreSQL connection string
+- `REDIS_URL` - Redis connection string (for RQ workers)
+- `S3_BUCKET_NAME` - S3 bucket name
+- `S3_ACCESS_KEY_ID` - AWS access key
+- `S3_SECRET_ACCESS_KEY` - AWS secret key
+- `S3_REGION` - AWS region (e.g., `us-east-2`)
+- `REPLICATE_API_TOKEN` - Replicate API token
+- `RQ_WORKER_QUEUE` - RQ queue name (default: `ai_music_video`)
+
+**Required for Frontend:**
+
+- `VITE_API_BASE_URL` - Backend API URL
+
+**Optional:**
+
+- `WHISPER_API_TOKEN` - For Whisper API (if using)
+- `LYRICS_API_KEY` - For lyrics API (if using)
+- `API_LOG_LEVEL` - Logging level (default: `info`)
+- `FFMPEG_BIN` - Path to ffmpeg binary (default: `ffmpeg`)
+
+### 7.3 Worker Process Management
+
+VibeCraft requires both an API server and background worker processes.
+
+**API Server:**
+
 ```bash
-cd frontend
-railway up
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
-This will build and deploy the service to Railway. Make sure you're logged in (`railway login`) and have the service linked (`railway link`).
+**RQ Worker:**
+
+```bash
+rq worker ai_music_video --url $REDIS_URL
+```
+
+**Procfile example (for platforms that support it):**
+
+```procfile
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+worker: rq worker ai_music_video --url $REDIS_URL
+```
+
+### 7.4 Deployment Considerations
+
+#### Long-Running Tasks
+
+Video generation can take 30+ minutes. Use background workers (RQ/Celery) that don't have
+HTTP timeouts. Ensure your deployment platform allows long-running worker processes.
+
+#### Memory Requirements
+
+Audio/video processing is memory-intensive. Recommended:
+
+- **Minimum:** 2GB RAM
+- **Recommended:** 4GB+ RAM for production
+
+#### File Upload Size Limits
+
+Audio files can be large (10-50MB+). Consider:
+
+- Stream uploads directly to S3 (don't buffer in memory)
+- Use presigned URLs for direct client → S3 uploads
+- Configure nginx/reverse proxy body size limits
+
+#### Database Migrations
+
+Migrations run automatically on startup via `init_db()`. For production, consider using Alembic
+for more controlled migrations.
+
+#### CORS Configuration
+
+Configure CORS in `backend/app/main.py` to allow your frontend domain:
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://your-frontend-domain.com",
+        "http://localhost:5173",  # Keep for local dev
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+#### Health Checks
+
+The backend provides a health check endpoint at `/healthz`. Configure your deployment platform
+to use this for health monitoring.
+
+### 7.5 Troubleshooting
+
+**Backend won't start:**
+
+- Check logs for errors
+- Verify all environment variables are set
+- Check `DATABASE_URL` and `REDIS_URL` are correct
+- Ensure ffmpeg is installed (check with `which ffmpeg`)
+
+**Worker not processing jobs:**
+
+- Check `REDIS_URL` is set correctly
+- Verify worker service is running
+- Check logs for connection errors
+- Ensure worker is listening to the correct queue name
+
+**Frontend can't connect to backend:**
+
+- Verify `VITE_API_BASE_URL` is correct
+- Check CORS configuration
+- Verify backend is running and accessible
+- Check browser console for errors
+
+**S3 uploads failing:**
+
+- Verify IAM credentials are correct
+- Check bucket policy allows your service
+- Verify bucket name and region
+- Check S3 CORS configuration if uploading from browser
+
+**Video generation failing:**
+
+- Check Replicate API token is valid
+- Verify model is accessible
+- Check worker logs for detailed error messages
+- Ensure sufficient memory is available
 
 ---
 
 ## 8. Next Steps
 
 1. Add `.env` and `.env.example` files with keys for Postgres, Redis, S3, Replicate, and any AI providers.
-2. Scaffold FastAPI routers, schemas, and services as outlined in `PRD.md`.
-3. Implement frontend pages and components per the roadmap (Upload, Song Profile, Section cards, Gallery).
-
-Refer back to `PRD.md` and `ROADMAP.md` for task-level details once your environment boots cleanly.
+2. Scaffold FastAPI routers, schemas, and services following the current architecture.
+3. Implement frontend pages and components per the roadmap (Upload, Song Profile, Clip management, Gallery).

@@ -4,7 +4,7 @@ This directory contains sample audio files for testing and development.
 
 ## Directory Structure
 
-```
+```text
 samples/
   audio/
     electronic/    # EDM, techno, house tracks
@@ -33,6 +33,7 @@ See `docs/SAMPLE_AUDIO_GUIDE.md` for recommended sources and download instructio
 ## Attribution Tracking
 
 When you download a song that requires attribution:
+
 1. Add an entry to `ATTRIBUTION.md` with the filename and attribution text
 2. (Optional) Create a metadata JSON file in `metadata/` with full details
 
@@ -40,5 +41,5 @@ When you download a song that requires attribution:
 
 ## License Notes
 
-Each track should have its license documented in `metadata/` or `ATTRIBUTION.md`. Always verify license before using in demos or production.
-
+Each track should have its license documented in `metadata/` or `ATTRIBUTION.md`. Always verify
+license before using in demos or production.

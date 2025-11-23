@@ -258,3 +258,274 @@ def test_clip_planning_api_flow():
             session.delete(song)
         session.commit()
 
+
+def test_plan_clips_with_selection_uses_effective_duration():
+    """Test that clip planning uses selected range duration."""
+    beat_times = [i * 0.5 for i in range(120)]  # 60 seconds of beats
+    analysis = make_analysis(beat_times)
+    
+    # Selection: 10s to 40s (30s effective duration)
+    selected_start = 10.0
+    selected_end = 40.0
+    effective_duration = selected_end - selected_start  # 30s
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=effective_duration,  # Use effective duration, not full
+        analysis=analysis,
+        clip_count=4,
+        min_clip_sec=3.0,
+        max_clip_sec=12.0,
+        generator_fps=8,
+        selection_start_sec=selected_start,
+        selection_end_sec=selected_end,
+    )
+
+    assert len(plans) == 4
+    # Plans should cover the effective duration (30s), not full duration
+    assert plans[-1].end_sec == pytest.approx(effective_duration, abs=0.5)
+    assert plans[0].start_sec == pytest.approx(0.0, abs=0.1)  # Relative to selection start
+
+
+def test_plan_clips_with_selection_applies_time_offset():
+    """Test that clips are offset by selection start time."""
+    beat_times = [i * 0.5 for i in range(120)]  # 60 seconds
+    analysis = make_analysis(beat_times)
+    
+    # Selection: 20s to 50s (30s effective duration)
+    selected_start = 20.0
+    selected_end = 50.0
+    effective_duration = selected_end - selected_start  # 30s
+    time_offset = selected_start  # 20s
+
+    # Plan clips for effective duration with selection parameters
+    # (beats will be filtered to selection range and adjusted to be relative)
+    plans = plan_beat_aligned_clips(
+        duration_sec=effective_duration,
+        analysis=analysis,
+        clip_count=3,
+        min_clip_sec=3.0,
+        max_clip_sec=12.0,
+        generator_fps=8,
+        selection_start_sec=selected_start,
+        selection_end_sec=selected_end,
+    )
+
+    # Apply time offset (this is what the API endpoint does)
+    for plan in plans:
+        plan.start_sec = round(plan.start_sec + time_offset, 4)
+        plan.end_sec = round(plan.end_sec + time_offset, 4)
+
+    # Verify clips are within selected range
+    assert plans[0].start_sec >= selected_start
+    assert plans[-1].end_sec <= selected_end
+    
+    # Verify first clip starts near selection start
+    assert plans[0].start_sec == pytest.approx(selected_start, abs=1.0)
+    # Verify last clip ends near selection end
+    assert plans[-1].end_sec == pytest.approx(selected_end, abs=1.0)
+
+
+def test_plan_clips_without_selection_uses_full_duration():
+    """Test backward compatibility - no selection uses full duration."""
+    beat_times = [i * 0.5 for i in range(80)]  # 40 seconds
+    analysis = make_analysis(beat_times)
+    full_duration = beat_times[-1] + 0.5  # ~40s
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=full_duration,  # No selection = full duration
+        analysis=analysis,
+        clip_count=4,
+        min_clip_sec=3.0,
+        max_clip_sec=12.0,
+        generator_fps=8,
+    )
+
+    assert len(plans) == 4
+    # Plans should cover full duration
+    assert plans[-1].end_sec == pytest.approx(full_duration, abs=0.5)
+    assert plans[0].start_sec == pytest.approx(0.0, abs=0.1)
+
+
+def test_plan_clips_selection_boundary_at_start():
+    """Test selection starting at 0 seconds."""
+    beat_times = [i * 0.5 for i in range(120)]  # 60 seconds
+    analysis = make_analysis(beat_times)
+    
+    # Selection: 0s to 30s
+    selected_start = 0.0
+    selected_end = 30.0
+    effective_duration = selected_end - selected_start  # 30s
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=effective_duration,
+        analysis=analysis,
+        clip_count=3,
+        min_clip_sec=3.0,
+        max_clip_sec=12.0,
+        generator_fps=8,
+    )
+
+    assert len(plans) == 3
+    assert plans[0].start_sec == pytest.approx(0.0, abs=0.1)
+    assert plans[-1].end_sec == pytest.approx(effective_duration, abs=0.5)
+
+
+def test_plan_clips_selection_boundary_at_end():
+    """Test selection ending at song duration."""
+    beat_times = [i * 0.5 for i in range(120)]  # 60 seconds
+    analysis = make_analysis(beat_times)
+    full_duration = beat_times[-1] + 0.5  # ~60s
+    
+    # Selection: 30s to 60s (last 30s)
+    selected_start = 30.0
+    selected_end = full_duration
+    effective_duration = selected_end - selected_start  # ~30s
+    time_offset = selected_start  # 30s
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=effective_duration,
+        analysis=analysis,
+        clip_count=3,
+        min_clip_sec=3.0,
+        max_clip_sec=12.0,
+        generator_fps=8,
+    )
+
+    # Apply time offset
+    for plan in plans:
+        plan.start_sec = round(plan.start_sec + time_offset, 4)
+        plan.end_sec = round(plan.end_sec + time_offset, 4)
+
+    assert len(plans) == 3
+    assert plans[0].start_sec >= selected_start
+    assert plans[-1].end_sec == pytest.approx(selected_end, abs=0.5)
+
+
+def test_plan_clips_selection_exactly_30s():
+    """Test selection at exactly 30 seconds."""
+    beat_times = [i * 0.5 for i in range(120)]  # 60 seconds
+    analysis = make_analysis(beat_times)
+    
+    # Selection: 15s to 45s (exactly 30s)
+    selected_start = 15.0
+    selected_end = 45.0
+    effective_duration = 30.0  # Exactly 30s
+    time_offset = selected_start  # 15s
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=effective_duration,
+        analysis=analysis,
+        clip_count=4,
+        min_clip_sec=3.0,
+        max_clip_sec=12.0,
+        generator_fps=8,
+    )
+
+    # Apply time offset
+    for plan in plans:
+        plan.start_sec = round(plan.start_sec + time_offset, 4)
+        plan.end_sec = round(plan.end_sec + time_offset, 4)
+
+    assert len(plans) == 4
+    assert plans[0].start_sec >= selected_start
+    assert plans[-1].end_sec <= selected_end
+    # Total duration should be approximately 30s
+    total_duration = plans[-1].end_sec - plans[0].start_sec
+    assert total_duration == pytest.approx(30.0, abs=1.0)
+
+
+def test_plan_clips_selection_short_song():
+    """Test selection on song shorter than 30 seconds."""
+    beat_times = [i * 0.5 for i in range(30)]  # 15 seconds
+    analysis = make_analysis(beat_times)
+    full_duration = beat_times[-1] + 0.5  # ~15s
+    
+    # Selection: entire song (0s to 15s)
+    selected_start = 0.0
+    selected_end = full_duration
+    effective_duration = selected_end - selected_start  # ~15s
+
+    plans = plan_beat_aligned_clips(
+        duration_sec=effective_duration,
+        analysis=analysis,
+        clip_count=3,
+        min_clip_sec=3.0,
+        max_clip_sec=6.0,
+        generator_fps=8,
+    )
+
+    assert len(plans) == 3
+    assert plans[0].start_sec == pytest.approx(0.0, abs=0.1)
+    assert plans[-1].end_sec == pytest.approx(effective_duration, abs=0.5)
+    # All clips should be within the short selection
+    for plan in plans:
+        assert plan.end_sec <= effective_duration
+
+
+def test_clip_planning_api_with_selection():
+    """Test clip planning API endpoint with selection."""
+    beat_times = [i * 0.5 for i in range(120)]  # 60 seconds
+    analysis = make_analysis(beat_times)
+    song_id = uuid4()
+
+    with session_scope() as session:
+        song = Song(
+            id=song_id,
+            user_id=DEFAULT_USER_ID,
+            title="Selection Test Song",
+            original_filename="selection.wav",
+            original_file_size=2048,
+            original_s3_key="s3://test/selection.wav",
+            processed_s3_key="s3://test/selection-processed.wav",
+            duration_sec=analysis.duration_sec,
+            selected_start_sec=10.0,  # Selection: 10s to 40s
+            selected_end_sec=40.0,
+        )
+        session.add(song)
+        session.commit()
+
+        record = SongAnalysisRecord(
+            song_id=song_id,
+            analysis_json=analysis.model_dump_json(by_alias=True),
+            bpm=analysis.bpm,
+            duration_sec=analysis.duration_sec,
+        )
+        session.add(record)
+        session.commit()
+
+    try:
+        with TestClient(create_app()) as client:
+            response = client.post(
+                f"/api/v1/songs/{song_id}/clips/plan",
+                params={"clip_count": 3, "min_clip_sec": 3.0, "max_clip_sec": 12.0},
+            )
+            assert response.status_code == 202, response.text
+            assert response.json()["clipsPlanned"] == 3
+
+            list_response = client.get(f"/api/v1/songs/{song_id}/clips")
+            assert list_response.status_code == 200, list_response.text
+            clips = list_response.json()
+            assert len(clips) == 3
+            
+            # Verify clips are within selected range (10s to 40s)
+            assert clips[0]["startSec"] >= 10.0
+            assert clips[-1]["endSec"] <= 40.0
+            
+            # Verify first clip starts near selection start
+            assert clips[0]["startSec"] == pytest.approx(10.0, abs=2.0)
+            # Verify last clip ends near selection end
+            assert clips[-1]["endSec"] == pytest.approx(40.0, abs=2.0)
+    finally:
+        with session_scope() as session:
+            for clip in session.exec(select(SongClip).where(SongClip.song_id == song_id)).all():
+                session.delete(clip)
+            records = session.exec(
+                select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
+            ).all()
+            for record in records:
+                session.delete(record)
+            song = session.get(Song, song_id)
+            if song:
+                session.delete(song)
+            session.commit()
+

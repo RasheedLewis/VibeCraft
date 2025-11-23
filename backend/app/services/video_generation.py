@@ -16,6 +16,161 @@ logger = logging.getLogger(__name__)
 # Model: minimax/hailuo-2.3
 # Note: Using model owner/name format - Replicate will use latest version
 VIDEO_MODEL = "minimax/hailuo-2.3"
+IMAGE_TO_VIDEO_MODEL = "minimax/hailuo-2.3"  # Same model supports image input
+
+
+def _generate_image_to_video(
+    scene_spec: SceneSpec,
+    reference_image_url: str,
+    seed: Optional[int] = None,
+    num_frames: Optional[int] = None,
+    fps: Optional[int] = None,
+    max_poll_attempts: int = 180,
+    poll_interval_sec: float = 5.0,
+) -> tuple[bool, Optional[str], Optional[dict]]:
+    """
+    Generate video from image using image-to-video model.
+    
+    Uses Minimax Hailuo 2.3 which supports image input for image-to-video generation.
+    
+    Args:
+        scene_spec: SceneSpec object with prompt and parameters
+        reference_image_url: URL to reference character image
+        seed: Optional seed for reproducibility
+        num_frames: Optional frame count override
+        fps: Optional FPS override
+        max_poll_attempts: Maximum polling attempts
+        poll_interval_sec: Seconds between polling attempts
+    
+    Returns:
+        Tuple of (success, video_url, metadata_dict)
+    """
+    try:
+        settings = get_settings()
+        if not settings.replicate_api_token:
+            logger.error("REPLICATE_API_TOKEN not configured")
+            return False, None, {"error": "REPLICATE_API_TOKEN not configured"}
+
+        client = replicate.Client(api_token=settings.replicate_api_token)
+
+        # Optimize prompt for the specific API/model
+        from app.services.prompt_enhancement import optimize_prompt_for_api
+
+        optimized_prompt = optimize_prompt_for_api(
+            prompt=scene_spec.prompt,
+            api_name=IMAGE_TO_VIDEO_MODEL,
+            bpm=None,  # Will extract from prompt if available
+        )
+
+        effective_fps = fps or 8
+        frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
+
+        input_params = {
+            "first_frame_image": reference_image_url,  # Reference character image
+            "prompt": optimized_prompt,  # Scene prompt
+            "num_frames": max(1, min(frame_count, 120)),
+            "width": 576,
+            "height": 320,
+            "fps": effective_fps,
+        }
+
+        if seed is not None:
+            input_params["seed"] = seed
+
+        logger.info(
+            f"[VIDEO-GEN] Starting image-to-video generation for section {scene_spec.section_id}, "
+            f"reference_image_url={'set' if reference_image_url else 'none'}"
+        )
+        logger.debug(f"Using reference image: {reference_image_url[:100]}...")
+        logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
+
+        # Get model version
+        model = client.models.get(IMAGE_TO_VIDEO_MODEL)
+        version = model.latest_version
+
+        logger.info(f"[VIDEO-GEN] Calling Replicate API: model={IMAGE_TO_VIDEO_MODEL}, has_image={'first_frame_image' in input_params}")
+        prediction = client.predictions.create(
+            version=version,
+            input=input_params,
+        )
+
+        job_id = prediction.id
+        logger.info(f"[VIDEO-GEN] Replicate job started: {job_id}, type=image-to-video")
+
+        # Poll for completion
+        video_url = None
+        metadata = {
+            "fps": input_params["fps"],
+            "num_frames": input_params["num_frames"],
+            "resolution_width": input_params["width"],
+            "resolution_height": input_params["height"],
+            "seed": seed,
+            "job_id": job_id,
+            "generation_type": "image-to-video",
+            "reference_image_url": reference_image_url,
+        }
+
+        for attempt in range(max_poll_attempts):
+            prediction = client.predictions.get(job_id)
+
+            if prediction.status == "succeeded":
+                # Get video URL from output
+                if prediction.output:
+                    if isinstance(prediction.output, str):
+                        video_url = prediction.output
+                    elif isinstance(prediction.output, list) and len(prediction.output) > 0:
+                        video_url = prediction.output[0]
+                    elif isinstance(prediction.output, dict) and "video" in prediction.output:
+                        video_url = prediction.output["video"]
+
+                if video_url:
+                    logger.info(f"Image-to-video generation completed: {video_url}")
+                    return True, video_url, metadata
+                else:
+                    logger.error(f"Image-to-video generation succeeded but no URL in output: {prediction.output}")
+                    metadata["error"] = "No video URL in output"
+                    return False, None, metadata
+
+            elif prediction.status == "failed":
+                error_msg = getattr(prediction, "error", "Unknown error")
+                logger.error(f"Image-to-video generation failed: {error_msg}")
+                metadata["error"] = str(error_msg)
+                return False, None, metadata
+
+            elif prediction.status in ["starting", "processing"]:
+                elapsed_sec = (attempt + 1) * poll_interval_sec
+                logger.info(
+                    f"Image-to-video generation in progress "
+                    f"(attempt {attempt + 1}/{max_poll_attempts}, ~{elapsed_sec:.0f}s elapsed)..."
+                )
+                time.sleep(poll_interval_sec)
+            else:
+                logger.warning(f"Unknown prediction status: {prediction.status}")
+                time.sleep(poll_interval_sec)
+
+        # Timeout
+        try:
+            final_prediction = client.predictions.get(job_id)
+            if final_prediction.status == "failed":
+                error_msg = getattr(final_prediction, "error", "Unknown error")
+                logger.error(f"Image-to-video generation failed on Replicate: {error_msg}")
+                metadata["error"] = f"Replicate error: {error_msg}"
+            else:
+                logger.error(
+                    f"Image-to-video generation timed out after {max_poll_attempts} attempts "
+                    f"(~{max_poll_attempts * poll_interval_sec / 60:.1f} minutes). "
+                    f"Final status: {final_prediction.status}"
+                )
+                metadata["error"] = f"Timeout after {max_poll_attempts * poll_interval_sec / 60:.1f} minutes (status: {final_prediction.status})"
+        except Exception as e:
+            logger.error(f"Image-to-video generation timed out and error checking final status: {e}")
+            metadata["error"] = f"Timeout after {max_poll_attempts * poll_interval_sec / 60:.1f} minutes"
+
+        return False, None, metadata
+
+    except Exception as e:
+        logger.error(f"Error generating image-to-video: {e}", exc_info=True)
+        return False, None, {"error": str(e)}
 
 
 def generate_section_video(
@@ -23,6 +178,8 @@ def generate_section_video(
     seed: Optional[int] = None,
     num_frames: Optional[int] = None,
     fps: Optional[int] = None,
+    reference_image_url: Optional[str] = None,
+    reference_image_urls: Optional[list[str]] = None,
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
 ) -> tuple[bool, Optional[str], Optional[dict]]:
@@ -32,6 +189,10 @@ def generate_section_video(
     Args:
         scene_spec: SceneSpec object with prompt and parameters
         seed: Optional seed for reproducibility
+        num_frames: Optional frame count override
+        fps: Optional FPS override
+        reference_image_url: Optional single image URL for image-to-video generation
+        reference_image_urls: Optional list of image URLs (tries multiple, falls back to single)
         max_poll_attempts: Maximum number of polling attempts
         poll_interval_sec: Seconds between polling attempts
 
@@ -48,22 +209,85 @@ def generate_section_video(
         # Create Replicate client
         client = replicate.Client(api_token=settings.replicate_api_token)
 
-        # Prepare input parameters for Minimax Hailuo 2.3 (text-to-video)
-        # Parameters: prompt, num_frames, width, height, fps, seed
+        # Determine if using image-to-video or text-to-video
+        # Prioritize reference_image_urls (multiple images) over single reference_image_url
+        # Enhanced fallback: validate image URLs and gracefully degrade to text-to-video if invalid
+        image_urls = None
+        if reference_image_urls and len(reference_image_urls) > 0:
+            # Filter out None/empty URLs
+            image_urls = [url for url in reference_image_urls if url and url.strip()]
+            if not image_urls:
+                logger.warning("All reference_image_urls were empty, falling back to text-to-video")
+                image_urls = None
+        elif reference_image_url:
+            if reference_image_url and reference_image_url.strip():
+                image_urls = [reference_image_url]
+            else:
+                logger.warning("reference_image_url is empty, falling back to text-to-video")
+                image_urls = None
+        
+        is_image_to_video = image_urls is not None and len(image_urls) > 0
+        
+        # If we have a single image URL, use the dedicated image-to-video function
+        if is_image_to_video and len(image_urls) == 1:
+            try:
+                return _generate_image_to_video(
+                    scene_spec=scene_spec,
+                    reference_image_url=image_urls[0],
+                    seed=seed,
+                    num_frames=num_frames,
+                    fps=fps,
+                    max_poll_attempts=max_poll_attempts,
+                    poll_interval_sec=poll_interval_sec,
+                )
+            except Exception as e:
+                logger.warning(f"Image-to-video generation failed, falling back to text-to-video: {e}")
+                # Fall through to text-to-video generation
+                is_image_to_video = False
+        
+        # Optimize prompt for the specific API/model
+        from app.services.prompt_enhancement import optimize_prompt_for_api
+        
+        optimized_prompt = optimize_prompt_for_api(
+            prompt=scene_spec.prompt,
+            api_name=VIDEO_MODEL,
+            bpm=None,  # Will extract from prompt if available
+        )
+        
+        # Prepare input parameters for Minimax Hailuo 2.3
+        # Supports both text-to-video and image-to-video
+        # Parameters: prompt, num_frames, width, height, fps, seed, image (optional)
         effective_fps = fps or 8
         frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
         input_params = {
-            "prompt": scene_spec.prompt,
+            "prompt": optimized_prompt,
             "num_frames": max(1, min(frame_count, 120)),
             "width": 576,  # Smaller resolution = faster/cheaper (XL supports up to 1024)
             "height": 320,  # 16:9 aspect ratio (576x320)
             "fps": effective_fps,
         }
 
+        # Add image input if provided (for image-to-video)
+        # Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
+        if image_urls:
+            # Use first image (model only supports single image)
+            input_params["first_frame_image"] = image_urls[0]
+            if len(image_urls) > 1:
+                logger.info(
+                    f"Using first image for image-to-video generation (model supports single image only, "
+                    f"ignoring {len(image_urls) - 1} additional image(s))"
+                )
+            else:
+                logger.info(f"Using image-to-video generation with reference image: {image_urls[0]}")
+
         if seed is not None:
             input_params["seed"] = seed
 
-        logger.info(f"Starting video generation for section {scene_spec.section_id}")
+        generation_type = "image-to-video" if is_image_to_video else "text-to-video"
+        logger.info(
+            f"[VIDEO-GEN] Starting {generation_type} generation for section {scene_spec.section_id}, "
+            f"has_image_urls={is_image_to_video}, image_count={len(image_urls) if image_urls else 0}"
+        )
         logger.debug(f"Prompt: {scene_spec.prompt[:100]}...")
 
         # Start the prediction (async - use predictions.create for long-running jobs)
@@ -71,13 +295,17 @@ def generate_section_video(
         model = client.models.get(VIDEO_MODEL)
         version = model.latest_version
         
+        logger.info(
+            f"[VIDEO-GEN] Calling Replicate API: model={VIDEO_MODEL}, "
+            f"generation_type={generation_type}, has_image={'first_frame_image' in input_params}"
+        )
         prediction = client.predictions.create(
             version=version,
             input=input_params,
         )
 
         job_id = prediction.id
-        logger.info(f"Replicate job started: {job_id}")
+        logger.info(f"[VIDEO-GEN] Replicate job started: {job_id}, type={generation_type}")
 
         # Poll for completion
         video_url = None
@@ -88,7 +316,10 @@ def generate_section_video(
             "resolution_height": input_params["height"],
             "seed": seed,
             "job_id": job_id,
+            "generation_type": generation_type,
         }
+        if reference_image_url:
+            metadata["reference_image_url"] = reference_image_url
 
         for attempt in range(max_poll_attempts):
             prediction = client.predictions.get(job_id)

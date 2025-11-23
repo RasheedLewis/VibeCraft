@@ -1,370 +1,49 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
+import axios from 'axios'
 import { apiClient } from '../lib/apiClient'
-import { SectionCard, SectionMoodTag, VCCard, VCButton } from '../components/vibecraft'
+import { VCButton } from '../components/vibecraft'
 import type { MoodKind } from '../components/vibecraft/SectionMoodTag'
 import type {
   ClipGenerationSummary,
   ComposeVideoResponse,
-  CompositionJobStatusResponse,
-  JobStatusResponse,
-  SongAnalysis,
-  SongAnalysisJobResponse,
   SongClipStatus,
   SongRead,
-  SongSection,
-  MoodVector,
   SongUploadResponse,
 } from '../types/song'
-import { MainVideoPlayer } from '../components/MainVideoPlayer'
 
-const ACCEPTED_MIME_TYPES = [
-  'audio/mpeg',
-  'audio/mp3',
-  'audio/wav',
-  'audio/wave',
-  'audio/vnd.wave',
-  'audio/x-wav',
-  'audio/ogg',
-  'audio/webm',
-  'audio/flac',
-  'audio/x-flac',
-  'audio/aac',
-  'audio/mp4',
-  'audio/m4a',
-  'audio/x-m4a',
-] as const
+// Constants
+import { ACCEPTED_MIME_TYPES, MAX_DURATION_SECONDS } from '../constants/upload'
 
-const MAX_DURATION_SECONDS = 7 * 60
+// Utilities
+import { extractErrorMessage } from '../utils/validation'
+import { mapMoodToMoodKind } from '../utils/sections'
+import { computeDuration } from '../utils/audio'
+import { normalizeClipStatus } from '../utils/status'
 
-const SECTION_TYPE_LABELS: Record<string, string> = {
-  intro: 'Intro',
-  verse: 'Verse',
-  pre_chorus: 'Pre-chorus',
-  chorus: 'Chorus',
-  bridge: 'Bridge',
-  drop: 'Drop',
-  solo: 'Solo',
-  outro: 'Outro',
-  other: 'Section',
-}
+// Hooks
+import { useAnalysisPolling } from '../hooks/useAnalysisPolling'
+import { useClipPolling } from '../hooks/useClipPolling'
+import { useCompositionPolling } from '../hooks/useCompositionPolling'
+import { useVideoTypeSelection } from '../hooks/useVideoTypeSelection'
+import { useAudioSelection } from '../hooks/useAudioSelection'
 
-const SECTION_COLORS: Record<string, string> = {
-  intro: 'rgba(110, 107, 255, 0.32)',
-  verse: 'rgba(130, 89, 255, 0.42)',
-  pre_chorus: 'rgba(112, 84, 255, 0.48)',
-  chorus: 'rgba(255, 111, 245, 0.55)',
-  bridge: 'rgba(0, 198, 192, 0.45)',
-  drop: 'rgba(255, 189, 89, 0.5)',
-  solo: 'rgba(89, 255, 214, 0.4)',
-  outro: 'rgba(90, 105, 255, 0.28)',
-  other: 'rgba(120, 120, 180, 0.35)',
-}
-
-const WAVEFORM_BASE_PATTERN = [0.25, 0.6, 0.85, 0.4, 0.75, 0.35, 0.9, 0.5, 0.65, 0.3]
-const WAVEFORM_BARS = Array.from({ length: 72 }, (_, index) => {
-  const patternValue = WAVEFORM_BASE_PATTERN[index % WAVEFORM_BASE_PATTERN.length]
-  const pulseBoost =
-    ((index + 3) % 11 === 0 ? 0.15 : 0) + ((index + 7) % 17 === 0 ? 0.1 : 0)
-  return Math.min(1, patternValue + pulseBoost)
-})
-
-const getFileTypeLabel = (fileName?: string | null) => {
-  if (!fileName) return 'Audio'
-  const parts = fileName.split('.')
-  if (parts.length <= 1) return 'Audio'
-  return parts.pop()?.toUpperCase() ?? 'Audio'
-}
-
-const formatBytes = (bytes: number) => {
-  if (!Number.isFinite(bytes)) return '—'
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const exponent = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1,
-  )
-  const value = bytes / Math.pow(1024, exponent)
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`
-}
-
-const formatSeconds = (seconds: number | null) => {
-  if (!Number.isFinite(seconds) || seconds === null) return '—'
-  const wholeSeconds = Math.round(seconds)
-  const mins = Math.floor(wholeSeconds / 60)
-  const secs = wholeSeconds % 60
-  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-}
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value))
-
-const mapMoodToMoodKind = (mood: string): MoodKind => {
-  const normalized = mood?.toLowerCase() ?? ''
-  if (normalized.includes('energy') || normalized.includes('energetic'))
-    return 'energetic'
-  if (
-    normalized.includes('dark') ||
-    normalized.includes('moody') ||
-    normalized.includes('intense')
-  )
-    return 'dark'
-  if (
-    normalized.includes('uplift') ||
-    normalized.includes('happy') ||
-    normalized.includes('bright') ||
-    normalized.includes('positive')
-  )
-    return 'uplifting'
-  return 'chill'
-}
-
-const formatBpm = (bpm?: number) => {
-  if (!bpm || Number.isNaN(bpm)) return '—'
-  return `${Math.round(bpm)} BPM`
-}
-
-const isSongAnalysis = (payload: unknown): payload is SongAnalysis => {
-  if (!payload || typeof payload !== 'object') return false
-  const candidate = payload as Partial<SongAnalysis>
-  return (
-    typeof candidate.durationSec === 'number' &&
-    Array.isArray(candidate.sections) &&
-    Array.isArray(candidate.moodTags)
-  )
-}
-
-const isClipGenerationSummary = (payload: unknown): payload is ClipGenerationSummary => {
-  if (!payload || typeof payload !== 'object') return false
-  const candidate = payload as Partial<ClipGenerationSummary>
-  return (
-    typeof candidate.songId === 'string' &&
-    typeof candidate.totalClips === 'number' &&
-    typeof candidate.progressCompleted === 'number' &&
-    typeof candidate.progressTotal === 'number' &&
-    Array.isArray(candidate.clips)
-  )
-}
-
-const formatMoodTags = (tags: string[]) =>
-  tags.length
-    ? tags
-        .map((tag) => tag.trim())
-        .filter(Boolean)
-        .join(', ')
-    : '—'
-
-const formatDurationShort = (seconds: number) => {
-  if (!Number.isFinite(seconds)) return '—'
-  if (seconds >= 10) return `${Math.round(seconds)}s`
-  return `${seconds.toFixed(1)}s`
-}
-
-const formatTimeRange = (startSec: number, endSec: number) =>
-  `${formatSeconds(startSec)}–${formatSeconds(endSec)}`
-
-const getSectionTitle = (section: SongSection, index: number) => {
-  const label = SECTION_TYPE_LABELS[section.type] ?? `Section`
-  return `${label} ${index + 1}`
-}
-
-const formatProgressLabel = (status: string, progress: number) => {
-  if (status === 'completed') return 'Analysis complete'
-  if (status === 'failed') return 'Analysis failed'
-  if (status === 'processing') return `Analyzing… ${Math.round(progress)}%`
-  if (status === 'queued') return 'Queued for analysis'
-  return 'Analyzing…'
-}
-
-const normalizeJobStatus = (
-  status?: string,
-): 'queued' | 'processing' | 'completed' | 'failed' => {
-  const normalized = status?.toLowerCase()
-  if (normalized === 'processing') return 'processing'
-  if (normalized === 'completed') return 'completed'
-  if (normalized === 'failed') return 'failed'
-  return 'queued'
-}
-
-const normalizeClipStatus = (
-  status?: string,
-): 'queued' | 'processing' | 'completed' | 'failed' | 'canceled' => {
-  const normalized = status?.toLowerCase()
-  if (normalized === 'processing' || normalized === 'generating') return 'processing'
-  if (normalized === 'completed' || normalized === 'done') return 'completed'
-  if (normalized === 'failed' || normalized === 'error') return 'failed'
-  if (normalized === 'canceled' || normalized === 'cancelled') return 'canceled'
-  return 'queued'
-}
-
-const extractErrorMessage = (error: unknown, fallback: string): string => {
-  if (typeof error === 'string') return error
-  if (error && typeof error === 'object') {
-    const maybeError = error as {
-      message?: string
-      response?: { data?: unknown }
-    }
-    const responseData = maybeError.response?.data
-    if (typeof responseData === 'string') return responseData
-    if (responseData && typeof responseData === 'object') {
-      const detail = (responseData as Record<string, unknown>).detail
-      if (typeof detail === 'string') return detail
-      const message = (responseData as Record<string, unknown>).message
-      if (typeof message === 'string') return message
-    }
-    if (maybeError.message) return maybeError.message
-  }
-  return fallback
-}
-
-const buildSectionsWithDisplayNames = (
-  sections: SongSection[],
-): Array<
-  SongSection & {
-    displayName: string
-    typeSoft: string | null
-    rawLabel: number | null
-  }
-> => {
-  const counts: Record<string, number> = {}
-  return sections.map((section) => {
-    const baseType = section.typeSoft ?? section.type
-
-    const label =
-      (section.displayName && section.displayName.split(' ')[0]) ??
-      SECTION_TYPE_LABELS[section.type] ??
-      'Section'
-
-    const key = baseType ?? section.type
-    const nextCount = (counts[key] ?? 0) + 1
-    counts[key] = nextCount
-
-    const displayName =
-      section.displayName ??
-      (key === 'intro_like' || key === 'intro'
-        ? 'Intro'
-        : key === 'outro_like' || key === 'outro'
-          ? 'Outro'
-          : key === 'bridge_like' || key === 'bridge'
-            ? 'Bridge'
-            : `${label} ${nextCount}`)
-
-    return {
-      ...section,
-      typeSoft: section.typeSoft ?? null,
-      rawLabel: section.rawLabel ?? null,
-      displayName,
-    }
-  })
-}
-
-const parseWaveformJson = (waveformJson?: string | null): number[] => {
-  if (!waveformJson) return []
-  try {
-    const parsed = JSON.parse(waveformJson)
-    if (Array.isArray(parsed)) {
-      return parsed.map((value) => {
-        const num = Number(value)
-        if (Number.isNaN(num)) {
-          return 0
-        }
-        return clamp(num, 0, 1)
-      })
-    }
-    return []
-  } catch {
-    return []
-  }
-}
-
-const SongTimeline: React.FC<{
-  sections: Array<SongSection & { displayName: string }>
-  duration: number
-  onSelect?: (sectionId: string) => void
-}> = ({ sections, duration, onSelect }) => {
-  if (!sections.length || !Number.isFinite(duration) || duration <= 0) {
-    return null
-  }
-
-  return (
-    <div className="overflow-hidden rounded-full border border-vc-border/40 bg-[rgba(12,12,18,0.65)]">
-      <div className="flex h-12">
-        {sections.map((section) => {
-          const length = Math.max(section.endSec - section.startSec, 0)
-          const widthPercent = clamp((length / duration) * 100, 4, 100)
-          return (
-            <button
-              key={section.id}
-              type="button"
-              onClick={() => onSelect?.(section.id)}
-              className="group relative flex items-center justify-center border-r border-white/5 px-2 text-xs text-white transition-colors last:border-r-0 hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-vc-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[rgba(12,12,18,0.85)]"
-              style={{
-                width: `${widthPercent}%`,
-                backgroundColor: SECTION_COLORS[section.type] ?? 'rgba(100,100,150,0.35)',
-              }}
-            >
-              <span className="pointer-events-none px-2 text-[11px] font-medium tracking-wide">
-                {section.displayName}
-              </span>
-              <span className="pointer-events-none absolute bottom-1 text-[10px] uppercase tracking-[0.12em] text-white/70 opacity-0 transition-opacity group-hover:opacity-100">
-                {formatSeconds(section.startSec)} – {formatSeconds(section.endSec)}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-const WaveformDisplay: React.FC<{
-  waveform: number[]
-  beatTimes?: number[]
-  duration: number
-}> = ({ waveform, beatTimes, duration }) => {
-  if (!waveform.length) {
-    return (
-      <div className="flex h-16 items-center justify-center rounded-2xl border border-dashed border-vc-border/40 bg-[rgba(12,12,18,0.45)] text-xs text-vc-text-muted">
-        Waveform preview unavailable
-      </div>
-    )
-  }
-
-  const bars = waveform.slice(0, 512)
-  const hasBeats = Array.isArray(beatTimes) && beatTimes.length > 0 && duration > 0
-
-  return (
-    <div className="relative h-20 w-full overflow-hidden rounded-2xl border border-vc-border/40 bg-[rgba(12,12,18,0.55)]">
-      <div className="absolute inset-0 bg-gradient-to-r from-[#6E6BFF33] via-[#FF6FF533] to-[#00C6C033]" />
-      <div className="relative z-10 flex h-full items-center justify-between px-3">
-        {bars.map((value, idx) => (
-          <span
-            key={`wave-bar-${idx}-${value}`}
-            className="w-[2px] rounded-full bg-white/85 transition-all duration-300"
-            style={{
-              height: `${Math.max(16, value * 100)}%`,
-              opacity: Math.max(0.25, value),
-            }}
-          />
-        ))}
-      </div>
-      {hasBeats && (
-        <div className="pointer-events-none absolute inset-0">
-          {beatTimes!.slice(0, 400).map((time, idx) => {
-            const position = clamp((time / duration) * 100, 0, 100)
-            return (
-              <span
-                key={`beat-${idx}-${time}`}
-                className="absolute top-0 bottom-0 w-px bg-white/45"
-                style={{ left: `${position}%` }}
-              />
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
+// Components
+import { BackgroundOrbs } from '../components/upload/BackgroundOrbs'
+import { RequirementPill } from '../components/upload/RequirementPill'
+import { UploadCard } from '../components/upload/UploadCard'
+import {
+  WaveformIcon,
+  TimerIcon,
+  HardDriveIcon,
+  ErrorIcon,
+} from '../components/upload/Icons'
+import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimeline'
+import { VideoTypeSelector } from '../components/upload/VideoTypeSelector'
+import { CharacterImageUpload } from '../components/upload/CharacterImageUpload'
+import { TemplateCharacterModal } from '../components/upload/TemplateCharacterModal'
+import { SelectedTemplateDisplay } from '../components/upload/SelectedTemplateDisplay'
+import { SongProfileView } from '../components/song/SongProfileView'
 
 type UploadStage = 'idle' | 'dragging' | 'uploading' | 'uploaded' | 'error'
 
@@ -381,61 +60,222 @@ export const UploadPage: React.FC = () => {
   const [progress, setProgress] = useState<number>(0)
   const [metadata, setMetadata] = useState<UploadMetadata | null>(null)
   const [result, setResult] = useState<SongUploadResponse | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const [analysisState, setAnalysisState] = useState<
-    'idle' | 'queued' | 'processing' | 'completed' | 'failed'
-  >('idle')
-  const [analysisJobId, setAnalysisJobId] = useState<string | null>(null)
-  const [analysisProgress, setAnalysisProgress] = useState<number>(0)
-  const [analysisData, setAnalysisData] = useState<SongAnalysis | null>(null)
-  const [analysisError, setAnalysisError] = useState<string | null>(null)
-  const [isFetchingAnalysis, setIsFetchingAnalysis] = useState<boolean>(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const [songDetails, setSongDetails] = useState<SongRead | null>(null)
   const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null)
-  const [clipJobId, setClipJobId] = useState<string | null>(null)
-  const [clipJobStatus, setClipJobStatus] = useState<
-    'idle' | 'queued' | 'processing' | 'completed' | 'failed'
-  >('idle')
-  const [clipJobProgress, setClipJobProgress] = useState<number>(0)
-  const [clipJobError, setClipJobError] = useState<string | null>(null)
-  const [clipSummary, setClipSummary] = useState<ClipGenerationSummary | null>(null)
   const [isComposing, setIsComposing] = useState<boolean>(false)
   const [composeJobId, setComposeJobId] = useState<string | null>(null)
-  const [composeJobProgress, setComposeJobProgress] = useState<number>(0)
   const [playerActiveClipId, setPlayerActiveClipId] = useState<string | null>(null)
   const [playerClipSelectionLocked, setPlayerClipSelectionLocked] =
     useState<boolean>(false)
+  const compositionCompleteHandledRef = useRef<string | null>(null)
+  const autoScrollCompletedRef = useRef<boolean>(false)
+  const uploadAbortControllerRef = useRef<AbortController | null>(null)
+  const [templateModalOpen, setTemplateModalOpen] = useState(false)
+  const [videoTypeSelectorVisible, setVideoTypeSelectorVisible] = useState(true)
+  const [hideCharacterConsistency, setHideCharacterConsistency] = useState(false)
+  const [showNoCharacterConfirm, setShowNoCharacterConfirm] = useState(false)
+
+  // Use custom hooks for video type and audio selection
+  const videoTypeSelection = useVideoTypeSelection({
+    songId: result?.songId ?? null,
+    songDetails,
+    onError: setError,
+    onAnalysisTriggered: async (jobId: string) => {
+      // Set the jobId in the polling hook so it starts polling automatically
+      analysisPolling.setJobId?.(jobId)
+      return Promise.resolve()
+    },
+  })
+  const audioSelection = useAudioSelection({
+    songId: result?.songId ?? null,
+    songDetails,
+  })
+
+  // Use polling hooks with bugfixes
+  const analysisPolling = useAnalysisPolling(result?.songId ?? null)
+  const clipPolling = useClipPolling(result?.songId ?? null)
+
+  // Sync video type selection state
+  const videoType = videoTypeSelection.videoType
+  // const isSettingVideoType = videoTypeSelection.isSetting
+
+  // Hide video type selector 3 seconds after analysis begins (fade out)
+  // COMMENTED OUT: Timing logic for fade-out
+  // useEffect(() => {
+  //   if (
+  //     videoType &&
+  //     (analysisState === 'queued' || analysisState === 'processing') &&
+  //     videoTypeSelectorVisible
+  //   ) {
+  //     const timer = setTimeout(() => {
+  //       setVideoTypeSelectorVisible(false)
+  //     }, 3000)
+  //     return () => clearTimeout(timer)
+  //   }
+  //   // Reset visibility when videoType becomes null (new upload)
+  //   if (!videoType) {
+  //     setVideoTypeSelectorVisible(true)
+  //   }
+  // }, [videoType, analysisState, videoTypeSelectorVisible])
+
+  // Sync audio selection state
+  const audioSelectionValue = audioSelection.audioSelection
+  const isSavingSelection = audioSelection.isSaving
+
+  // Memoize enabled to prevent unnecessary re-renders
+  const compositionEnabled = useMemo(
+    () => !!composeJobId && !!result?.songId,
+    [composeJobId, result?.songId],
+  )
+
+  const compositionPolling = useCompositionPolling({
+    jobId: composeJobId,
+    songId: result?.songId ?? null,
+    enabled: compositionEnabled,
+  })
+
+  // Sync analysis state
+  const analysisState = analysisPolling.state
+  const analysisProgress = analysisPolling.progress
+  const analysisData = analysisPolling.data
+  const analysisError = analysisPolling.error
+  const isFetchingAnalysis = analysisPolling.isFetching
+
+  // Sync clip state
+  const clipJobId = clipPolling.jobId
+  const clipJobStatus = clipPolling.status
+  const clipJobProgress = clipPolling.progress
+  const clipJobError = clipPolling.error
+  const clipSummary = clipPolling.summary
+
+  // Sync composition progress
+  const composeJobProgress = compositionPolling.progress
+
+  useEffect(() => {
+    if (compositionPolling.isComplete) {
+      // Prevent handling completion multiple times for the same job
+      if (compositionCompleteHandledRef.current === composeJobId) {
+        return
+      }
+      compositionCompleteHandledRef.current = composeJobId
+
+      // Don't reset state immediately - wait for clip summary to update with composed video
+      // This prevents the button from showing "Compose when done" again
+      if (result?.songId) {
+        // Fetch updated clip summary which should now include composedVideoUrl
+        void clipPolling.fetchClipSummary(result.songId).then(() => {
+          // Check if composed video URL is now available in the updated summary
+          // We need to wait a moment for the state to update after fetchClipSummary
+          setTimeout(() => {
+            const updatedSummary = clipPolling.summary
+            if (updatedSummary?.composedVideoUrl) {
+              // Composed video is available, safe to reset state
+              setIsComposing(false)
+              setComposeJobId(null)
+            } else {
+              // Composed video not yet available, wait a bit and retry once more
+              setTimeout(() => {
+                void clipPolling.fetchClipSummary(result.songId).then(() => {
+                  setIsComposing(false)
+                  setComposeJobId(null)
+                })
+              }, 2000)
+            }
+          }, 500)
+        })
+      } else {
+        setTimeout(() => {
+          setIsComposing(false)
+          setComposeJobId(null)
+        }, 0)
+      }
+    }
+    if (compositionPolling.error) {
+      setTimeout(() => {
+        setIsComposing(false)
+        setComposeJobId(null)
+        clipPolling.setError(compositionPolling.error)
+      }, 0)
+    }
+  }, [
+    compositionPolling.isComplete,
+    compositionPolling.error,
+    result?.songId,
+    clipPolling,
+    composeJobId,
+  ])
+
   const handleCancelClipJob = useCallback(() => {
     if (!clipJobId) return
-    setClipJobError('Canceling clip generation is not available yet.')
-  }, [clipJobId])
+    clipPolling.setError('Canceling clip generation is not available yet.')
+  }, [clipJobId, clipPolling])
 
   const handleComposeClips = useCallback(async () => {
-    if (!result?.songId || !clipSummary) return
-    if (clipSummary.completedClips !== clipSummary.totalClips) return
-    if (clipSummary.failedClips > 0 || isComposing) return
+    if (!result?.songId || !clipSummary) {
+      console.warn('[compose] Cannot compose: missing songId or clipSummary', {
+        hasSongId: !!result?.songId,
+        hasClipSummary: !!clipSummary,
+      })
+      return
+    }
+    if (clipSummary.completedClips !== clipSummary.totalClips) {
+      console.warn('[compose] Cannot compose: not all clips completed', {
+        completed: clipSummary.completedClips,
+        total: clipSummary.totalClips,
+      })
+      return
+    }
+    if (clipSummary.failedClips > 0 || isComposing) {
+      console.warn('[compose] Cannot compose: failed clips or already composing', {
+        failedClips: clipSummary.failedClips,
+        isComposing,
+      })
+      return
+    }
 
     try {
       setIsComposing(true)
-      setClipJobError(null)
-      setComposeJobProgress(0)
-      // Use async endpoint that returns job ID
+      clipPolling.setError(null)
+      // Reset the completion handler ref for the new job
+      compositionCompleteHandledRef.current = null
       const { data } = await apiClient.post<ComposeVideoResponse>(
         `/songs/${result.songId}/clips/compose/async`,
       )
       setComposeJobId(data.jobId)
     } catch (err) {
-      setClipJobError(extractErrorMessage(err, 'Unable to compose clips at this time.'))
+      console.error('[compose] Failed to start composition:', err)
+      clipPolling.setError(
+        extractErrorMessage(err, 'Unable to compose clips at this time.'),
+      )
       setIsComposing(false)
     }
-  }, [clipSummary, isComposing, result?.songId])
+  }, [result, clipSummary, isComposing, clipPolling])
 
   const handleGenerateClips = useCallback(async () => {
     if (!result?.songId) return
+
+    // Check if character image is set
+    const hasCharacterImage =
+      songDetails?.character_consistency_enabled &&
+      (songDetails.character_reference_image_s3_key ||
+        songDetails.character_pose_b_s3_key)
+
+    // If no character image, show confirmation dialog
+    if (!hasCharacterImage && !hideCharacterConsistency) {
+      setShowNoCharacterConfirm(true)
+      return
+    }
+
     try {
-      setClipJobError(null)
-      setClipSummary(null)
+      clipPolling.setError(null)
+      // Use selected duration if available, otherwise fall back to full duration
+      const selectedDuration =
+        songDetails?.selected_start_sec != null && songDetails?.selected_end_sec != null
+          ? songDetails.selected_end_sec - songDetails.selected_start_sec
+          : null
       const durationEstimate =
+        selectedDuration ??
         analysisData?.durationSec ??
         songDetails?.duration_sec ??
         clipSummary?.songDurationSec ??
@@ -466,6 +306,7 @@ export const UploadPage: React.FC = () => {
             max_clip_sec: maxClipSeconds,
           },
         })
+        await clipPolling.fetchClipSummary(result.songId)
       }
 
       const { data } = await apiClient.post<{
@@ -474,15 +315,22 @@ export const UploadPage: React.FC = () => {
         status: string
       }>(`/songs/${result.songId}/clips/generate`)
 
-      setClipJobId(data.jobId)
-      setClipJobStatus(normalizeJobStatus(data.status))
-      setClipJobProgress(0)
+      clipPolling.setJobId(data.jobId)
+      clipPolling.setStatus(data.status === 'processing' ? 'processing' : 'queued')
     } catch (err) {
-      setClipJobError(
+      console.error('[generate-clips] Error:', err)
+      clipPolling.setError(
         extractErrorMessage(err, 'Unable to start clip generation for this track.'),
       )
     }
-  }, [result?.songId, clipSummary, analysisData?.durationSec, songDetails?.duration_sec])
+  }, [
+    result,
+    clipSummary,
+    analysisData,
+    songDetails,
+    clipPolling,
+    hideCharacterConsistency,
+  ])
 
   const handlePreviewClip = useCallback(
     (clip: SongClipStatus) => {
@@ -491,35 +339,58 @@ export const UploadPage: React.FC = () => {
         setPlayerActiveClipId(clip.id)
         window.open(clip.videoUrl, '_blank', 'noopener,noreferrer')
       } else {
-        setClipJobError('Preview not available for this clip yet.')
+        clipPolling.setError('Preview not available for this clip yet.')
       }
     },
-    [setClipJobError],
+    [clipPolling],
   )
 
   const handleRegenerateClip = useCallback(
     (clip: SongClipStatus) => {
       console.info('Regenerate clip requested', clip.id)
-      setClipJobError('Clip regeneration is not available yet.')
+      clipPolling.setError('Clip regeneration is not available yet.')
     },
-    [setClipJobError],
+    [clipPolling],
+  )
+
+  const handleRetryClip = useCallback(
+    async (clip: SongClipStatus) => {
+      if (!result?.songId) return
+      try {
+        clipPolling.setError(null)
+        clipPolling.setStatus('queued')
+        clipPolling.setJobId(null)
+        await apiClient.post<SongClipStatus>(
+          `/songs/${result.songId}/clips/${clip.id}/retry`,
+        )
+        await clipPolling.fetchClipSummary(result.songId)
+      } catch (err) {
+        clipPolling.setError(extractErrorMessage(err, 'Unable to retry clip generation.'))
+      }
+    },
+    [result, clipPolling],
   )
 
   const handlePlayerClipSelect = useCallback(
-    (clipId: string) => {
+    (clipId: string | null) => {
+      if (!clipId) {
+        setPlayerActiveClipId(null)
+        return
+      }
       const targetClip = clipSummary?.clips?.find((clip) => clip.id === clipId)
       if (!targetClip) {
         return
       }
       if (!clipSummary?.composedVideoUrl && !targetClip.videoUrl) {
-        setClipJobError((prev) => prev ?? 'Clip video is still generating.')
+        clipPolling.setError((prev) => prev ?? 'Clip video is still generating.')
         return
       }
       setPlayerClipSelectionLocked(true)
       setPlayerActiveClipId(clipId)
     },
-    [clipSummary?.clips, clipSummary?.composedVideoUrl],
+    [clipSummary?.clips, clipSummary?.composedVideoUrl, clipPolling],
   )
+
   const highlightTimeoutRef = useRef<number | null>(null)
   const summaryMoodKind = useMemo<MoodKind>(
     () => mapMoodToMoodKind(analysisData?.moodPrimary ?? ''),
@@ -530,7 +401,7 @@ export const UploadPage: React.FC = () => {
       return new Map<string, string>()
     }
     return new Map(analysisData.sectionLyrics.map((item) => [item.sectionId, item.text]))
-  }, [analysisData?.sectionLyrics])
+  }, [analysisData])
 
   useEffect(
     () => () => {
@@ -552,48 +423,35 @@ export const UploadPage: React.FC = () => {
   )
 
   const resetState = useCallback(() => {
+    // Cancel any ongoing upload
+    if (uploadAbortControllerRef.current) {
+      uploadAbortControllerRef.current.abort()
+      uploadAbortControllerRef.current = null
+    }
     setStage('idle')
     setError(null)
     setProgress(0)
     setMetadata(null)
-    setResult(null)
-    setAnalysisState('idle')
-    setAnalysisJobId(null)
-    setAnalysisProgress(0)
-    setAnalysisData(null)
-    setAnalysisError(null)
-    setIsFetchingAnalysis(false)
+    setResult(null) // This will cause hooks to reset when songId becomes null
     setSongDetails(null)
-    setClipJobId(null)
-    setClipJobStatus('idle')
-    setClipJobProgress(0)
-    setClipJobError(null)
-    setClipSummary(null)
     setIsComposing(false)
+    setComposeJobId(null)
     setPlayerActiveClipId(null)
     setPlayerClipSelectionLocked(false)
-    if (highlightTimeoutRef.current) {
-      window.clearTimeout(highlightTimeoutRef.current)
-      highlightTimeoutRef.current = null
-    }
-    setHighlightedSectionId(null)
+    setVideoTypeSelectorVisible(true)
+    autoScrollCompletedRef.current = false // Reset scroll flag for new upload
+    videoTypeSelection.reset()
+    audioSelection.reset()
+    // NOTE: Sections are NOT implemented in the backend right now - cleanup code commented out
+    // if (highlightTimeoutRef.current) {
+    //   window.clearTimeout(highlightTimeoutRef.current)
+    //   highlightTimeoutRef.current = null
+    // }
+    // setHighlightedSectionId(null)
     if (inputRef.current) {
       inputRef.current.value = ''
     }
-  }, [])
-
-  const fetchAnalysis = useCallback(async (songId: string) => {
-    setIsFetchingAnalysis(true)
-    try {
-      const { data } = await apiClient.get<SongAnalysis>(`/songs/${songId}/analysis`)
-      setAnalysisData(data)
-      setAnalysisError(null)
-    } catch (err) {
-      setAnalysisError(extractErrorMessage(err, 'Unable to load analysis results.'))
-    } finally {
-      setIsFetchingAnalysis(false)
-    }
-  }, [])
+  }, [videoTypeSelection, audioSelection])
 
   const fetchSongDetails = useCallback(async (songId: string) => {
     try {
@@ -604,122 +462,62 @@ export const UploadPage: React.FC = () => {
     }
   }, [])
 
-  const fetchClipSummary = useCallback(
-    async (songId: string) => {
-      try {
-        const { data } = await apiClient.get<ClipGenerationSummary>(
-          `/songs/${songId}/clips/status`,
-        )
-        setClipSummary(data)
-
-        // Update clip job status if there's an active job
-        if (data.clips && data.clips.length > 0) {
-          const hasActiveJob = data.clips.some(
-            (clip) => clip.status === 'processing' || clip.status === 'queued',
-          )
-          if (hasActiveJob && !clipJobId) {
-            const firstClipWithJob = data.clips.find((clip) => clip.rqJobId)
-            if (firstClipWithJob?.rqJobId) {
-              setClipJobId(firstClipWithJob.rqJobId)
-              setClipJobStatus('processing')
-            }
-          }
-        }
-      } catch (err) {
-        const message = extractErrorMessage(err, 'Unable to load clip status.')
-        if (clipJobId) {
-          setClipJobError((prev) => prev ?? message)
-        } else {
-          console.warn('[clip-summary]', message)
-        }
-      }
-    },
-    [clipJobId],
-  )
-
-  const handleRetryClip = useCallback(
-    async (clip: SongClipStatus) => {
-      if (!result?.songId) return
-      try {
-        setClipJobError(null)
-        setClipJobStatus('queued')
-        setClipJobProgress(0)
-        setClipJobId(null)
-        await apiClient.post<SongClipStatus>(
-          `/songs/${result.songId}/clips/${clip.id}/retry`,
-        )
-        await fetchClipSummary(result.songId)
-      } catch (err) {
-        setClipJobError(extractErrorMessage(err, 'Unable to retry clip generation.'))
-      }
-    },
-    [result?.songId, fetchClipSummary],
-  )
-
-  const startAnalysis = useCallback(async (songId: string) => {
-    try {
-      setAnalysisState('queued')
-      setAnalysisProgress(0)
-      setAnalysisError(null)
-      setAnalysisData(null)
-      setAnalysisJobId(null)
-      setSongDetails(null)
-
-      const { data } = await apiClient.post<SongAnalysisJobResponse>(
-        `/songs/${songId}/analyze`,
-      )
-      setAnalysisJobId(data.jobId)
-      setAnalysisState(normalizeJobStatus(data.status))
-    } catch (err) {
-      setAnalysisState('failed')
-      setAnalysisError(
-        extractErrorMessage(err, 'Unable to start analysis for this track.'),
-      )
-    }
-  }, [])
-
   // Load song from URL parameter if present
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const songIdParam = urlParams.get('songId')
 
     if (songIdParam && !result) {
-      // Load existing song by ID
       const loadSongById = async () => {
         try {
           setStage('uploaded')
           setResult({ songId: songIdParam } as SongUploadResponse)
 
-          // Fetch song details and analysis
           await fetchSongDetails(songIdParam)
-          const analysis = await apiClient.get<SongAnalysis>(
-            `/songs/${songIdParam}/analysis`,
-          )
-          setAnalysisData(analysis.data)
-          setAnalysisState('completed')
+          // Use fetchAnalysis from the hook
+          await analysisPolling.fetchAnalysis(songIdParam)
 
-          // Fetch clip summary
           const { data: clipData } = await apiClient.get<ClipGenerationSummary>(
             `/songs/${songIdParam}/clips/status`,
           )
-          setClipSummary(clipData)
+          await clipPolling.fetchClipSummary(songIdParam)
 
-          // Check if there's an active clip job
-          if (clipData.clips && clipData.clips.length > 0) {
-            const hasActiveJob = clipData.clips.some(
-              (clip) => clip.status === 'processing' || clip.status === 'queued',
-            )
-            if (hasActiveJob) {
-              const firstClipWithJob = clipData.clips.find((clip) => clip.rqJobId)
-              if (firstClipWithJob?.rqJobId) {
-                setClipJobId(firstClipWithJob.rqJobId)
-                setClipJobStatus('processing')
-              }
+          // Try to restore the active clip generation batch job using new endpoint
+          try {
+            const { data: activeJob } = await apiClient.get<{
+              jobId: string
+              songId: string
+              status: string
+            } | null>(`/songs/${songIdParam}/clips/job`)
+            if (activeJob?.jobId) {
+              clipPolling.setJobId(activeJob.jobId)
+              clipPolling.setStatus(
+                activeJob.status === 'processing' ? 'processing' : 'queued',
+              )
             } else if (
               clipData.completedClips === clipData.totalClips &&
               clipData.totalClips > 0
             ) {
-              setClipJobStatus('completed')
+              clipPolling.setStatus('completed')
+            }
+          } catch {
+            // Fallback to old method if new endpoint fails
+            if (clipData.clips && clipData.clips.length > 0) {
+              const hasActiveJob = clipData.clips.some(
+                (clip) => clip.status === 'processing' || clip.status === 'queued',
+              )
+              if (hasActiveJob) {
+                const firstClipWithJob = clipData.clips.find((clip) => clip.rqJobId)
+                if (firstClipWithJob?.rqJobId) {
+                  clipPolling.setJobId(firstClipWithJob.rqJobId)
+                  clipPolling.setStatus('processing')
+                }
+              } else if (
+                clipData.completedClips === clipData.totalClips &&
+                clipData.totalClips > 0
+              ) {
+                clipPolling.setStatus('completed')
+              }
             }
           }
         } catch (err) {
@@ -731,287 +529,121 @@ export const UploadPage: React.FC = () => {
 
       void loadSongById()
     }
-  }, [result, fetchSongDetails])
+  }, [result, fetchSongDetails, analysisPolling, clipPolling])
 
   useEffect(() => {
-    if (!analysisJobId || !result?.songId) return
-
-    let cancelled = false
-    let timeoutId: number | undefined
-
-    const pollStatus = async () => {
-      try {
-        const { data } = await apiClient.get<JobStatusResponse>(`/jobs/${analysisJobId}`)
-        if (cancelled) {
-          return
-        }
-
-        const normalizedStatus = normalizeJobStatus(data.status)
-        setAnalysisState(normalizedStatus)
-        setAnalysisProgress(
-          normalizedStatus === 'completed' ? 100 : clamp(data.progress ?? 0, 0, 99),
-        )
-
-        if (normalizedStatus === 'completed') {
-          setAnalysisError(null)
-          if (data.result && isSongAnalysis(data.result)) {
-            setAnalysisData(data.result)
-          } else if (result?.songId) {
-            await fetchAnalysis(result.songId)
-          }
-          if (result?.songId) {
-            void fetchSongDetails(result.songId)
-          }
-          return
-        }
-
-        if (normalizedStatus === 'failed') {
-          setAnalysisError(
-            data.error ??
-              'Song analysis failed. Please try again or upload a different track.',
-          )
-          return
-        }
-
-        timeoutId = window.setTimeout(pollStatus, 3_000)
-      } catch (err) {
-        if (!cancelled) {
-          setAnalysisError(extractErrorMessage(err, 'Unable to fetch analysis progress.'))
-          setAnalysisState('failed')
-        }
-      }
+    if (!analysisData && clipSummary?.analysis && result?.songId) {
+      // Fetch analysis if we have it in clip summary but not in analysis data
+      void analysisPolling.fetchAnalysis(result.songId)
     }
+  }, [clipSummary?.analysis, analysisData, result?.songId, analysisPolling])
 
-    pollStatus()
-
-    return () => {
-      cancelled = true
-      if (timeoutId) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [analysisJobId, result?.songId, fetchAnalysis, fetchSongDetails])
-
+  // Fetch song details when analysis completes to ensure we have latest data including video_type
   useEffect(() => {
-    if (!analysisData && clipSummary?.analysis) {
-      setAnalysisData(clipSummary.analysis)
+    if (analysisState === 'completed' && result?.songId) {
+      // Always refresh songDetails when analysis completes to get latest video_type
+      setTimeout(() => {
+        void fetchSongDetails(result.songId)
+      }, 0)
     }
-  }, [clipSummary?.analysis, analysisData])
+  }, [analysisState, result?.songId, fetchSongDetails])
+
+  // Scroll to top when transitioning from analysis to character selection
+  // Only for short-form videos, only once, only if character image hasn't been chosen
+  useEffect(() => {
+    // Only scroll for short-form videos
+    if (videoType !== 'short_form') {
+      return
+    }
+
+    // Only scroll once
+    if (autoScrollCompletedRef.current) {
+      return
+    }
+
+    // Only scroll when analysis completes and we have the data
+    if (analysisState !== 'completed' || !analysisData || !songDetails) {
+      return
+    }
+
+    // Only scroll if character image hasn't been chosen yet
+    const hasCharacterImage =
+      songDetails.character_reference_image_s3_key || songDetails.character_pose_b_s3_key
+
+    if (hasCharacterImage) {
+      return
+    }
+
+    // Mark as completed before scrolling to prevent double-trigger
+    autoScrollCompletedRef.current = true
+
+    // Small delay to ensure the character selection UI has rendered
+    const timer = setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }, 100)
+
+    return () => clearTimeout(timer)
+  }, [analysisState, analysisData, songDetails, videoType])
+
+  // Handler for selection changes - just updates local state, doesn't save yet
+  const handleSelectionChange = useCallback(
+    (startSec: number, endSec: number) => {
+      // Only update local state, don't save to backend until user confirms
+      audioSelection.setAudioSelection({ startSec, endSec })
+    },
+    [audioSelection],
+  )
+
+  // Parse waveform data
+  const waveformValues = useMemo(() => {
+    if (!songDetails?.waveform_json) return []
+    try {
+      const parsed = JSON.parse(songDetails.waveform_json)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }, [songDetails?.waveform_json])
 
   useEffect(() => {
     if (!clipSummary?.composedVideoUrl) {
       return
     }
 
-    setPlayerClipSelectionLocked((locked) => (locked ? false : locked))
-    setPlayerActiveClipId((current) => (current !== null ? null : current))
+    setTimeout(() => {
+      setPlayerClipSelectionLocked((locked) => (locked ? false : locked))
+      setPlayerActiveClipId((current) => (current !== null ? null : current))
+    }, 0)
   }, [clipSummary?.composedVideoUrl])
 
   useEffect(() => {
-    const completedClips =
+    const completedClipEntries =
       clipSummary?.clips?.filter(
         (clip) => normalizeClipStatus(clip.status) === 'completed' && !!clip.videoUrl,
       ) ?? []
 
-    if (!completedClips.length) {
-      setPlayerActiveClipId(null)
-      setPlayerClipSelectionLocked(false)
+    if (!completedClipEntries.length) {
+      setTimeout(() => {
+        setPlayerActiveClipId(null)
+        setPlayerClipSelectionLocked(false)
+      }, 0)
       return
     }
 
-    setPlayerActiveClipId((current) => {
-      if (
-        playerClipSelectionLocked &&
-        current &&
-        completedClips.some((clip) => clip.id === current)
-      ) {
-        return current
-      }
-      const latest = completedClips[completedClips.length - 1]
-      return latest?.id ?? null
-    })
+    setTimeout(() => {
+      setPlayerActiveClipId((current) => {
+        if (
+          playerClipSelectionLocked &&
+          current &&
+          completedClipEntries.some((clip) => clip.id === current)
+        ) {
+          return current
+        }
+        const latest = completedClipEntries[completedClipEntries.length - 1]
+        return latest?.id ?? null
+      })
+    }, 0)
   }, [clipSummary, playerClipSelectionLocked])
-
-  useEffect(() => {
-    if (!clipJobId || !result?.songId) return
-
-    let cancelled = false
-    let timeoutId: number | undefined
-
-    const pollClipJob = async () => {
-      try {
-        const { data } = await apiClient.get<JobStatusResponse>(`/jobs/${clipJobId}`)
-        if (cancelled) return
-
-        const normalizedStatus = normalizeJobStatus(data.status)
-        setClipJobStatus(normalizedStatus)
-        setClipJobProgress(
-          normalizedStatus === 'completed' ? 100 : clamp(data.progress ?? 0, 0, 99),
-        )
-        setClipJobError(
-          normalizedStatus === 'failed'
-            ? (data.error ?? 'Clip generation failed. Please retry.')
-            : null,
-        )
-
-        if (data.result && isClipGenerationSummary(data.result)) {
-          setClipSummary(data.result)
-        }
-
-        if (normalizedStatus === 'completed' || normalizedStatus === 'failed') {
-          if (result?.songId) {
-            void fetchClipSummary(result.songId)
-          }
-          return
-        }
-
-        timeoutId = window.setTimeout(pollClipJob, 3_000)
-      } catch (err) {
-        if (!cancelled) {
-          setClipJobError(
-            extractErrorMessage(err, 'Unable to fetch clip generation progress.'),
-          )
-          timeoutId = window.setTimeout(pollClipJob, 5_000)
-        }
-      }
-    }
-
-    pollClipJob()
-
-    return () => {
-      cancelled = true
-      if (timeoutId) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [clipJobId, result?.songId, fetchClipSummary])
-
-  useEffect(() => {
-    if (!result?.songId || clipJobId || clipSummary) {
-      return
-    }
-    void fetchClipSummary(result.songId)
-  }, [result?.songId, clipJobId, clipSummary, fetchClipSummary])
-
-  // Poll for composition job progress
-  useEffect(() => {
-    if (!composeJobId || !result?.songId) return
-
-    let cancelled = false
-    let timeoutId: number | undefined
-
-    const pollComposeJob = async () => {
-      try {
-        const { data } = await apiClient.get<CompositionJobStatusResponse>(
-          `/songs/${result.songId}/compose/${composeJobId}/status`,
-        )
-        if (cancelled) return
-
-        setComposeJobProgress(data.progress ?? 0)
-
-        if (data.status === 'completed') {
-          setIsComposing(false)
-          setComposeJobId(null)
-          // Refresh clip summary to get composed video URL
-          void fetchClipSummary(result.songId)
-          return
-        }
-
-        if (data.status === 'failed') {
-          setIsComposing(false)
-          setComposeJobId(null)
-          setClipJobError(data.error ?? 'Composition failed')
-          return
-        }
-
-        // Continue polling
-        timeoutId = window.setTimeout(pollComposeJob, 2_000) // Poll every 2 seconds
-      } catch (err) {
-        if (!cancelled) {
-          setClipJobError(
-            extractErrorMessage(err, 'Unable to fetch composition progress.'),
-          )
-          timeoutId = window.setTimeout(pollComposeJob, 5_000) // Retry after 5 seconds on error
-        }
-      }
-    }
-
-    pollComposeJob()
-
-    return () => {
-      cancelled = true
-      if (timeoutId) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [composeJobId, result?.songId, fetchClipSummary])
-
-  useEffect(() => {
-    if (!result?.songId) {
-      setClipSummary(null)
-      return
-    }
-
-    if (
-      !clipJobId &&
-      clipSummary &&
-      clipSummary.completedClips === clipSummary.totalClips
-    ) {
-      return
-    }
-
-    let cancelled = false
-    let timeoutId: number | undefined
-
-    const pollClipSummary = async () => {
-      try {
-        const { data } = await apiClient.get<ClipGenerationSummary>(
-          `/songs/${result.songId}/clips/status`,
-        )
-        if (cancelled) return
-
-        setClipSummary(data)
-
-        const hasActiveJob =
-          clipJobId != null &&
-          clipJobProgress < 100 &&
-          (clipJobStatus === 'queued' || clipJobStatus === 'processing') &&
-          data.totalClips > 0 &&
-          data.completedClips < data.totalClips
-
-        if (hasActiveJob) {
-          timeoutId = window.setTimeout(pollClipSummary, 2_000)
-        } else if (clipJobId) {
-          timeoutId = window.setTimeout(pollClipSummary, 6_000)
-        }
-      } catch (err) {
-        if (cancelled) return
-
-        if (clipJobId) {
-          const message = extractErrorMessage(err, 'Unable to load clip status.')
-          setClipJobError((prev) => prev ?? message)
-          timeoutId = window.setTimeout(pollClipSummary, 6_000)
-        } else {
-          setClipSummary(null)
-        }
-      }
-    }
-
-    pollClipSummary()
-
-    return () => {
-      cancelled = true
-      if (timeoutId) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [result?.songId, clipJobId, clipJobStatus, clipJobProgress, clipSummary])
-
-  useEffect(() => {
-    if (clipJobError) {
-      console.warn('[clip-generation]', clipJobError)
-    }
-  }, [clipJobError])
 
   const handleSectionSelect = useCallback((sectionId: string) => {
     if (!sectionId) return
@@ -1030,35 +662,6 @@ export const UploadPage: React.FC = () => {
       setHighlightedSectionId(null)
       highlightTimeoutRef.current = null
     }, 2000)
-  }, [])
-
-  const computeDuration = useCallback(async (file: File): Promise<number | null> => {
-    try {
-      const audio = document.createElement('audio')
-      audio.preload = 'metadata'
-      const src = URL.createObjectURL(file)
-      audio.src = src
-      return await new Promise<number | null>((resolve, reject) => {
-        const timeoutId = window.setTimeout(() => {
-          URL.revokeObjectURL(src)
-          reject(new Error('Timed out while analyzing audio metadata.'))
-        }, 8000)
-
-        audio.onloadedmetadata = () => {
-          const duration = Number.isFinite(audio.duration) ? audio.duration : null
-          URL.revokeObjectURL(src)
-          window.clearTimeout(timeoutId)
-          resolve(duration)
-        }
-        audio.onerror = () => {
-          URL.revokeObjectURL(src)
-          window.clearTimeout(timeoutId)
-          resolve(null)
-        }
-      })
-    } catch {
-      return null
-    }
   }, [])
 
   const handleFileUpload = useCallback(
@@ -1100,11 +703,16 @@ export const UploadPage: React.FC = () => {
       const formData = new FormData()
       formData.append('file', file)
 
+      // Create AbortController for this upload
+      const abortController = new AbortController()
+      uploadAbortControllerRef.current = abortController
+
       try {
         const response = await apiClient.post<SongUploadResponse>('/songs/', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
+          signal: abortController.signal,
           onUploadProgress: (event) => {
             if (!event.total) return
             const percentage = Math.min(
@@ -1115,11 +723,33 @@ export const UploadPage: React.FC = () => {
           },
         })
 
+        // Clear abort controller on success
+        uploadAbortControllerRef.current = null
+
         setResult(response.data)
         setProgress(100)
         setStage('uploaded')
-        await startAnalysis(response.data.songId)
+        // Don't start analysis automatically - wait for user to select video type first
+        await fetchSongDetails(response.data.songId)
+        // Initialize clip summary (will be empty for new songs)
+        await clipPolling.fetchClipSummary(response.data.songId)
       } catch (err) {
+        // Clear abort controller on error
+        uploadAbortControllerRef.current = null
+
+        // Check if upload was cancelled
+        if (
+          axios.isCancel(err) ||
+          (err as { name?: string })?.name === 'AbortError' ||
+          (err as { code?: string })?.code === 'ERR_CANCELED'
+        ) {
+          console.log('Upload cancelled by user')
+          setStage('idle')
+          setProgress(0)
+          setError(null)
+          return
+        }
+
         console.error('Upload failed', err)
         const message =
           (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ??
@@ -1128,7 +758,7 @@ export const UploadPage: React.FC = () => {
         setStage('error')
       }
     },
-    [computeDuration, resetState, startAnalysis],
+    [resetState, fetchSongDetails, clipPolling],
   )
 
   const handleFilesSelected = useCallback(
@@ -1176,758 +806,6 @@ export const UploadPage: React.FC = () => {
     [stage],
   )
 
-  const renderIdleCard = () => (
-    <div
-      className={clsx(
-        'relative rounded-3xl border-2 border-dashed transition-all duration-300',
-        stage === 'dragging'
-          ? 'border-vc-accent-primary/90 shadow-vc3'
-          : 'border-vc-border/70 hover:border-vc-accent-primary/60 hover:shadow-vc2',
-        'bg-[rgba(20,20,32,0.68)]/60 backdrop-blur-xl',
-      )}
-    >
-      <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-br from-vc-accent-primary/10 via-transparent to-vc-accent-tertiary/10 opacity-0 transition-opacity duration-300 group-hover:opacity-70" />
-      <div className="flex flex-col items-center justify-center px-10 py-14 text-center">
-        <MusicNoteIcon className="h-16 w-16 text-vc-accent-primary/90 drop-shadow-[0_0_22px_rgba(110,107,255,0.4)]" />
-        <h2 className="mt-6 text-2xl font-semibold tracking-tight text-white">
-          Drop your track
-        </h2>
-        <p className="mt-2 text-sm text-vc-text-secondary">or click to upload</p>
-        <VCButton
-          className="mt-6"
-          variant="secondary"
-          size="lg"
-          iconLeft={<UploadIcon />}
-          onClick={() => inputRef.current?.click()}
-        >
-          Choose a track
-        </VCButton>
-      </div>
-    </div>
-  )
-
-  const renderUploadingCard = () => (
-    <div className="rounded-3xl border border-vc-border/80 bg-[rgba(12,12,18,0.82)] p-8 shadow-vc2">
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-vc-accent-primary/15">
-            <MusicNoteIcon className="h-6 w-6 text-vc-accent-primary" />
-          </div>
-          <div>
-            <p className="font-medium text-white">{metadata?.fileName}</p>
-            <p className="text-xs text-vc-text-muted">
-              {formatSeconds(metadata?.durationSeconds ?? null)} •{' '}
-              {formatBytes(metadata?.fileSize ?? 0)}
-            </p>
-          </div>
-        </div>
-        <div className="relative h-2.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary transition-all duration-200"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <p className="text-xs text-vc-text-muted">
-          Uploading your track… This may take a moment.
-        </p>
-        <div className="flex justify-end">
-          <VCButton
-            variant="ghost"
-            onClick={() => {
-              resetState()
-            }}
-          >
-            Cancel
-          </VCButton>
-        </div>
-      </div>
-    </div>
-  )
-
-  const renderUploadedCard = () => {
-    const progressValue =
-      analysisState === 'completed' ? 100 : clamp(analysisProgress, 0, 99)
-
-    return (
-      <div className="rounded-3xl border border-vc-accent-primary/40 bg-[rgba(12,12,18,0.9)] p-8 shadow-vc3">
-        <div className="flex flex-col gap-6">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-vc-accent-primary/15">
-              <CheckIcon className="h-5 w-5 text-vc-accent-primary" />
-            </div>
-            <div className="text-left">
-              <p className="text-sm font-semibold text-white">
-                Track uploaded successfully
-              </p>
-              <p className="text-xs text-vc-text-muted">
-                We’ll listen for tempo, sections, lyrics, and mood to set up your visual
-                journey.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-vc-border/40 bg-[rgba(255,255,255,0.02)] px-5 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[rgba(255,255,255,0.05)]">
-                <MusicNoteIcon className="h-5 w-5 text-vc-accent-primary" />
-              </div>
-              <div className="overflow-hidden text-left">
-                <p className="truncate text-sm font-medium text-white">
-                  {metadata?.fileName}
-                </p>
-                <p className="text-[11px] uppercase tracking-[0.14em] text-vc-text-muted">
-                  {getFileTypeLabel(metadata?.fileName)} •{' '}
-                  {formatSeconds(metadata?.durationSeconds ?? null)} •{' '}
-                  {formatBytes(metadata?.fileSize ?? 0)}
-                </p>
-              </div>
-            </div>
-            {result?.songId && (
-              <span className="rounded-md border border-vc-border/30 bg-[rgba(255,255,255,0.03)] px-3 py-1 font-mono text-[11px] tracking-tight text-vc-text-secondary">
-                ID {result.songId.slice(0, 8)}…
-              </span>
-            )}
-          </div>
-
-          <WaveformPlaceholder />
-
-          {analysisState !== 'idle' && (
-            <div className="rounded-xl border border-vc-border/40 bg-[rgba(12,12,18,0.6)] px-5 py-4">
-              <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">
-                <span>{formatProgressLabel(analysisState, progressValue)}</span>
-                <span>
-                  {analysisState === 'completed'
-                    ? '100%'
-                    : `${Math.round(progressValue)}%`}
-                </span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
-                <div
-                  className={clsx(
-                    'h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary transition-all duration-500 motion-safe:animate-[gradientShift_2.4s_linear_infinite]',
-                    analysisState === 'failed' &&
-                      'from-vc-state-error via-vc-state-error to-vc-state-error motion-safe:animate-none',
-                    analysisState === 'completed' && 'motion-safe:animate-none',
-                  )}
-                  style={{
-                    width: `${analysisState === 'completed' ? 100 : progressValue}%`,
-                  }}
-                />
-              </div>
-              {analysisError && (
-                <p className="mt-2 text-xs text-vc-state-error">{analysisError}</p>
-              )}
-              {analysisState === 'completed' && isFetchingAnalysis && !analysisData && (
-                <p className="mt-2 text-xs text-vc-text-muted">
-                  Loading analysis summary…
-                </p>
-              )}
-            </div>
-          )}
-
-          {analysisData && (
-            <div className="space-y-5 rounded-2xl border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-5 text-left">
-              <div className="grid gap-3 md:grid-cols-2">
-                <SummaryStat label="Tempo" value={formatBpm(analysisData.bpm)} />
-                <SummaryStat
-                  label="Duration"
-                  value={formatSeconds(analysisData.durationSec)}
-                />
-                <SummaryStat label="Primary mood" value={analysisData.moodPrimary} />
-                <SummaryStat
-                  label="Mood tags"
-                  value={formatMoodTags(analysisData.moodTags)}
-                />
-                <SummaryStat
-                  label="Primary genre"
-                  value={analysisData.primaryGenre ?? '—'}
-                />
-                <SummaryStat
-                  label="Lyrics detected"
-                  value={analysisData.lyricsAvailable ? 'Yes' : 'No'}
-                />
-              </div>
-
-              <div>
-                <h4 className="text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">
-                  Mood vector
-                </h4>
-                <div className="mt-3">
-                  <MoodVectorMeter moodVector={analysisData.moodVector} />
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">
-                  Sections
-                </h4>
-                <div className="mt-3 space-y-3">
-                  {analysisData.sections.map((section, index) => (
-                    <AnalysisSectionRow
-                      key={section.id}
-                      section={section}
-                      title={getSectionTitle(section, index)}
-                      mood={summaryMoodKind}
-                      lyric={lyricsBySection.get(section.id) ?? undefined}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <a
-              href={result?.audioUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-vc-accent-primary transition-colors hover:text-vc-accent-secondary"
-            >
-              Preview uploaded audio
-            </a>
-            <div className="flex flex-wrap items-center gap-2">
-              <VCButton variant="ghost" onClick={resetState}>
-                Upload another track
-              </VCButton>
-              {analysisData ? (
-                <VCButton
-                  variant="primary"
-                  iconRight={<ArrowRightIcon />}
-                  onClick={handleGenerateClips}
-                >
-                  Generate clips
-                </VCButton>
-              ) : (
-                <VCButton variant="primary" iconRight={<ArrowRightIcon />} disabled>
-                  Analyzing…
-                </VCButton>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const renderSongProfile = () => {
-    if (!analysisData || !songDetails) return null
-
-    const sectionsWithDisplay = buildSectionsWithDisplayNames(analysisData.sections)
-    const waveformValues = parseWaveformJson(songDetails.waveform_json)
-    const durationValue = analysisData.durationSec ?? songDetails.duration_sec ?? 0
-    const bpmLabel = formatBpm(analysisData.bpm)
-    const durationLabel = durationValue ? formatSeconds(durationValue) : '—'
-    const primaryGenre = analysisData.primaryGenre ?? 'Unknown genre'
-    const moodLabel = analysisData.moodPrimary ?? formatMoodTags(analysisData.moodTags)
-    const fileName = songDetails.title?.trim()
-      ? songDetails.title
-      : (metadata?.fileName ?? songDetails.original_filename)
-    const sectionMood = mapMoodToMoodKind(analysisData.moodPrimary ?? '')
-
-    const completedClipEntries =
-      clipSummary?.clips?.filter(
-        (clip) => normalizeClipStatus(clip.status) === 'completed' && !!clip.videoUrl,
-      ) ?? []
-    const composedVideoUrl = clipSummary?.composedVideoUrl ?? null
-    const composedPosterUrl = clipSummary?.composedVideoPosterUrl ?? null
-    const activePlayerClip =
-      completedClipEntries.find((clip) => clip.id === playerActiveClipId) ??
-      completedClipEntries[completedClipEntries.length - 1] ??
-      null
-    const playerVideoUrl = composedVideoUrl ?? activePlayerClip?.videoUrl ?? null
-    const playerPosterUrl = composedPosterUrl ?? activePlayerClip?.videoUrl ?? undefined
-    const playerAudioUrl = composedVideoUrl || !result?.audioUrl ? null : result.audioUrl
-    const playerDurationSec =
-      clipSummary?.songDurationSec ?? durationValue ?? activePlayerClip?.endSec ?? null
-    const playerClips =
-      clipSummary?.clips?.map((clip) => ({
-        id: clip.id,
-        index: clip.clipIndex,
-        startSec: clip.startSec,
-        endSec: clip.endSec,
-        videoUrl: composedVideoUrl ?? clip.videoUrl ?? undefined,
-        thumbUrl: clip.videoUrl ?? composedPosterUrl ?? undefined,
-      })) ?? []
-    const playerBeatGrid = analysisData.beatTimes?.map((time) => ({ t: time })) ?? []
-    const playerLyrics =
-      analysisData.sectionLyrics?.map((line) => ({
-        t: line.startSec,
-        text: line.text,
-        dur: line.endSec - line.startSec,
-      })) ?? []
-
-    const clipPanel =
-      clipSummary && clipSummary.totalClips > 0
-        ? (() => {
-            const sortedClips = [...clipSummary.clips].sort(
-              (a, b) => a.clipIndex - b.clipIndex,
-            )
-            const processingClip = sortedClips.find(
-              (clip) => normalizeClipStatus(clip.status) === 'processing',
-            )
-            const queuedClip = sortedClips.find(
-              (clip) => normalizeClipStatus(clip.status) === 'queued',
-            )
-            const completedClip = [...sortedClips]
-              .reverse()
-              .find((clip) => normalizeClipStatus(clip.status) === 'completed')
-            const referenceClip =
-              processingClip ?? queuedClip ?? completedClip ?? sortedClips[0]
-
-            const referenceIndex = referenceClip
-              ? sortedClips.findIndex((clip) => clip.id === referenceClip.id)
-              : -1
-            const total = clipSummary.totalClips
-            const completed = Math.min(clipSummary.completedClips, total)
-            const countsProgress = total > 0 ? (completed / total) * 100 : 0
-            const progressValue =
-              clipJobStatus === 'completed'
-                ? 100
-                : Math.max(countsProgress, clipJobProgress)
-            const safeProgress = Math.min(100, Math.max(progressValue, 2))
-
-            const headline =
-              total === 0
-                ? 'Clip generation queued'
-                : completed >= total
-                  ? 'All clips generated ✅'
-                  : referenceClip && referenceIndex >= 0
-                    ? `Generating clip ${referenceIndex + 1} of ${total}…`
-                    : `Generating clips…`
-
-            const activeRange =
-              referenceClip != null
-                ? `${formatSeconds(referenceClip.startSec)}–${formatSeconds(referenceClip.endSec)}`
-                : null
-
-            const beatsCount =
-              referenceClip?.startBeat != null && referenceClip?.endBeat != null
-                ? Math.max(referenceClip.endBeat - referenceClip.startBeat, 0)
-                : null
-
-            const detailParts: string[] = []
-            if (activeRange) detailParts.push(activeRange)
-            if (referenceClip) {
-              detailParts.push(formatDurationShort(referenceClip.durationSec))
-              detailParts.push(`${referenceClip.numFrames} frames`)
-              detailParts.push(`${referenceClip.fps} fps`)
-            }
-            if (beatsCount && beatsCount > 0) {
-              detailParts.push(`${beatsCount} beats`)
-            }
-
-            const detailLine =
-              referenceClip && detailParts.length > 0 ? detailParts.join(' • ') : null
-
-            const concurrencyLabel =
-              clipSummary.processingClips > 1
-                ? `(${clipSummary.processingClips} concurrent)`
-                : undefined
-
-            const hasComposedVideo = Boolean(clipSummary.composedVideoUrl)
-            const composeDisabled =
-              total === 0 ||
-              completed < total ||
-              clipJobStatus === 'failed' ||
-              isComposing ||
-              hasComposedVideo
-            const cancelDisabled =
-              !clipJobId || clipJobStatus === 'completed' || clipJobStatus === 'failed'
-            const composeButtonLabel = isComposing
-              ? 'Composing…'
-              : hasComposedVideo
-                ? 'Composed'
-                : 'Compose when done'
-
-            return (
-              <section className="space-y-3">
-                <div className="vc-label">Clip generation</div>
-                <VCCard className="space-y-4 bg-[rgba(12,12,18,0.8)] p-5">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <h3 className="text-sm font-medium text-white">{headline}</h3>
-                      <p className="text-xs text-vc-text-muted">
-                        {completed}/{total} clips completed
-                        {concurrencyLabel ? ` ${concurrencyLabel}` : ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-vc-text-secondary">
-                      {clipJobStatus === 'failed' && clipJobError && (
-                        <span className="text-vc-state-error">{clipJobError}</span>
-                      )}
-                      {clipJobStatus === 'completed' && (
-                        <span className="text-vc-text-muted">Ready to compose</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="relative h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
-                    <div
-                      className={clsx(
-                        'absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary transition-all duration-500',
-                        clipJobStatus !== 'completed' && 'vc-gradient-shift-animate',
-                      )}
-                      style={{ width: `${safeProgress}%` }}
-                    />
-                  </div>
-
-                  {detailLine && (
-                    <p className="text-xs text-vc-text-secondary">
-                      #{referenceIndex + 1} • {detailLine}
-                    </p>
-                  )}
-
-                  {isComposing && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">
-                        <span>Composing video…</span>
-                        <span>{Math.round(composeJobProgress)}%</span>
-                      </div>
-                      <div className="relative h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
-                        <div
-                          className={clsx(
-                            'absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary transition-all duration-500',
-                            'vc-gradient-shift-animate',
-                          )}
-                          style={{
-                            width: `${Math.min(100, Math.max(2, composeJobProgress))}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div className="text-xs text-vc-text-muted">
-                      {isComposing
-                        ? 'Composition is running in the background.'
-                        : clipJobStatus === 'failed' && !clipJobError
-                          ? 'Clip generation failed. Retry once available.'
-                          : clipJobStatus === 'processing'
-                            ? 'Clip generation is running in the background.'
-                            : clipJobStatus === 'completed'
-                              ? 'All clips are ready for composition.'
-                              : clipJobStatus === 'queued'
-                                ? 'Clip jobs are queued and will start soon.'
-                                : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <VCButton
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleCancelClipJob}
-                        disabled={cancelDisabled}
-                      >
-                        Cancel
-                      </VCButton>
-                      <VCButton
-                        variant="primary"
-                        size="sm"
-                        iconRight={<ArrowRightIcon />}
-                        disabled={composeDisabled}
-                        onClick={handleComposeClips}
-                      >
-                        {composeButtonLabel}
-                      </VCButton>
-                    </div>
-                  </div>
-                </VCCard>
-
-                {sortedClips.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="vc-label">Clip queue</div>
-                    <div className="overflow-hidden rounded-2xl border border-vc-border/40 bg-[rgba(12,12,18,0.65)]">
-                      {sortedClips.map((clip, index) => {
-                        const normalizedStatus = normalizeClipStatus(clip.status)
-                        const rangeLabel = formatTimeRange(clip.startSec, clip.endSec)
-                        const beats =
-                          clip.startBeat != null && clip.endBeat != null
-                            ? Math.max(clip.endBeat - clip.startBeat, 0)
-                            : null
-                        const infoParts: string[] = [
-                          formatDurationShort(clip.durationSec),
-                          `${clip.numFrames} frames`,
-                          `${clip.fps} fps`,
-                        ]
-                        if (beats && beats > 0) {
-                          infoParts.push(`${beats} beats`)
-                        }
-                        const infoLine = infoParts.join(' • ')
-                        const isLast = index === sortedClips.length - 1
-
-                        return (
-                          <div
-                            key={clip.id}
-                            className={clsx(
-                              'flex flex-col gap-2 border-b border-vc-border/20 px-4 py-4',
-                              isLast && 'border-b-0',
-                            )}
-                          >
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                              <div className="flex items-center gap-3 text-sm font-medium text-white">
-                                <div className="w-8 text-right text-xs text-vc-text-muted">
-                                  #{clip.clipIndex + 1}
-                                </div>
-                                <div>{rangeLabel}</div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <ClipStatusBadge status={normalizedStatus} />
-                                {normalizedStatus === 'processing' && (
-                                  <span className="flex items-center gap-1 text-[11px] text-vc-text-muted">
-                                    <span className="inline-block h-2 w-2 rounded-full bg-vc-accent-primary animate-pulse" />
-                                    Generating…
-                                  </span>
-                                )}
-                                {normalizedStatus === 'queued' && (
-                                  <span className="text-[11px] text-vc-text-muted">
-                                    Awaiting generation
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex flex-col gap-2 text-xs text-vc-text-secondary md:flex-row md:items-center md:justify-between">
-                              <div>{infoLine}</div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                {normalizedStatus === 'completed' && (
-                                  <>
-                                    <VCButton
-                                      variant="secondary"
-                                      size="sm"
-                                      onClick={() => handlePreviewClip(clip)}
-                                      disabled={!clip.videoUrl}
-                                    >
-                                      Preview
-                                    </VCButton>
-                                    <VCButton
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleRegenerateClip(clip)}
-                                    >
-                                      Regenerate
-                                    </VCButton>
-                                  </>
-                                )}
-                                {normalizedStatus === 'failed' && (
-                                  <VCButton
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => handleRetryClip(clip)}
-                                  >
-                                    Retry
-                                  </VCButton>
-                                )}
-                                {normalizedStatus === 'canceled' && (
-                                  <span className="text-vc-text-muted">
-                                    Clip canceled
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <div className="vc-label">Completed clips</div>
-                  {clipSummary.completedClips === 0 ? (
-                    <VCCard className="border-dashed border-vc-border/30 bg-[rgba(12,12,18,0.65)] p-6 text-center text-xs text-vc-text-muted">
-                      Completed clips will appear here once generation finishes.
-                    </VCCard>
-                  ) : (
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      {sortedClips
-                        .filter(
-                          (clip) => normalizeClipStatus(clip.status) === 'completed',
-                        )
-                        .map((clip) => (
-                          <button
-                            key={`thumb-${clip.id}`}
-                            type="button"
-                            onClick={() => handlePreviewClip(clip)}
-                            className={clsx(
-                              'group relative overflow-hidden rounded-xl border border-vc-border/40 bg-[rgba(12,12,18,0.55)] transition',
-                              clip.videoUrl && 'hover:border-vc-accent-primary',
-                            )}
-                            disabled={!clip.videoUrl}
-                          >
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-80 transition-opacity group-hover:opacity-90" />
-                            <div className="relative z-10 flex h-24 flex-col justify-end p-3 text-left">
-                              <div className="text-xs font-medium text-white">
-                                #{clip.clipIndex + 1} •{' '}
-                                {formatTimeRange(clip.startSec, clip.endSec)}
-                              </div>
-                              <div className="text-[11px] text-vc-text-muted">
-                                {formatDurationShort(clip.durationSec)} • {clip.numFrames}{' '}
-                                frames • {clip.fps} fps
-                              </div>
-                            </div>
-                            {!clip.videoUrl && (
-                              <div className="absolute inset-0 flex items-center justify-center text-[11px] text-vc-text-muted">
-                                Preview coming soon
-                              </div>
-                            )}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              </section>
-            )
-          })()
-        : null
-
-    const clipJobActive =
-      clipJobId != null && (clipJobStatus === 'queued' || clipJobStatus === 'processing')
-    const clipJobCompleted =
-      clipSummary &&
-      clipSummary.totalClips > 0 &&
-      clipSummary.completedClips === clipSummary.totalClips
-    const generateButtonLabel = clipJobActive
-      ? 'Generating…'
-      : clipJobCompleted
-        ? 'Regenerate clips'
-        : 'Generate clips'
-
-    return (
-      <section className="mt-12 w-full space-y-8">
-        <header className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-2">
-            <div className="vc-label">Song profile</div>
-            <h1 className="font-display text-3xl text-white md:text-4xl">
-              {fileName ?? 'Untitled track'}
-            </h1>
-            <p className="text-xs uppercase tracking-[0.16em] text-vc-text-muted">
-              Source file: {songDetails.original_filename}
-            </p>
-          </div>
-          <VCCard className="w-full space-y-2 border-vc-border/40 bg-[rgba(12,12,18,0.75)] p-4 md:w-72">
-            <div className="vc-label">Genre & mood</div>
-            <div className="text-sm font-medium text-white">{primaryGenre}</div>
-            <div className="text-xs text-vc-text-secondary">{moodLabel}</div>
-            <div className="text-xs text-vc-text-muted">
-              {[bpmLabel, durationLabel].filter(Boolean).join(' • ')} • Key: —
-            </div>
-            <div className="pt-2">
-              <MoodVectorMeter moodVector={analysisData.moodVector} />
-            </div>
-          </VCCard>
-        </header>
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-vc-text-muted">
-            Kick off clip generation to visualize this song in multiple scenes.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <VCButton
-              variant="primary"
-              iconRight={<ArrowRightIcon />}
-              onClick={handleGenerateClips}
-              disabled={clipJobActive}
-            >
-              {generateButtonLabel}
-            </VCButton>
-            {clipJobError && (
-              <span className="text-xs text-vc-state-error">{clipJobError}</span>
-            )}
-          </div>
-        </div>
-
-        {playerVideoUrl && playerDurationSec ? (
-          <section className="space-y-3">
-            <div className="vc-label">
-              Preview
-              {clipSummary?.completedClips && clipSummary.totalClips
-                ? ` (${clipSummary.completedClips}/${clipSummary.totalClips} clips)`
-                : null}
-            </div>
-            <MainVideoPlayer
-              videoUrl={playerVideoUrl}
-              audioUrl={playerAudioUrl ?? undefined}
-              posterUrl={playerPosterUrl}
-              durationSec={playerDurationSec}
-              clips={playerClips}
-              activeClipId={activePlayerClip?.id ?? undefined}
-              onClipSelect={handlePlayerClipSelect}
-              beatGrid={playerBeatGrid}
-              lyrics={playerLyrics}
-              waveform={waveformValues}
-              onDownload={
-                playerVideoUrl
-                  ? () => window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
-                  : undefined
-              }
-            />
-          </section>
-        ) : null}
-
-        {clipPanel}
-
-        <section className="space-y-2">
-          <div className="vc-label">Waveform</div>
-          <WaveformDisplay
-            waveform={waveformValues}
-            beatTimes={analysisData.beatTimes}
-            duration={durationValue || 1}
-          />
-        </section>
-
-        <section className="space-y-2">
-          <div className="vc-label">Song structure</div>
-          <SongTimeline
-            sections={sectionsWithDisplay}
-            duration={durationValue || 1}
-            onSelect={handleSectionSelect}
-          />
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="vc-label">Sections</div>
-            <div className="text-xs text-vc-text-muted">
-              {analysisData.sections.length} section
-              {analysisData.sections.length === 1 ? '' : 's'}
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {sectionsWithDisplay.map((section) => {
-              const lyric = lyricsBySection.get(section.id) ?? undefined
-              const highlightClass =
-                highlightedSectionId === section.id
-                  ? 'ring-2 ring-vc-accent-primary ring-offset-2 ring-offset-[rgba(12,12,18,0.9)]'
-                  : ''
-
-              return (
-                <div
-                  key={section.id}
-                  id={`section-${section.id}`}
-                  className={highlightClass}
-                >
-                  <SectionCard
-                    name={section.displayName}
-                    startSec={section.startSec}
-                    endSec={section.endSec}
-                    mood={sectionMood}
-                    lyricSnippet={lyric}
-                    hasVideo={false}
-                    audioUrl={result?.audioUrl}
-                    className="h-full bg-[rgba(12,12,18,0.78)]"
-                    onGenerate={() => {}}
-                    onRegenerate={() => {}}
-                    onUseInFull={() => {}}
-                  />
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      </section>
-    )
-  }
-
   const renderErrorCard = () => (
     <div className="rounded-3xl border border-vc-state-error/40 bg-[rgba(38,12,18,0.85)] p-7 shadow-vc2">
       <div className="flex flex-col gap-4">
@@ -1945,6 +823,13 @@ export const UploadPage: React.FC = () => {
     </div>
   )
 
+  // Determine if video type selector should be shown
+  const showVideoTypeSelector =
+    stage === 'uploaded' &&
+    !analysisPolling.data &&
+    analysisState === 'idle' &&
+    !videoType
+
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#0C0C12] via-[#121224] to-[#0B0B16] px-4 py-16 text-white">
       <BackgroundOrbs />
@@ -1952,9 +837,9 @@ export const UploadPage: React.FC = () => {
       {analysisState !== 'completed' && (
         <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
           <div className="space-y-3">
-            <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
+            {/* <div className="mx-auto w-fit rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.03)] px-4 py-1 text-xs uppercase tracking-[0.22em] text-vc-text-muted">
               Upload
-            </div>
+            </div> */}
             <h1 className="font-display text-4xl md:text-5xl">
               Turn your sound into visuals.
             </h1>
@@ -1963,6 +848,218 @@ export const UploadPage: React.FC = () => {
               and structure — setting the stage for a cinematic video.
             </p>
           </div>
+
+          {/* Video Type Selection OR Audio Selection - shown between heading and upload card */}
+          {/* For short-form: Replace video type selector with audio selection once selected */}
+          {(() => {
+            // Show audio selection when short_form is selected
+            // IMPORTANT: Even if analysis already exists, we should show audio selection
+            // Show the UI if short_form is selected, regardless of existing analysis or selection state
+            // This allows users to make or change their selection even if analysis exists
+            const shouldShowAudioSelection =
+              stage === 'uploaded' &&
+              videoType === 'short_form' &&
+              // Show even if analysis is completed - user might want to re-select
+              (analysisState === 'idle' ||
+                analysisState === 'queued' ||
+                analysisState === 'processing' ||
+                analysisState === 'failed' ||
+                analysisState === 'completed')
+
+            // Don't reset selection here - let the user make their selection
+            // The reset logic was causing the button to disappear immediately
+            // Only reset if we're switching songs or starting fresh
+
+            return shouldShowAudioSelection ? (
+              // Audio Selection UI - replaces video type selector for short-form
+              <div className="w-full">
+                <div className="rounded-2xl border-2 border-vc-accent-primary/50 bg-gradient-to-br from-vc-accent-primary/10 via-vc-surface-primary to-vc-surface-primary p-4 shadow-xl">
+                  <div className="mb-4">
+                    <div className="vc-label">Select Audio Segment (Up to 30s)</div>
+                    <p className="text-sm text-vc-text-secondary mt-1">
+                      Choose up to 30 seconds from your track. Analysis will start after
+                      you make your selection.
+                    </p>
+                  </div>
+                  {(() => {
+                    // Try to get audioUrl from result first, fallback to fetching from songDetails if needed
+                    const audioUrl = result?.audioUrl
+                    const duration =
+                      metadata?.durationSeconds ?? songDetails?.duration_sec ?? null
+
+                    // If no audioUrl but we have songId, we might need to fetch it
+                    // For now, show a message if audioUrl is missing
+                    if (!audioUrl) {
+                      return (
+                        <div className="rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-4 text-sm text-vc-text-secondary">
+                          <p>Loading audio URL...</p>
+                          <p className="text-xs mt-2 opacity-70">
+                            If this persists, the audio file may not be accessible. Please
+                            try uploading again.
+                          </p>
+                        </div>
+                      )
+                    }
+                    if (!duration || duration === 0) {
+                      return (
+                        <div className="rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-4 text-sm text-vc-text-secondary">
+                          <p>Loading audio duration...</p>
+                          <p className="text-xs mt-2 opacity-70">
+                            Calculating track length...
+                          </p>
+                        </div>
+                      )
+                    }
+                    return (
+                      <AudioSelectionTimeline
+                        audioUrl={audioUrl}
+                        waveform={waveformValues}
+                        durationSec={duration}
+                        beatTimes={[]} // No beatTimes yet - analysis hasn't run
+                        onSelectionChange={handleSelectionChange}
+                        onConfirm={
+                          audioSelectionValue
+                            ? async () => {
+                                if (!result?.songId || !audioSelectionValue) return
+
+                                try {
+                                  // Save the selection to backend
+                                  await audioSelection.saveSelection(
+                                    audioSelectionValue.startSec,
+                                    audioSelectionValue.endSec,
+                                  )
+
+                                  // Then start analysis
+                                  const response = await apiClient.post<{
+                                    jobId: string
+                                    status: string
+                                  }>(`/songs/${result.songId}/analyze`)
+                                  if (response.data.jobId) {
+                                    analysisPolling.setJobId?.(response.data.jobId)
+                                  }
+                                } catch (err) {
+                                  console.error(
+                                    'Failed to save selection or start analysis:',
+                                    err,
+                                  )
+                                  setError(
+                                    extractErrorMessage(
+                                      err,
+                                      'Failed to confirm selection or start analysis',
+                                    ),
+                                  )
+                                }
+                              }
+                            : undefined
+                        }
+                        confirmButtonDisabled={
+                          !audioSelectionValue ||
+                          analysisState === 'queued' ||
+                          analysisState === 'processing'
+                        }
+                        confirmButtonText={
+                          analysisState === 'queued' || analysisState === 'processing'
+                            ? 'Starting Analysis...'
+                            : 'Confirm & Start Analysis'
+                        }
+                      />
+                    )
+                  })()}
+                </div>
+              </div>
+            ) : // Debug: Show why audio selection isn't showing
+            // <div className="w-full rounded-lg border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-4 text-xs">
+            //   <p className="font-semibold text-vc-accent-primary mb-2">
+            //     Debug: Audio selection not showing
+            //   </p>
+            //   <div className="space-y-1 text-vc-text-secondary">
+            //     <p>Conditions check:</p>
+            //     <ul className="list-disc list-inside ml-2 space-y-0.5">
+            //       <li
+            //         className={stage === 'uploaded' ? 'text-green-400' : 'text-red-400'}
+            //       >
+            //         stage === 'uploaded': {String(stage === 'uploaded')} (current:{' '}
+            //         {stage})
+            //       </li>
+            //       <li
+            //         className={
+            //           videoType === 'short_form' ? 'text-green-400' : 'text-red-400'
+            //         }
+            //       >
+            //         videoType === 'short_form': {String(videoType === 'short_form')}{' '}
+            //         (current: {videoType ?? 'null'})
+            //       </li>
+            //       <li
+            //         className={!audioSelectionValue ? 'text-green-400' : 'text-red-400'}
+            //       >
+            //         !audioSelectionValue: {String(!audioSelectionValue)} (current:{' '}
+            //         {audioSelectionValue ? 'exists' : 'null'})
+            //       </li>
+            //       <li
+            //         className={
+            //           !hasExistingSelection ? 'text-green-400' : 'text-red-400'
+            //         }
+            //       >
+            //         !hasExistingSelection: {String(!hasExistingSelection)} (selected:{' '}
+            //         {songDetails?.selected_start_sec ?? 'null'}-
+            //         {songDetails?.selected_end_sec ?? 'null'})
+            //       </li>
+            //       <li
+            //         className={
+            //           analysisState === 'idle' ||
+            //           analysisState === 'queued' ||
+            //           analysisState === 'processing' ||
+            //           analysisState === 'failed' ||
+            //           analysisState === 'completed'
+            //             ? 'text-green-400'
+            //             : 'text-red-400'
+            //         }
+            //       >
+            //         analysisState allowed:{' '}
+            //         {String(
+            //           analysisState === 'idle' ||
+            //             analysisState === 'queued' ||
+            //             analysisState === 'processing' ||
+            //             analysisState === 'failed' ||
+            //             analysisState === 'completed',
+            //         )}{' '}
+            //         (current: {analysisState})
+            //       </li>
+            //     </ul>
+            //     <p className="mt-2 text-vc-text-muted">
+            //       Check browser console for detailed logs with prefix [AudioSelection]
+            //     </p>
+            //   </div>
+            // </div>
+            null
+          })()}
+
+          {/* Video Type Selection - shown when no video type selected or for full-length */}
+          {(() => {
+            const shouldShowVideoTypeSelector =
+              showVideoTypeSelector ||
+              (videoType && videoTypeSelectorVisible && videoType === 'full_length')
+
+            return shouldShowVideoTypeSelector ? (
+              <div
+                className={clsx(
+                  'w-full transition-opacity duration-500',
+                  videoType &&
+                    (analysisState === 'queued' || analysisState === 'processing') &&
+                    !videoTypeSelectorVisible
+                    ? 'opacity-0'
+                    : 'opacity-100',
+                )}
+              >
+                <div className="rounded-2xl border-2 border-vc-accent-primary/50 bg-gradient-to-br from-vc-accent-primary/10 via-vc-surface-primary to-vc-surface-primary p-4 shadow-xl">
+                  <VideoTypeSelector
+                    onSelect={videoTypeSelection.setVideoType}
+                    selectedType={videoType}
+                  />
+                </div>
+              </div>
+            ) : null
+          })()}
 
           <input
             id={fileInputId}
@@ -1988,15 +1085,27 @@ export const UploadPage: React.FC = () => {
                 onDragLeave={onDragLeave}
                 onDrop={onDrop}
               >
-                {stage === 'idle' || stage === 'dragging'
-                  ? renderIdleCard()
-                  : stage === 'uploading'
-                    ? renderUploadingCard()
-                    : stage === 'uploaded'
-                      ? renderUploadedCard()
-                      : stage === 'error'
-                        ? renderErrorCard()
-                        : null}
+                {stage === 'error' ? (
+                  renderErrorCard()
+                ) : (
+                  <UploadCard
+                    stage={stage}
+                    metadata={metadata}
+                    progress={progress}
+                    result={result}
+                    analysisState={videoType ? analysisState : 'idle'}
+                    analysisProgress={analysisProgress}
+                    analysisError={analysisError}
+                    analysisData={analysisData}
+                    isFetchingAnalysis={isFetchingAnalysis}
+                    summaryMoodKind={summaryMoodKind}
+                    // NOTE: Sections are NOT implemented in the backend right now - commenting out section-related props
+                    // lyricsBySection={lyricsBySection}
+                    onFileSelect={() => inputRef.current?.click()}
+                    onReset={resetState}
+                    onGenerateClips={handleGenerateClips}
+                  />
+                )}
               </Container>
             )
           })()}
@@ -2012,286 +1121,295 @@ export const UploadPage: React.FC = () => {
         </div>
       )}
 
+      {/* Removed: "Start Analysis" button moved inside AudioSelectionTimeline component */}
+      {/* For short_form videos, the button is now part of the timeline */}
+      {/* For full_length videos, analysis starts automatically after video type selection */}
+
       {analysisState === 'completed' && analysisData && songDetails && (
         <div className="vc-app-main mx-auto w-full max-w-6xl px-4 py-12">
-          {renderSongProfile()}
+          {/* Fallback: If videoType is not set, show a message */}
+          {!videoType && (
+            <div className="mb-8 rounded-3xl border border-vc-border/40 bg-[rgba(255,255,255,0.03)] p-7">
+              <div className="text-center space-y-4">
+                <h3 className="text-lg font-semibold text-white">Video type not set</h3>
+                <p className="text-sm text-vc-text-secondary">
+                  This song was analyzed before video type selection was implemented.
+                  Please upload a new song to select a video type.
+                </p>
+              </div>
+            </div>
+          )}
+          {/* Character Image Upload Step - only for short-form videos */}
+          {videoType === 'short_form' && result?.songId && !hideCharacterConsistency && (
+            <section className="mb-2 space-y-4 -mt-8">
+              <div className="vc-label text-center">Character Consistency (Optional)</div>
+              {songDetails?.character_consistency_enabled &&
+              (songDetails.character_reference_image_s3_key ||
+                songDetails.character_pose_b_s3_key) ? (
+                // Show selected template poses
+                <>
+                  {/* Debug overlay - uncomment for UI testing */}
+                  {/* {process.env.NODE_ENV === 'development' && (
+                    <div className="mb-2 rounded-lg border border-blue-500/30 bg-blue-500/10 p-2 text-xs text-blue-400">
+                      <div>
+                        character_consistency_enabled:{' '}
+                        {String(songDetails.character_consistency_enabled)}
+                      </div>
+                      <div>
+                        character_reference_image_s3_key:{' '}
+                        {songDetails.character_reference_image_s3_key || 'null'}
+                      </div>
+                      <div>
+                        character_pose_b_s3_key:{' '}
+                        {songDetails.character_pose_b_s3_key || 'null'}
+                      </div>
+                    </div>
+                  )} */}
+                  <SelectedTemplateDisplay songId={result.songId} />
+                </>
+              ) : (
+                // Show upload/template selection UI
+                <>
+                  <p className="text-sm text-vc-text-secondary text-center">
+                    Upload a character reference image to maintain consistent character
+                    appearance across all clips.
+                  </p>
+                  <CharacterImageUpload
+                    songId={result.songId}
+                    onUploadSuccess={(imageUrl) => {
+                      console.log('Character image uploaded:', imageUrl)
+                      // Optionally refresh song details to show character consistency is enabled
+                      if (result?.songId) {
+                        apiClient
+                          .get(`/songs/${result.songId}`)
+                          .then((response) => {
+                            setSongDetails(response.data)
+                          })
+                          .catch(console.error)
+                      }
+                    }}
+                    onUploadError={(error) => {
+                      console.error('Character image upload failed:', error)
+                      setError(error)
+                    }}
+                    onTemplateSelect={() => setTemplateModalOpen(true)}
+                  />
+                  <TemplateCharacterModal
+                    isOpen={templateModalOpen}
+                    onClose={() => setTemplateModalOpen(false)}
+                    onSelect={async () => {
+                      // Refresh song details to show character consistency is enabled
+                      // Note: characterId parameter is provided by TemplateCharacterModal but not used here
+                      if (result?.songId) {
+                        try {
+                          const response = await apiClient.get(`/songs/${result.songId}`)
+                          setSongDetails(response.data)
+                        } catch (err) {
+                          console.error(
+                            '[UploadPage] Failed to refresh song details:',
+                            err,
+                          )
+                        }
+                      }
+                    }}
+                    songId={result.songId}
+                  />
+                </>
+              )}
+            </section>
+          )}
+
+          {/* Audio Selection Step - only shown if analysis completed but selection not made yet (fallback) */}
+          {videoType === 'short_form' &&
+            !audioSelectionValue &&
+            analysisState === 'completed' &&
+            analysisData &&
+            songDetails && (
+              <section className="mb-8 space-y-4">
+                <div className="vc-label">Select Audio Segment (Up to 30s)</div>
+                <p className="text-sm text-vc-text-secondary">
+                  Choose up to 30 seconds from your track to generate video clips.
+                </p>
+                {result?.audioUrl && songDetails.duration_sec && (
+                  <AudioSelectionTimeline
+                    audioUrl={result.audioUrl}
+                    waveform={waveformValues}
+                    durationSec={songDetails.duration_sec}
+                    beatTimes={analysisData.beatTimes}
+                    onSelectionChange={handleSelectionChange}
+                  />
+                )}
+                {audioSelectionValue && (
+                  <div className="flex justify-end">
+                    <VCButton
+                      onClick={() => {
+                        // Selection is saved automatically, proceed
+                        audioSelection.setAudioSelection(audioSelectionValue)
+                      }}
+                      disabled={isSavingSelection}
+                    >
+                      {isSavingSelection ? 'Saving...' : 'Continue with Selection'}
+                    </VCButton>
+                  </div>
+                )}
+              </section>
+            )}
+
+          {/* Song Profile View - shown after selection is made (for short-form) or directly (for full-length) */}
+          {(videoType === 'full_length' ||
+            (videoType === 'short_form' && audioSelectionValue)) &&
+            analysisData &&
+            songDetails && (
+              <SongProfileView
+                analysisData={analysisData}
+                songDetails={songDetails}
+                clipSummary={clipSummary}
+                clipJobId={clipJobId}
+                clipJobStatus={clipJobStatus}
+                clipJobProgress={clipJobProgress}
+                clipJobError={clipJobError}
+                isComposing={isComposing}
+                composeJobProgress={composeJobProgress}
+                playerActiveClipId={playerActiveClipId}
+                highlightedSectionId={highlightedSectionId}
+                metadata={metadata}
+                lyricsBySection={lyricsBySection}
+                audioUrl={result?.audioUrl ?? null}
+                onGenerateClips={handleGenerateClips}
+                onCancelClipJob={handleCancelClipJob}
+                onCompose={handleComposeClips}
+                onPreviewClip={handlePreviewClip}
+                onRegenerateClip={handleRegenerateClip}
+                onRetryClip={handleRetryClip}
+                onPlayerClipSelect={handlePlayerClipSelect}
+                onSectionSelect={handleSectionSelect}
+              />
+            )}
+        </div>
+      )}
+      {/* Confirmation dialog for generating clips without character image */}
+      {showNoCharacterConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl bg-[rgba(20,20,32,0.95)] backdrop-blur-xl border border-vc-border/50 shadow-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-4">
+              Generate Clips Without Character Reference?
+            </h2>
+            <p className="text-sm text-vc-text-secondary mb-6">
+              You haven't selected a character image or template. We'll generate clips
+              without a character reference, which means characters may vary between
+              clips. This is fine and will still produce a video.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowNoCharacterConfirm(false)}
+                className="px-4 py-2 bg-vc-border/30 text-vc-text-secondary rounded-lg hover:bg-vc-border/50 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowNoCharacterConfirm(false)
+                  setHideCharacterConsistency(true)
+                  // Now proceed with clip generation
+                  if (!result?.songId) return
+                  try {
+                    console.log(
+                      '[generate-clips] Starting clip generation for song:',
+                      result.songId,
+                    )
+                    clipPolling.setError(null)
+                    // Use selected duration if available, otherwise fall back to full duration
+                    const selectedDuration =
+                      songDetails?.selected_start_sec != null &&
+                      songDetails?.selected_end_sec != null
+                        ? songDetails.selected_end_sec - songDetails.selected_start_sec
+                        : null
+                    const durationEstimate =
+                      selectedDuration ??
+                      analysisData?.durationSec ??
+                      songDetails?.duration_sec ??
+                      clipSummary?.songDurationSec ??
+                      clipSummary?.clips.reduce(
+                        (total, clip) => total + clip.durationSec,
+                        0,
+                      ) ??
+                      null
+
+                    const maxClipSeconds = 6
+                    const minClips = 3
+                    const maxClips = 64
+                    const computedClipCount =
+                      durationEstimate && durationEstimate > 0
+                        ? Math.min(
+                            maxClips,
+                            Math.max(
+                              minClips,
+                              Math.ceil(durationEstimate / maxClipSeconds),
+                            ),
+                          )
+                        : minClips
+
+                    const needsReplan =
+                      !clipSummary ||
+                      clipSummary.totalClips === 0 ||
+                      clipSummary.completedClips === clipSummary.totalClips ||
+                      clipSummary.clips.some(
+                        (clip) => clip.durationSec > maxClipSeconds + 0.1,
+                      )
+
+                    if (needsReplan) {
+                      await apiClient.post(`/songs/${result.songId}/clips/plan`, null, {
+                        params: {
+                          clip_count: computedClipCount,
+                          max_clip_sec: maxClipSeconds,
+                        },
+                      })
+                      await clipPolling.fetchClipSummary(result.songId)
+                    }
+
+                    const { data } = await apiClient.post<{
+                      jobId: string
+                      songId: string
+                      status: string
+                    }>(`/songs/${result.songId}/clips/generate`)
+
+                    clipPolling.setJobId(data.jobId)
+                    clipPolling.setStatus(
+                      data.status === 'processing' ? 'processing' : 'queued',
+                    )
+                  } catch (err) {
+                    console.error('[generate-clips] Error:', err)
+                    clipPolling.setError(
+                      extractErrorMessage(
+                        err,
+                        'Unable to start clip generation for this track.',
+                      ),
+                    )
+                  }
+                }}
+                className="px-4 py-2 bg-vc-accent-primary text-white rounded-lg hover:bg-vc-accent-primary/90 transition-colors"
+              >
+                OK, Generate Clips
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {analysisState === 'completed' && (!analysisData || !songDetails) && (
+        <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center gap-10 text-center">
+          <div className="rounded-3xl border border-vc-state-error/40 bg-[rgba(38,12,18,0.85)] p-7 shadow-vc2">
+            <div className="flex flex-col gap-4">
+              <h3 className="text-lg font-semibold text-white">
+                Loading song details...
+              </h3>
+              <p className="text-sm text-vc-text-secondary">
+                Analysis complete but missing data. State: analysisData=
+                {String(!!analysisData)}, songDetails={String(!!songDetails)}
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>
   )
 }
-
-const RequirementPill: React.FC<{ icon: React.ReactNode; label: string }> = ({
-  icon,
-  label,
-}) => (
-  <div className="inline-flex items-center gap-2 rounded-full border border-vc-border/40 bg-[rgba(255,255,255,0.02)] px-3 py-1.5 text-xs text-vc-text-secondary shadow-vc1">
-    <span className="text-vc-accent-primary">{icon}</span>
-    <span>{label}</span>
-  </div>
-)
-
-const SummaryStat: React.FC<{ label: string; value: React.ReactNode }> = ({
-  label,
-  value,
-}) => (
-  <div className="rounded-lg border border-vc-border/40 bg-[rgba(12,12,18,0.5)] p-3">
-    <p className="text-[11px] uppercase tracking-[0.16em] text-vc-text-muted">{label}</p>
-    <p className="mt-2 text-sm text-white">{value}</p>
-  </div>
-)
-
-const MoodVectorMeter: React.FC<{ moodVector: MoodVector }> = ({ moodVector }) => {
-  const entries: Array<[string, number]> = [
-    ['Energy', clamp(moodVector.energy * 100, 0, 100)],
-    ['Valence', clamp(moodVector.valence * 100, 0, 100)],
-    ['Danceability', clamp(moodVector.danceability * 100, 0, 100)],
-    ['Tension', clamp(moodVector.tension * 100, 0, 100)],
-  ]
-
-  return (
-    <div className="space-y-3">
-      {entries.map(([label, value]) => (
-        <div key={label}>
-          <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-vc-text-muted">
-            <span>{label}</span>
-            <span>{Math.round(value)}%</span>
-          </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary transition-all duration-500"
-              style={{ width: `${value}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const ClipStatusBadge: React.FC<{
-  status: 'queued' | 'processing' | 'completed' | 'failed' | 'canceled'
-}> = ({ status }) => {
-  const labelMap: Record<typeof status, string> = {
-    queued: 'Queued',
-    processing: 'Processing',
-    completed: 'Completed',
-    failed: 'Failed',
-    canceled: 'Canceled',
-  }
-
-  const variantClass =
-    status === 'completed'
-      ? 'vc-badge-success'
-      : status === 'failed'
-        ? 'vc-badge-danger'
-        : 'vc-badge'
-
-  return (
-    <span className={clsx(variantClass, 'inline-flex items-center gap-1 text-[11px]')}>
-      {status === 'processing' && (
-        <span className="inline-block h-2 w-2 rounded-full bg-white/80 animate-pulse" />
-      )}
-      {labelMap[status]}
-    </span>
-  )
-}
-
-const AnalysisSectionRow: React.FC<{
-  section: SongSection
-  title: string
-  mood: MoodKind
-  lyric?: string
-}> = ({ section, title, mood, lyric }) => (
-  <VCCard className="border-vc-border/30 bg-[rgba(12,12,18,0.68)]">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h3 className="font-display text-sm text-white">{title}</h3>
-        <p className="text-xs text-vc-text-muted">
-          {formatSeconds(section.startSec)} – {formatSeconds(section.endSec)}
-        </p>
-      </div>
-      <SectionMoodTag mood={mood} />
-    </div>
-    <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] uppercase tracking-[0.14em] text-vc-text-muted">
-      <span>Confidence {Math.round(clamp(section.confidence * 100, 0, 100))}%</span>
-      {section.repetitionGroup && (
-        <span>Group {section.repetitionGroup.toUpperCase()}</span>
-      )}
-    </div>
-    {lyric && (
-      <p className="mt-3 border-l border-vc-border pl-3 text-xs italic text-vc-text-secondary">
-        “{lyric}”
-      </p>
-    )}
-  </VCCard>
-)
-
-const WaveformPlaceholder: React.FC = () => (
-  <div className="relative flex h-20 w-full items-center overflow-hidden rounded-2xl border border-vc-border/50 bg-[rgba(255,255,255,0.03)]">
-    <div className="absolute inset-0 vc-shimmer opacity-70" />
-    <div className="relative z-10 flex w-full items-center justify-between gap-[3px] px-4">
-      {WAVEFORM_BARS.map((height, index) => (
-        <span
-          key={`placeholder-bar-${index}-${height}`}
-          className="w-[3px] rounded-full bg-gradient-to-t from-vc-accent-primary via-vc-accent-secondary to-vc-accent-tertiary"
-          style={{ height: `${Math.max(0.16, height) * 100}%`, opacity: 0.85 }}
-        />
-      ))}
-    </div>
-  </div>
-)
-
-const BackgroundOrbs: React.FC = () => (
-  <>
-    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(110,107,255,0.24),_transparent_65%)]" />
-    <div className="pointer-events-none absolute -top-40 -left-32 h-80 w-80 rounded-full bg-[radial-gradient(circle,_rgba(110,107,255,0.45),_transparent_60%)] blur-3xl" />
-    <div className="pointer-events-none absolute -bottom-32 -right-20 h-72 w-72 rounded-full bg-[radial-gradient(circle,_rgba(0,198,192,0.4),_transparent_60%)] blur-3xl" />
-    <div className="pointer-events-none absolute top-1/4 left-1/2 h-52 w-52 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,_rgba(255,111,245,0.35),_transparent_65%)] blur-2xl" />
-  </>
-)
-
-const MusicNoteIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg
-    className={className}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M9 18.5C9 20.433 7.433 22 5.5 22C3.567 22 2 20.433 2 18.5C2 16.567 3.567 15 5.5 15C6.4157 15 7.24821 15.3425 7.87569 15.9121V5.99997C7.87569 4.34311 9.21883 3 10.8757 3H18.1243C19.7812 3 21.1243 4.34311 21.1243 5.99997V8.99997C21.1243 10.6568 19.7812 12 18.1243 12H12.75V18.5C12.75 20.433 11.183 22 9.25 22C7.317 22 5.75 20.433 5.75 18.5C5.75 16.567 7.317 15 9.25 15C9.66719 15 10.0669 15.0735 10.4375 15.2106V6.74997"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const UploadIcon: React.FC = () => (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M12 3V15M12 3L7 8M12 3L17 8M5 17C5 18.1046 5.89543 19 7 19H17C18.1046 19 19 18.1046 19 17"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const ArrowRightIcon: React.FC = () => (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M5 12H19M19 12L13 6M19 12L13 18"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg
-    className={className}
-    width="20"
-    height="20"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M5 12.5L9.5 17L19 7"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const TimerIcon: React.FC = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M12 7V12L15 15M9 3H15M12 21C16.4183 21 20 17.4183 20 13C20 8.58172 16.4183 5 12 5C7.58172 5 4 8.58172 4 13C4 17.4183 7.58172 21 12 21Z"
-      stroke="currentColor"
-      strokeWidth="1.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const WaveformIcon: React.FC = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M5 12H7M9 7V17M12 4V20M15 7V17M17 12H19"
-      stroke="currentColor"
-      strokeWidth="1.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const HardDriveIcon: React.FC = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M20 13V16C20 17.1046 19.1046 18 18 18H6C4.89543 18 4 17.1046 4 16V8C4 6.89543 4.89543 6 6 6H14.5858C14.851 6 15.1054 6.10536 15.2929 6.29289L19.7071 10.7071C19.8946 10.8946 20 11.149 20 11.4142V13ZM12 15H12.01M16 15H16.01"
-      stroke="currentColor"
-      strokeWidth="1.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const ErrorIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg
-    className={className}
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M12 8V12M12 16H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)

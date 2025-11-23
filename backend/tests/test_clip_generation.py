@@ -15,6 +15,8 @@ from app.models.clip import SongClip
 from app.models.song import DEFAULT_USER_ID, Song
 from app.schemas.analysis import SongAnalysis
 from app.services.clip_generation import (
+    _build_scene_spec_for_clip,
+    _get_character_image_urls,
     enqueue_clip_generation_batch,
     get_clip_generation_job_status,
     get_clip_generation_summary,
@@ -36,8 +38,9 @@ class DummyJob:
 
 
 class DummyQueue:
-    def __init__(self) -> None:
+    def __init__(self, name: str = "test-queue") -> None:
         self.jobs: list[DummyJob] = []
+        self.name = name
 
     def enqueue(
         self,
@@ -172,9 +175,10 @@ def test_enqueue_clip_generation_batch_controls_concurrency(monkeypatch):
     song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(32)], clip_count=5)
 
     dummy_queue = DummyQueue()
+    # Patch at the import site in clip_generation module
     monkeypatch.setattr(
-        "app.services.clip_generation._get_clip_queue",
-        lambda: dummy_queue,
+        "app.services.clip_generation.get_queue",
+        lambda *args, **kwargs: dummy_queue,
     )
 
     job_ids = enqueue_clip_generation_batch(song_id=song_id, max_parallel=2)
@@ -208,9 +212,11 @@ def test_run_clip_generation_job_success(monkeypatch):
 
     captured = {}
 
-    def _mock_generate(scene_spec, seed=None, num_frames=None, fps=None):
+    def _mock_generate(scene_spec, seed=None, num_frames=None, fps=None, reference_image_url=None, reference_image_urls=None):
         captured["num_frames"] = num_frames
         captured["fps"] = fps
+        captured["reference_image_url"] = reference_image_url
+        captured["reference_image_urls"] = reference_image_urls
         return True, "https://video.example.com/clip.mp4", {"fps": fps, "job_id": "rep-123", "seed": seed or 42}
 
     monkeypatch.setattr("app.services.clip_generation.generate_section_video", _mock_generate)
@@ -245,12 +251,14 @@ def test_run_clip_generation_job_failure(monkeypatch):
     assert clip is not None
     clip_id = clip.id
 
-    def _fail_generation(scene_spec, seed=None, num_frames=None, fps=None):
+    def _fail_generation(scene_spec, seed=None, num_frames=None, fps=None, reference_image_url=None, reference_image_urls=None):
         return False, None, {"error": "replicate error", "job_id": "rep-err"}
 
     monkeypatch.setattr("app.services.clip_generation.generate_section_video", _fail_generation)
 
-    with pytest.raises(RuntimeError):
+    from app.exceptions import ClipGenerationError
+
+    with pytest.raises(ClipGenerationError):
         run_clip_generation_job(clip_id)
 
     with session_scope() as session:
@@ -279,7 +287,11 @@ def test_retry_clip_generation_resets_state(monkeypatch):
         clip_id = clip.id
 
     dummy_queue = DummyQueue()
-    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+    # Patch get_queue to return our dummy queue
+    monkeypatch.setattr(
+        "app.services.clip_generation.get_queue",
+        lambda *args, **kwargs: dummy_queue,
+    )
 
     status = retry_clip_generation(clip_id)
 
@@ -302,7 +314,8 @@ def test_retry_clip_generation_resets_state(monkeypatch):
 
 
 def test_retry_clip_generation_endpoint(monkeypatch):
-    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(16)], clip_count=3)
+    # Use longer duration to ensure 3 clips can be created (need at least 9 seconds for 3 clips at 3s each)
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(20)], clip_count=3)
 
     with session_scope() as session:
         clip = session.exec(
@@ -317,7 +330,11 @@ def test_retry_clip_generation_endpoint(monkeypatch):
         clip_id = clip.id
 
     dummy_queue = DummyQueue()
-    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+    # Patch get_queue to return our dummy queue
+    monkeypatch.setattr(
+        "app.services.clip_generation.get_queue",
+        lambda *args, **kwargs: dummy_queue,
+    )
 
     with TestClient(create_app()) as client:
         response = client.post(f"/api/v1/songs/{song_id}/clips/{clip_id}/retry")
@@ -446,7 +463,7 @@ def test_start_clip_generation_job_and_status(monkeypatch):
     song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=3)
 
     dummy_queue = DummyQueue()
-    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: dummy_queue)
+    monkeypatch.setattr("app.core.queue.get_queue", lambda *args, **kwargs: dummy_queue)
 
     response = start_clip_generation_job(song_id)
     assert response.song_id == song_id
@@ -463,7 +480,7 @@ def test_start_clip_generation_job_and_status(monkeypatch):
     assert status.result.total_clips == 3
 
     api_queue = DummyQueue()
-    monkeypatch.setattr("app.services.clip_generation._get_clip_queue", lambda: api_queue)
+    monkeypatch.setattr("app.core.queue.get_queue", lambda *args, **kwargs: api_queue)
     other_song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(16)], clip_count=2)
 
     with TestClient(create_app()) as client:
@@ -481,4 +498,264 @@ def test_start_clip_generation_job_and_status(monkeypatch):
 
     _cleanup_song(song_id)
     _cleanup_song(other_song_id)
+
+
+def test_clip_generation_with_character_pose_b(monkeypatch):
+    """Test clip generation passes both poses when character_pose_b_s3_key is available."""
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=1)
+
+    # Set up song with both poses
+    with session_scope() as session:
+        song = session.get(Song, song_id)
+        song.character_consistency_enabled = True
+        song.character_reference_image_s3_key = "songs/test/character_pose_a.jpg"
+        song.character_pose_b_s3_key = "songs/test/character_pose_b.jpg"
+        session.add(song)
+        session.commit()
+
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+    assert clip is not None
+    clip_id = clip.id
+
+    captured = {}
+
+    def _mock_generate(scene_spec, seed=None, num_frames=None, fps=None, reference_image_url=None, reference_image_urls=None):
+        captured["reference_image_url"] = reference_image_url
+        captured["reference_image_urls"] = reference_image_urls
+        return True, "https://video.example.com/clip.mp4", {"fps": fps, "job_id": "rep-123", "seed": seed or 42}
+
+    monkeypatch.setattr("app.services.clip_generation.generate_section_video", _mock_generate)
+    monkeypatch.setattr("app.services.clip_generation.generate_presigned_get_url", lambda *args, **kwargs: f"https://s3.example.com/{kwargs.get('key', 'test')}")
+    monkeypatch.setattr("random.randint", lambda *_: 42)
+
+    result = run_clip_generation_job(clip_id)
+    assert result["status"] == "completed"
+
+    # Verify both poses were passed
+    assert captured["reference_image_urls"] is not None
+    assert len(captured["reference_image_urls"]) == 2
+    assert any("character_pose_a" in url or "character_reference" in url for url in captured["reference_image_urls"])
+    assert any("character_pose_b" in url for url in captured["reference_image_urls"])
+
+    _cleanup_song(song_id)
+
+
+def test_clip_generation_fallback_when_pose_b_missing(monkeypatch):
+    """Test clip generation works with only pose-a when pose-b is not available."""
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=1)
+
+    # Set up song with only pose-a
+    with session_scope() as session:
+        song = session.get(Song, song_id)
+        song.character_consistency_enabled = True
+        song.character_reference_image_s3_key = "songs/test/character_pose_a.jpg"
+        song.character_pose_b_s3_key = None  # No pose-b
+        session.add(song)
+        session.commit()
+
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+    assert clip is not None
+    clip_id = clip.id
+
+    captured = {}
+
+    def _mock_generate(scene_spec, seed=None, num_frames=None, fps=None, reference_image_url=None, reference_image_urls=None):
+        captured["reference_image_url"] = reference_image_url
+        captured["reference_image_urls"] = reference_image_urls
+        return True, "https://video.example.com/clip.mp4", {"fps": fps, "job_id": "rep-123", "seed": seed or 42}
+
+    monkeypatch.setattr("app.services.clip_generation.generate_section_video", _mock_generate)
+    monkeypatch.setattr("app.services.clip_generation.generate_presigned_get_url", lambda *args, **kwargs: f"https://s3.example.com/{kwargs.get('key', 'test')}")
+    monkeypatch.setattr("random.randint", lambda *_: 42)
+
+    result = run_clip_generation_job(clip_id)
+    assert result["status"] == "completed"
+
+    # Verify only pose-a was passed
+    assert captured["reference_image_url"] is not None
+    assert captured["reference_image_urls"] is None or len(captured["reference_image_urls"]) == 1
+
+    _cleanup_song(song_id)
+
+
+def test_clip_generation_character_consistency_priority(monkeypatch):
+    """Test that generated image takes priority over reference, and reference over pose-b."""
+    song_id, _ = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=1)
+
+    # Set up song with all three character image types
+    with session_scope() as session:
+        song = session.get(Song, song_id)
+        song.character_consistency_enabled = True
+        song.character_generated_image_s3_key = "songs/test/character_generated.jpg"  # Highest priority
+        song.character_reference_image_s3_key = "songs/test/character_pose_a.jpg"
+        song.character_pose_b_s3_key = "songs/test/character_pose_b.jpg"
+        session.add(song)
+        session.commit()
+
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+    assert clip is not None
+    clip_id = clip.id
+
+    captured = {}
+
+    def _mock_generate(scene_spec, seed=None, num_frames=None, fps=None, reference_image_url=None, reference_image_urls=None):
+        captured["reference_image_url"] = reference_image_url
+        captured["reference_image_urls"] = reference_image_urls
+        return True, "https://video.example.com/clip.mp4", {"fps": fps, "job_id": "rep-123", "seed": seed or 42}
+
+    monkeypatch.setattr("app.services.clip_generation.generate_section_video", _mock_generate)
+    monkeypatch.setattr("app.services.clip_generation.generate_presigned_get_url", lambda *args, **kwargs: f"https://s3.example.com/{kwargs.get('key', 'test')}")
+    monkeypatch.setattr("random.randint", lambda *_: 42)
+
+    result = run_clip_generation_job(clip_id)
+    assert result["status"] == "completed"
+
+    # Verify generated image is used (not reference or pose-b)
+    # When generated image exists, only it should be used (no pose-b)
+    assert captured["reference_image_url"] is not None
+    assert "character_generated" in captured["reference_image_url"]
+
+    _cleanup_song(song_id)
+
+
+def test_get_character_image_urls_priority(monkeypatch):
+    """Test _get_character_image_urls respects priority order."""
+    song = Song(
+        id=uuid4(),
+        user_id=DEFAULT_USER_ID,
+        title="Test",
+        original_filename="test.mp3",
+        original_file_size=1024,
+        original_s3_key="s3://test/test.mp3",
+        character_consistency_enabled=True,
+        character_generated_image_s3_key="songs/test/generated.jpg",
+        character_reference_image_s3_key="songs/test/reference.jpg",
+        character_pose_b_s3_key="songs/test/pose_b.jpg",
+    )
+    
+    monkeypatch.setattr(
+        "app.services.clip_generation.generate_presigned_get_url",
+        lambda *args, **kwargs: f"https://s3.example.com/{kwargs.get('key', 'test')}"
+    )
+    
+    urls, fallback = _get_character_image_urls(song)
+    
+    # Should have generated image as first (priority 1)
+    assert len(urls) >= 1
+    assert "generated" in urls[0]
+    assert fallback == urls[0]
+
+
+def test_get_character_image_urls_without_generated(monkeypatch):
+    """Test _get_character_image_urls uses reference when generated not available."""
+    song = Song(
+        id=uuid4(),
+        user_id=DEFAULT_USER_ID,
+        title="Test",
+        original_filename="test.mp3",
+        original_file_size=1024,
+        original_s3_key="s3://test/test.mp3",
+        character_consistency_enabled=True,
+        character_reference_image_s3_key="songs/test/reference.jpg",
+        character_pose_b_s3_key="songs/test/pose_b.jpg",
+    )
+    
+    monkeypatch.setattr(
+        "app.services.clip_generation.generate_presigned_get_url",
+        lambda *args, **kwargs: f"https://s3.example.com/{kwargs.get('key', 'test')}"
+    )
+    
+    urls, fallback = _get_character_image_urls(song)
+    
+    # Should have reference (pose-a) and pose-b
+    assert len(urls) == 2
+    assert "reference" in urls[0]
+    assert "pose_b" in urls[1]
+    assert fallback == urls[0]
+
+
+def test_get_character_image_urls_disabled():
+    """Test _get_character_image_urls returns empty when consistency disabled."""
+    song = Song(
+        id=uuid4(),
+        user_id=DEFAULT_USER_ID,
+        title="Test",
+        original_filename="test.mp3",
+        original_file_size=1024,
+        original_s3_key="s3://test/test.mp3",
+        character_consistency_enabled=False,
+        character_reference_image_s3_key="songs/test/reference.jpg",
+    )
+    
+    urls, fallback = _get_character_image_urls(song)
+    
+    assert urls == []
+    assert fallback is None
+
+
+def test_build_scene_spec_for_clip_without_sections():
+    """Test _build_scene_spec_for_clip handles short-form (no sections) correctly."""
+    song_id, analysis = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(12)], clip_count=1)
+    
+    with session_scope() as session:
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+        assert clip is not None
+        
+        # Create analysis without sections (short-form)
+        analysis = SongAnalysis(
+            durationSec=clip.duration_sec or 10.0,
+            bpm=128.0,
+            beatTimes=[i * 0.5 for i in range(12)],
+            sections=[],  # No sections for short-form
+            moodPrimary="energetic",
+            moodTags=["energetic", "upbeat"],
+            moodVector={"energy": 0.8, "valence": 0.7, "danceability": 0.6, "tension": 0.5},
+            primaryGenre="Electronic",
+            subGenres=["EDM"],
+            lyricsAvailable=False,
+            sectionLyrics=[],
+        )
+        
+        # Should not raise error, should use build_clip_scene_spec
+        scene_spec = _build_scene_spec_for_clip(clip.id, analysis)
+        
+        assert scene_spec is not None
+        assert scene_spec.section_id is None  # No section ID in clip mode
+        assert scene_spec.duration_sec == clip.duration_sec
+        assert scene_spec.prompt is not None
+        assert scene_spec.template == "abstract"
+    
+    _cleanup_song(song_id)
+
+
+def test_build_scene_spec_for_clip_with_sections():
+    """Test _build_scene_spec_for_clip handles long-form (with sections) correctly."""
+    song_id, analysis = _insert_song_and_clips(beat_times=[i * 0.5 for i in range(24)], clip_count=3)
+    
+    with session_scope() as session:
+        clip = session.exec(
+            select(SongClip).where(SongClip.song_id == song_id).order_by(SongClip.clip_index)
+        ).first()
+        assert clip is not None
+        
+        # Create analysis with sections (long-form)
+        analysis = make_analysis(beat_times=[i * 0.5 for i in range(24)])
+        
+        # Should use build_scene_spec with section
+        scene_spec = _build_scene_spec_for_clip(clip.id, analysis)
+        
+        assert scene_spec is not None
+        assert scene_spec.section_id is not None  # Has section ID in long-form mode
+        assert scene_spec.duration_sec == clip.duration_sec
+        assert scene_spec.prompt is not None
+    
+    _cleanup_song(song_id)
 

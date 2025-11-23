@@ -157,7 +157,7 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
               disabled={isDeletingAll}
               className="text-white/70 hover:text-white transition-colors cursor-pointer italic disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              delete all projects and un-analyzed tracks
+              Delete all projects and un-analyzed tracks.
             </button>
           </div>
           <div className="flex gap-3">

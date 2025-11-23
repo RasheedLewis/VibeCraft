@@ -336,10 +336,13 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       {playerVideoUrl && playerDurationSec ? (
         <section className="space-y-3">
           <div className="vc-label">
-            Preview
-            {clipSummary?.completedClips && clipSummary.totalClips
-              ? ` (${clipSummary.completedClips}/${clipSummary.totalClips} clips)`
-              : null}
+            {composedVideoUrl
+              ? 'Your Final Video'
+              : `Preview${
+                  clipSummary?.completedClips && clipSummary.totalClips
+                    ? ` (${clipSummary.completedClips}/${clipSummary.totalClips} clips)`
+                    : ''
+                }`}
           </div>
           <ErrorBoundary
             FallbackComponent={VideoPlayerErrorFallback}

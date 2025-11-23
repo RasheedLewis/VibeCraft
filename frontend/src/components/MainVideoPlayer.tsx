@@ -193,6 +193,106 @@ const KeyboardIcon = ({ className, ...props }: IconProps) => (
   </svg>
 )
 
+const InfoIcon = ({ className, ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={iconClass(className)}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="16" x2="12" y2="12" />
+    <line x1="12" y1="8" x2="12.01" y2="8" />
+  </svg>
+)
+
+const ClearIcon = ({ className, ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={iconClass(className)}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="12" cy="12" r="10" />
+    <line x1="15" y1="9" x2="9" y2="15" />
+    <line x1="9" y1="9" x2="15" y2="15" />
+  </svg>
+)
+
+const FullscreenIcon = ({ className, ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={iconClass(className)}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M8 21H5a2 2 0 0 1-2-2v-3m18 0v3a2 2 0 0 1-2 2h-3M3 8V5a2 2 0 0 1 2-2h3M21 8V5a2 2 0 0 0-2-2h-3" />
+  </svg>
+)
+
+const ZoomInIcon = ({ className, ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={iconClass(className)}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.35-4.35" />
+    <line x1="11" y1="8" x2="11" y2="14" />
+    <line x1="8" y1="11" x2="14" y2="11" />
+  </svg>
+)
+
+const ZoomOutIcon = ({ className, ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={iconClass(className)}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.35-4.35" />
+    <line x1="8" y1="11" x2="14" y2="11" />
+  </svg>
+)
+
+const FitIcon = ({ className, ...props }: IconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={iconClass(className)}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M8 8h8v8H8z" />
+  </svg>
+)
+
 const ScissorsIcon = ({ className, ...props }: IconProps) => (
   <svg
     viewBox="0 0 24 24"
@@ -303,6 +403,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
 
   const [showLyrics, setShowLyrics] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [videoZoom, setVideoZoom] = useState(1) // 1 = 100%, 1.5 = 150%, etc.
 
   const usingExternalAudio = Boolean(audioUrl)
 
@@ -705,151 +806,47 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
 
   return (
     <div className="vc-card p-0 overflow-hidden" onKeyDown={onKey} tabIndex={0}>
-      <div className="relative bg-black">
+      <div className="relative bg-black overflow-hidden">
         <audio
           ref={audioRef}
           src={audioUrl ?? undefined}
           preload="auto"
           className="hidden"
         />
-        <video
-          key={(() => {
-            if (!videoUrl) return 'video-none'
-            try {
-              // Use S3 key path as stable identifier (doesn't change when presigned URL regenerates)
-              const url = new URL(videoUrl)
-              return `video-${url.pathname}`
-            } catch {
-              // Fallback to full URL if parsing fails
-              return `video-${videoUrl}`
-            }
-          })()}
-          ref={videoRef}
-          src={videoUrl || undefined}
-          poster={posterUrl ?? undefined}
-          className="w-full aspect-video"
-          onClick={togglePlay}
-          muted={usingExternalAudio ? true : muted}
-          controls={false}
-          playsInline
-          onError={() => {
-            console.error('[MainVideoPlayer] Video error', {
-              error: videoRef.current?.error,
-              networkState: videoRef.current?.networkState,
-              readyState: videoRef.current?.readyState,
-            })
-          }}
-        />
-        <div className="pointer-events-none absolute inset-0 flex items-end justify-between p-3">
-          {/* Left side playback controls */}
-          <div className="pointer-events-auto flex items-center gap-2">
-            {/* Skip Back: Jump backward 5 seconds (J key) */}
-            <TransportButton onClick={() => jump(-5)} title="Back 5s (J)">
-              <SkipBackIcon className="h-4 w-4" />
-            </TransportButton>
-            {/* Play/Pause: Toggle playback (Space/K key) */}
-            <TransportButton onClick={togglePlay} title="Play/Pause (Space/K)">
-              {isPlaying ? (
-                <PauseIcon className="h-5 w-5" />
-              ) : (
-                <PlayIcon className="h-5 w-5" />
-              )}
-            </TransportButton>
-            {/* Skip Forward: Jump forward 5 seconds (L key) */}
-            <TransportButton onClick={() => jump(5)} title="Forward 5s (L)">
-              <SkipForwardIcon className="h-4 w-4" />
-            </TransportButton>
-            {/* Time Display: Shows current time / total duration */}
-            <span className="ml-2 text-[11px] text-white/90 bg-black/40 rounded px-1 py-0.5">
-              {fmtTime(current)} / {fmtTime(durationSec)}
-            </span>
-          </div>
-
-          {/* Right side utility controls */}
-          <div className="pointer-events-auto flex items-center gap-2">
-            {/* Repeat/Loop Toggle: Toggle A/B loop mode (\ key) */}
-            <TransportButton
-              onClick={() => setLoopAB((v) => !v)}
-              title="Toggle A/B Loop (\\)"
-              selected={loopAB}
-            >
-              <RepeatIcon className="h-4 w-4" />
-            </TransportButton>
-            {/* Captions Toggle: Show/hide lyrics/captions overlay (C key) */}
-            <TransportButton
-              onClick={() => setShowLyrics((v) => !v)}
-              title="Toggle Captions (C)"
-              selected={showLyrics}
-            >
-              <CaptionsIcon className="h-4 w-4" />
-            </TransportButton>
-
-            {/* Playback Speed Control: Adjust playback rate ([-] slower, []] faster) */}
-            <div className="flex items-center gap-1 bg-black/40 rounded px-1.5 py-0.5">
-              <button
-                className="text-[11px] text-white/90 hover:text-white"
-                onClick={() => setPlaybackRate((r) => clampValue(r - 0.25, 0.25, 2))}
-                title="Slower ([)"
-              >
-                –
-              </button>
-              <span className="text-[11px] text-white/90 w-8 text-center">
-                {playbackRate.toFixed(2)}x
-              </span>
-              <button
-                className="text-[11px] text-white/90 hover:text-white"
-                onClick={() => setPlaybackRate((r) => clampValue(r + 0.25, 0.25, 2))}
-                title="Faster (])"
-              >
-                +
-              </button>
-            </div>
-
-            {/* Volume/Mute Toggle: Mute or unmute audio (M key) */}
-            <TransportButton
-              onClick={() => setMuted((m) => !m)}
-              title={muted ? 'Unmute (M)' : 'Mute (M)'}
-            >
-              {muted || volume === 0 ? (
-                <VolumeOffIcon className="h-4 w-4" />
-              ) : (
-                <VolumeOnIcon className="h-4 w-4" />
-              )}
-            </TransportButton>
-
-            {/* Picture-in-Picture: Enter/exit PiP mode (only shown if browser supports it) */}
-            {pipSupported && Boolean(videoUrl) && (
-              <TransportButton
-                onClick={async () => {
-                  const element = videoRef.current
-                  if (!element) return
-                  if (document.pictureInPictureElement) {
-                    await (
-                      document as { exitPictureInPicture?: () => Promise<void> }
-                    ).exitPictureInPicture?.()
-                  } else {
-                    await (element as HTMLVideoElement).requestPictureInPicture?.()
-                  }
-                }}
-                title="Picture-in-picture"
-              >
-                <PictureInPictureIcon className="h-4 w-4" />
-              </TransportButton>
-            )}
-
-            {/* Download: Download the video file */}
-            <TransportButton onClick={onDownload} title="Download">
-              <DownloadIcon className="h-4 w-4" />
-            </TransportButton>
-
-            {/* Help: Open keyboard shortcuts help menu */}
-            <TransportButton
-              onClick={() => setShowSettings(true)}
-              title="Keyboard Shortcuts"
-            >
-              <KeyboardIcon className="h-4 w-4" />
-            </TransportButton>
-          </div>
+        {/* Video container with zoom transform */}
+        <div className="w-full aspect-video flex items-center justify-center overflow-hidden">
+          <video
+            key={(() => {
+              if (!videoUrl) return 'video-none'
+              try {
+                // Use S3 key path as stable identifier (doesn't change when presigned URL regenerates)
+                const url = new URL(videoUrl)
+                return `video-${url.pathname}`
+              } catch {
+                // Fallback to full URL if parsing fails
+                return `video-${videoUrl}`
+              }
+            })()}
+            ref={videoRef}
+            src={videoUrl || undefined}
+            poster={posterUrl ?? undefined}
+            className="w-full h-full object-contain"
+            style={{
+              transform: `scale(${videoZoom})`,
+              transformOrigin: 'center center',
+            }}
+            onClick={togglePlay}
+            muted={usingExternalAudio ? true : muted}
+            controls={false}
+            playsInline
+            onError={() => {
+              console.error('[MainVideoPlayer] Video error', {
+                error: videoRef.current?.error,
+                networkState: videoRef.current?.networkState,
+                readyState: videoRef.current?.readyState,
+              })
+            }}
+          />
         </div>
 
         {/* A/B Loop Markers: Vertical lines on video showing A and B loop point positions */}
@@ -876,6 +873,189 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Video Controls: Moved below video */}
+      <div className="flex items-center justify-between p-3 bg-[rgba(0,0,0,0.3)] border-t border-vc-border/20">
+        {/* Left side playback controls */}
+        <div className="flex items-center gap-2">
+          {/* Skip Back: Jump backward 5 seconds (J key) */}
+          <TransportButton onClick={() => jump(-5)} title="Back 5s (J)">
+            <SkipBackIcon className="h-4 w-4" />
+          </TransportButton>
+          {/* Play/Pause: Toggle playback (Space/K key) */}
+          <TransportButton onClick={togglePlay} title="Play/Pause (Space/K)">
+            {isPlaying ? (
+              <PauseIcon className="h-5 w-5" />
+            ) : (
+              <PlayIcon className="h-5 w-5" />
+            )}
+          </TransportButton>
+          {/* Skip Forward: Jump forward 5 seconds (L key) */}
+          <TransportButton onClick={() => jump(5)} title="Forward 5s (L)">
+            <SkipForwardIcon className="h-4 w-4" />
+          </TransportButton>
+          {/* Time Display: Shows current time / total duration */}
+          <span className="ml-2 text-[11px] text-white/90 bg-black/40 rounded px-1 py-0.5">
+            {fmtTime(current)} / {fmtTime(durationSec)}
+          </span>
+        </div>
+
+        {/* Right side utility controls */}
+        <div className="flex items-center gap-2">
+          {/* Repeat/Loop Toggle: Toggle A/B loop mode (\ key) */}
+          <TransportButton
+            onClick={() => setLoopAB((v) => !v)}
+            title="Toggle A/B Loop (\\)"
+            selected={loopAB}
+          >
+            <RepeatIcon className="h-4 w-4" />
+          </TransportButton>
+
+          {/* Help: Open keyboard shortcuts help menu */}
+          <TransportButton
+            onClick={() => setShowSettings(true)}
+            title="Keyboard Shortcuts"
+          >
+            <KeyboardIcon className="h-4 w-4" />
+          </TransportButton>
+
+          {/* Captions Toggle: Show/hide lyrics/captions overlay (C key) */}
+          <div className="group relative">
+            <TransportButton
+              onClick={() => setShowLyrics((v) => !v)}
+              selected={showLyrics}
+            >
+              <CaptionsIcon className="h-4 w-4" />
+            </TransportButton>
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-10 w-48">
+              <div className="bg-black/90 text-white text-xs rounded-lg px-3 py-2 shadow-lg border border-white/10">
+                <p className="text-white/80">Show lyrics (C)</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Playback Speed Control: Adjust playback rate ([-] slower, []] faster) */}
+          <div className="flex items-center gap-1 bg-white/5 rounded-lg px-2 py-0.5 border border-white/5">
+            <button
+              className="text-[11px] text-white/90 hover:text-white transition-colors"
+              onClick={() => setPlaybackRate((r) => clampValue(r - 0.25, 0.25, 2))}
+              title="Slower ([)"
+            >
+              –
+            </button>
+            <span className="text-[11px] text-white/90 w-12 text-center font-medium flex flex-col items-center">
+              <span>{playbackRate.toFixed(2)}x</span>
+              <span className="flex items-center gap-0.5">
+                <span
+                  className="inline-block"
+                  style={{
+                    filter: 'hue-rotate(240deg) saturate(0.7) brightness(0.9)',
+                  }}
+                >
+                  🐌
+                </span>
+                <span
+                  className="inline-block"
+                  style={{
+                    filter: 'hue-rotate(240deg) saturate(0.7) brightness(0.9)',
+                  }}
+                >
+                  ⚡
+                </span>
+              </span>
+            </span>
+            <button
+              className="text-[11px] text-white/90 hover:text-white transition-colors"
+              onClick={() => setPlaybackRate((r) => clampValue(r + 0.25, 0.25, 2))}
+              title="Faster (])"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Volume/Mute Toggle: Mute or unmute audio (M key) */}
+          <TransportButton
+            onClick={() => setMuted((m) => !m)}
+            title={muted ? 'Unmute (M)' : 'Mute (M)'}
+          >
+            {muted || volume === 0 ? (
+              <VolumeOffIcon className="h-4 w-4" />
+            ) : (
+              <VolumeOnIcon className="h-4 w-4" />
+            )}
+          </TransportButton>
+
+          {/* Video Zoom Controls: Zoom in, zoom out, and fit to screen */}
+          <div className="flex items-center gap-0 bg-black/40 rounded border border-white/10 px-0.5">
+            <button
+              onClick={() => setVideoZoom((z) => clampValue(z - 0.25, 0.5, 2))}
+              title="Zoom Out"
+              className="pointer-events-auto vc-icon-btn p-1"
+            >
+              <ZoomOutIcon className="h-3 w-3" />
+            </button>
+            <button
+              onClick={() => setVideoZoom(1)}
+              title="Fit to Screen"
+              className="pointer-events-auto vc-icon-btn p-1"
+            >
+              <FitIcon className="h-3 w-3" />
+            </button>
+            <button
+              onClick={() => setVideoZoom((z) => clampValue(z + 0.25, 0.5, 2))}
+              title="Zoom In"
+              className="pointer-events-auto vc-icon-btn p-1"
+            >
+              <ZoomInIcon className="h-3 w-3" />
+            </button>
+          </div>
+
+          {/* Picture-in-Picture: Enter/exit PiP mode (only shown if browser supports it) */}
+          {pipSupported && Boolean(videoUrl) && (
+            <TransportButton
+              onClick={async () => {
+                const element = videoRef.current
+                if (!element) return
+                if (document.pictureInPictureElement) {
+                  await (
+                    document as { exitPictureInPicture?: () => Promise<void> }
+                  ).exitPictureInPicture?.()
+                } else {
+                  await (element as HTMLVideoElement).requestPictureInPicture?.()
+                }
+              }}
+              title="Picture-in-picture"
+            >
+              <PictureInPictureIcon className="h-4 w-4" />
+            </TransportButton>
+          )}
+
+          {/* Download: Download the video file */}
+          <TransportButton onClick={onDownload} title="Download">
+            <DownloadIcon className="h-4 w-4" />
+          </TransportButton>
+
+          {/* Fullscreen: Toggle fullscreen mode */}
+          <TransportButton
+            onClick={async () => {
+              const element = videoRef.current?.parentElement?.parentElement
+              if (!element) return
+              try {
+                if (!document.fullscreenElement) {
+                  await element.requestFullscreen()
+                } else {
+                  await document.exitFullscreen()
+                }
+              } catch (err) {
+                console.error('Fullscreen error:', err)
+              }
+            }}
+            title="Fullscreen"
+          >
+            <FullscreenIcon className="h-4 w-4" />
+          </TransportButton>
+        </div>
       </div>
 
       {/* Timeline/Waveform Section: Interactive timeline for seeking and viewing clips */}
@@ -911,34 +1091,64 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         </div>
 
         {/* A/B Loop Controls: Set loop points and toggle looping between A and B markers */}
-        <div className="mt-2 flex items-center gap-2">
-          <span className="vc-badge">A/B Loop</span>
+        <div className="mt-1.5 pt-1 flex items-center gap-1.5">
+          <span className="text-[11px] text-vc-text-secondary font-medium ml-3">
+            A/B Loop (optional)
+          </span>
+          <div className="group relative">
+            <InfoIcon className="h-3 w-3 text-vc-text-muted hover:text-vc-text-secondary cursor-help" />
+            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover:block z-10 w-64">
+              <div className="bg-black/90 text-white text-xs rounded-lg px-3 py-2 shadow-lg border border-white/10">
+                <p className="font-medium mb-1">Work-in-progress video editing</p>
+                <p className="text-white/80">
+                  Set A (start point), Set B (end point), then toggle loop to repeat that
+                  section.
+                </p>
+              </div>
+            </div>
+          </div>
           {/* Set A: Mark current position as loop start point (A key) */}
           <button
-            className="vc-btn-secondary vc-btn-sm"
+            className="vc-btn-secondary vc-btn-sm py-1 px-2 text-xs"
             onClick={() => setAMark(current)}
             title="Set A (a)"
           >
-            <ScissorsIcon className="mr-1 h-3.5 w-3.5" /> Set A
+            <ScissorsIcon className="mr-1 h-3 w-3" /> Set A
           </button>
           {/* Set B: Mark current position as loop end point (B key) */}
           <button
-            className="vc-btn-secondary vc-btn-sm"
+            className="vc-btn-secondary vc-btn-sm py-1 px-2 text-xs"
             onClick={() => setBMark(current)}
             title="Set B (b)"
           >
-            <ScissorsIcon className="mr-1 h-3.5 w-3.5" /> Set B
+            <ScissorsIcon className="mr-1 h-3 w-3" /> Set B
           </button>
           {/* Loop Toggle: Enable/disable looping between A and B markers (\ key) */}
           <button
-            className={clsx('vc-btn-sm', loopAB ? 'vc-btn-primary' : 'vc-btn-secondary')}
+            className={clsx(
+              'vc-btn-sm py-1 px-2 text-xs',
+              loopAB ? 'vc-btn-primary' : 'vc-btn-secondary',
+            )}
             onClick={() => setLoopAB((v) => !v)}
           >
             {loopAB ? 'Loop A↔B On' : 'Loop A↔B Off'}
           </button>
+          {/* Clear: Clear both A and B markers (only shown when loop is off and at least one marker is set) */}
+          {!loopAB && (aMark != null || bMark != null) && (
+            <button
+              className="vc-btn-secondary vc-btn-sm py-1 px-2 text-xs"
+              onClick={() => {
+                setAMark(null)
+                setBMark(null)
+              }}
+              title="Clear A and B markers"
+            >
+              <ClearIcon className="mr-1 h-3 w-3" /> Clear
+            </button>
+          )}
           {/* A/B Time Display: Shows the time positions of A and B markers */}
           {(aMark != null || bMark != null) && (
-            <span className="ml-2 text-[11px] text-vc-text-muted">
+            <span className="ml-1.5 text-[10px] text-vc-text-muted">
               A: {aMark != null ? fmtTime(aMark) : '--:--'} • B:{' '}
               {bMark != null ? fmtTime(bMark) : '--:--'}
             </span>

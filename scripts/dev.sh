@@ -185,11 +185,16 @@ if [ -n "${BEAT_EFFECT_TEST_MODE:-}" ]; then
     export BEAT_EFFECT_TEST_MODE="${BEAT_EFFECT_TEST_MODE}"
     echo -e "${YELLOW}⚠ Beat effect test mode enabled (exaggerated effects)${NC}"
 fi
+# Preserve SAVE_NO_EFFECTS_VIDEO if set (for comparison video saving)
+if [ -n "${SAVE_NO_EFFECTS_VIDEO:-}" ]; then
+    export SAVE_NO_EFFECTS_VIDEO="${SAVE_NO_EFFECTS_VIDEO}"
+    echo -e "${YELLOW}⚠ Saving no-effects comparison videos enabled${NC}"
+fi
 # Start multiple worker processes for parallel job processing
 WORKER_PIDS=()
 for i in $(seq 1 ${NUM_WORKERS}); do
     # Use env to explicitly pass environment variables to nohup (ensures they're preserved)
-    nohup env BEAT_EFFECT_TEST_MODE="${BEAT_EFFECT_TEST_MODE:-}" OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES rq worker ai_music_video > "${WORKER_LOG}.${i}" 2>&1 &
+    nohup env BEAT_EFFECT_TEST_MODE="${BEAT_EFFECT_TEST_MODE:-}" SAVE_NO_EFFECTS_VIDEO="${SAVE_NO_EFFECTS_VIDEO:-}" OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES rq worker ai_music_video > "${WORKER_LOG}.${i}" 2>&1 &
     WORKER_PIDS+=($!)
     echo -e "${BLUE}  Worker ${i} started (PID: $!)${NC}"
 done

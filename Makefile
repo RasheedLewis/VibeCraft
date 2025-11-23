@@ -1,10 +1,10 @@
-.PHONY: help lint lint-fix format format-fix lint-all build test dev start stop clean migrate mock-backend
+.PHONY: help lint lint-fix format format-fix lint-all build test start start-dev stop clean migrate mock-backend
 
 help:
 	@echo "VibeCraft Development Commands"
 	@echo ""
-	@echo "  make dev          - Start all services (backend, worker, frontend)"
-	@echo "  make start        - Alias for 'make dev'"
+	@echo "  make start        - Start all services (backend, worker, frontend)"
+	@echo "  make start-dev    - Start with test mode + save no-effects video (for testing)"
 	@echo "  make migrate      - Run database migrations"
 	@echo "  make lint         - Run all linters"
 	@echo "  make lint-fix     - Auto-fix linting issues"
@@ -17,10 +17,12 @@ help:
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make mock-backend - Start mock backend server for frontend testing"
 
-dev:
+start:
 	@bash scripts/dev.sh
 
-start: dev
+start-dev:
+	@echo "Starting services with test mode and comparison video saving..."
+	@BEAT_EFFECT_TEST_MODE=true SAVE_NO_EFFECTS_VIDEO=true bash scripts/dev.sh
 
 migrate:
 	@echo "Running database migrations..."

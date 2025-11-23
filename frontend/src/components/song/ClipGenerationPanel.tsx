@@ -20,11 +20,11 @@ interface ClipGenerationPanelProps {
   clipJobError: string | null
   isComposing: boolean
   composeJobProgress: number
-  onCancel: () => void
-  onCompose: () => void
+  onCancel?: () => void
+  onCompose?: () => void
   onPreviewClip: (clip: SongClipStatus) => void
-  onRegenerateClip: (clip: SongClipStatus) => void
-  onRetryClip: (clip: SongClipStatus) => void
+  onRegenerateClip?: (clip: SongClipStatus) => void
+  onRetryClip?: (clip: SongClipStatus) => void
   onRegenerateClips?: () => void
 }
 
@@ -297,7 +297,7 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={onCancel}
-                  disabled={cancelDisabled}
+                  disabled={cancelDisabled || !onCancel}
                 >
                   Cancel
                 </VCButton>
@@ -305,7 +305,7 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
                   variant="primary"
                   size="sm"
                   iconRight={<ArrowRightIcon />}
-                  disabled={composeDisabled}
+                  disabled={composeDisabled || !onCompose}
                   onClick={onCompose}
                 >
                   {composeButtonLabel}
@@ -412,7 +412,8 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
                         <VCButton
                           variant="secondary"
                           size="sm"
-                          onClick={() => onRetryClip(clip)}
+                          onClick={() => onRetryClip?.(clip)}
+                          disabled={!onRetryClip}
                         >
                           Retry
                         </VCButton>
@@ -431,7 +432,10 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
 
       {/* Completed Clips section - always show */}
       <div className="space-y-2">
-        <div className="vc-label">Completed clips</div>
+        <div className="flex items-baseline gap-3">
+          <div className="vc-label">Completed clips</div>
+          <span className="text-xs text-vc-text-muted">Clip URLs expire in 1 hour</span>
+        </div>
         {clipSummary.completedClips === 0 ? (
           <VCCard className="border-dashed border-vc-border/30 bg-[rgba(12,12,18,0.65)] p-6 text-center text-xs text-vc-text-muted">
             Completed clips will appear here once generation finishes.

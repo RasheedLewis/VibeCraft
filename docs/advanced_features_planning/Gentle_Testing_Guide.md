@@ -340,29 +340,6 @@ energetic/driving) based on BPM.
 
 ---
 
-## 📏 Feature 10: File Size Validation (2 minutes)
-
-**What was added:** Maximum file size validation for audio uploads.
-
-### Testing File Size Validation
-
-**Steps:**
-
-1. **Try to upload a very large file** (>50MB or configured limit)
-2. **Verify error message:**
-   - Should show "Audio file size exceeds maximum of X MB"
-   - Upload should be rejected
-3. **Upload a normal-sized file:**
-   - Should work normally
-
-**What to verify:**
-
-- [ ] Large files are rejected with clear error message
-- [ ] Normal-sized files upload successfully
-- [ ] Error message shows the size limit
-
----
-
 ## ⚡ Feature 11: Increased Concurrency (5 minutes)
 
 **What was added:** Increased clip generation concurrency from 2 to 4.

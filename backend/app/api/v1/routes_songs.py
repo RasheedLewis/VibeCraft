@@ -146,13 +146,28 @@ async def upload_song(
     sanitized_filename = _sanitize_filename(file.filename)
     suffix = Path(sanitized_filename).suffix or ".mp3"
 
+    # Check file size from Content-Length header first (if available)
+    # This allows us to reject large files before reading them into memory
+    content_length = None
+    if hasattr(file, 'headers') and 'content-length' in file.headers:
+        try:
+            content_length = int(file.headers['content-length'])
+            if content_length > MAX_AUDIO_FILE_SIZE_BYTES:
+                file_size_mb = content_length / (1024 * 1024)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Audio file size ({file_size_mb:.1f}MB) exceeds maximum ({MAX_AUDIO_FILE_SIZE_MB}MB).",
+                )
+        except (ValueError, KeyError):
+            pass  # If Content-Length is invalid, continue to read file
+
     contents = await file.read()
     if not contents:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty"
         )
     
-    # Check file size
+    # Check file size after reading (in case Content-Length wasn't available)
     file_size_mb = len(contents) / (1024 * 1024)
     if len(contents) > MAX_AUDIO_FILE_SIZE_BYTES:
         raise HTTPException(

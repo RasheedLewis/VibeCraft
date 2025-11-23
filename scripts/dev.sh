@@ -171,7 +171,13 @@ cd backend
 # Disable Objective-C fork safety checks to prevent crashes in forked processes (macOS issue)
 # This is needed when RQ workers fork and try to connect to PostgreSQL
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
-nohup rq worker ai_music_video > "${WORKER_LOG}" 2>&1 &
+# Preserve BEAT_EFFECT_TEST_MODE if set (for exaggerated beat effects testing)
+if [ -n "${BEAT_EFFECT_TEST_MODE:-}" ]; then
+    export BEAT_EFFECT_TEST_MODE="${BEAT_EFFECT_TEST_MODE}"
+    echo -e "${YELLOW}⚠ Beat effect test mode enabled (exaggerated effects)${NC}"
+fi
+# Use env to explicitly pass environment variables to nohup (ensures they're preserved)
+nohup env BEAT_EFFECT_TEST_MODE="${BEAT_EFFECT_TEST_MODE:-}" OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES rq worker ai_music_video > "${WORKER_LOG}" 2>&1 &
 WORKER_PID=$!
 cd ..
 

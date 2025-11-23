@@ -103,15 +103,15 @@ This checklist helps you systematically test all features implemented in this br
 **Location:** Backend `/api/v1/songs/upload`, `MAX_AUDIO_FILE_SIZE_MB = 100`
 
 ### Test Normal File
-- [ ] Upload a normal-sized audio file (< 100MB)
-- [ ] **Expected:** Upload succeeds
+- [x] Upload a normal-sized audio file (< 100MB)
+- [x] **Expected:** Upload succeeds
 
 ### Test Large File
-- [ ] Try to upload a file > 100MB (or create a dummy large file)
-- [ ] **Expected:** Error message: "Audio file size (X.XMB) exceeds maximum (100MB)"
-- [ ] **Expected:** Upload is rejected
+- [x] Try to upload a file > 100MB (or create a dummy large file)
+- [x] **Expected:** Error message: "Audio file size (X.XMB) exceeds maximum (100MB)"
+- [x] **Expected:** Upload is rejected
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -137,7 +137,7 @@ This checklist helps you systematically test all features implemented in this br
   - Model used
   - Pretty JSON formatting
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -164,7 +164,7 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] Check prompt logs
 - [ ] **Expected:** Prompts include "energetic, driving" motion descriptors
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -181,7 +181,7 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] Watch generated clips
 - [ ] **Expected:** Character shows more dancing motion (more active/dynamic)
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -206,7 +206,7 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] Check backend logs for: `[VIDEO-GEN] Using reference image: <url>`
 - [ ] **Expected:** Both image AND text prompt are used together
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -221,7 +221,7 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] **Expected:** Up to 4 clips can be processing at once
 - [ ] **Expected:** Overall generation time is reduced compared to 2 concurrent
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -251,7 +251,7 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] Brightness Pulse: Overall brightness increase on beats
 - [ ] Glitch Effect: Digital glitch with RGB channel shift on beats
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -269,7 +269,7 @@ This checklist helps you systematically test all features implemented in this br
 
 **Note:** Cost is stored but not displayed in UI yet (backend only).
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -294,7 +294,7 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] Make many requests to `/api/v1/health/healthz`
 - [ ] **Expected:** Health check should NOT be rate limited (always returns 200)
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -317,7 +317,7 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] Check `rapid_iteration.log` file
 - [ ] **Expected:** Full prompts are logged for each iteration
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -345,7 +345,7 @@ This checklist helps you systematically test all features implemented in this br
     - [ ] State should persist
     - [ ] Can continue where you left off
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 

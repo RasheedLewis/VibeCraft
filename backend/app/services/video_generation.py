@@ -3,6 +3,7 @@
 import logging
 import time
 from typing import Optional
+from uuid import UUID
 
 import replicate
 
@@ -27,6 +28,8 @@ def _generate_image_to_video(
     fps: Optional[int] = None,
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
+    song_id: Optional[UUID] = None,  # For prompt logging
+    clip_id: Optional[UUID] = None,  # For prompt logging
 ) -> tuple[bool, Optional[str], Optional[dict]]:
     """
     Generate video from image using image-to-video model.
@@ -97,6 +100,15 @@ def _generate_image_to_video(
         # Log FULL prompt for rapid iteration and debugging
         logger.info(f"[VIDEO-GEN] FULL PROMPT (optimized): {optimized_prompt}")
         logger.info(f"[VIDEO-GEN] FULL PROMPT (original): {scene_spec.prompt}")
+        
+        # Log optimized prompt to prompts.log file for collection
+        from app.services.prompt_logger import log_prompt_to_file
+        log_prompt_to_file(
+            prompt=optimized_prompt,
+            song_id=song_id,
+            clip_id=clip_id,
+            optimized=True,
+        )
 
         # Get model version
         model = client.models.get(IMAGE_TO_VIDEO_MODEL)
@@ -196,6 +208,8 @@ def generate_section_video(
     reference_image_urls: Optional[list[str]] = None,
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
+    song_id: Optional[UUID] = None,  # For prompt logging
+    clip_id: Optional[UUID] = None,  # For prompt logging
 ) -> tuple[bool, Optional[str], Optional[dict]]:
     """
     Generate a video from a scene specification using Replicate.
@@ -253,6 +267,8 @@ def generate_section_video(
                     fps=fps,
                     max_poll_attempts=max_poll_attempts,
                     poll_interval_sec=poll_interval_sec,
+                    song_id=song_id,  # Pass song_id for prompt logging
+                    clip_id=clip_id,  # Pass clip_id for prompt logging
                 )
             except Exception as e:
                 logger.warning(f"Image-to-video generation failed, falling back to text-to-video: {e}")
@@ -308,6 +324,15 @@ def generate_section_video(
         # Log FULL prompt for rapid iteration and debugging
         logger.info(f"[VIDEO-GEN] FULL PROMPT (optimized): {optimized_prompt}")
         logger.info(f"[VIDEO-GEN] FULL PROMPT (original): {scene_spec.prompt}")
+        
+        # Log optimized prompt to prompts.log file for collection
+        from app.services.prompt_logger import log_prompt_to_file
+        log_prompt_to_file(
+            prompt=optimized_prompt,
+            song_id=song_id,
+            clip_id=clip_id,
+            optimized=True,
+        )
 
         # Start the prediction (async - use predictions.create for long-running jobs)
         # Get the model version first

@@ -13,7 +13,12 @@ import type {
 } from '../types/song'
 
 // Constants
-import { ACCEPTED_MIME_TYPES, MAX_DURATION_SECONDS } from '../constants/upload'
+import {
+  ACCEPTED_MIME_TYPES,
+  MAX_DURATION_SECONDS,
+  MAX_AUDIO_FILE_SIZE_MB,
+  MAX_AUDIO_FILE_SIZE_BYTES,
+} from '../constants/upload'
 
 // Utilities
 import { extractErrorMessage } from '../utils/validation'
@@ -712,6 +717,16 @@ export const UploadPage: React.FC = () => {
       ) {
         setStage('error')
         setError('Unsupported audio format. Try MP3, WAV, M4A, FLAC, or OGG.')
+        return
+      }
+
+      // Check file size before uploading
+      if (file.size > MAX_AUDIO_FILE_SIZE_BYTES) {
+        const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1)
+        setStage('error')
+        setError(
+          `Audio file size (${fileSizeMB}MB) exceeds maximum (${MAX_AUDIO_FILE_SIZE_MB}MB).`,
+        )
         return
       }
 

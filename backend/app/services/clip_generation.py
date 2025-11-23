@@ -266,6 +266,8 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
         fps=clip_fps,
         reference_image_url=character_image_url,  # Fallback single image
         reference_image_urls=character_image_urls if len(character_image_urls) > 0 else None,  # Try multiple
+        song_id=song_id,  # Pass song_id for prompt logging
+        clip_id=clip_id,  # Pass clip_id for prompt logging
     )
     metadata = metadata or {}
     

@@ -34,6 +34,8 @@ class Song(SQLModel, table=True):
     selected_start_sec: Optional[float] = Field(default=None, ge=0)
     selected_end_sec: Optional[float] = Field(default=None, ge=0)
     video_type: Optional[str] = Field(default=None, max_length=32)
+    # Visual style template: abstract, environment, character, minimal
+    template: Optional[str] = Field(default=None, max_length=32)
     character_reference_image_s3_key: Optional[str] = Field(default=None, max_length=1024)
     character_pose_b_s3_key: Optional[str] = Field(default=None, max_length=1024)
     character_consistency_enabled: bool = Field(default=False)

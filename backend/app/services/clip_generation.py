@@ -16,7 +16,18 @@ from sqlmodel import select
 from app.core.config import get_settings
 from app.core.constants import DEFAULT_MAX_CONCURRENCY, QUEUE_TIMEOUT_SEC
 from app.core.database import session_scope
+from app.core.logging import configure_logging
 from app.core.queue import get_queue
+
+# Ensure logging is configured for RQ workers
+# This is needed because RQ workers don't automatically call configure_logging()
+# Without this, logger.info() calls may be filtered out (root logger defaults to WARNING)
+try:
+    settings = get_settings()
+    configure_logging(settings.api_log_level)
+except Exception:
+    # Fallback to default if settings can't be loaded
+    configure_logging("info")
 from app.exceptions import (
     ClipGenerationError,
     ClipNotFoundError,

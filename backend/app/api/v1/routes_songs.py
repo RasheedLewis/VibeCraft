@@ -18,7 +18,8 @@ from app.core.auth import get_current_user
 from app.core.config import get_settings
 from app.models.analysis import AnalysisJob, ClipGenerationJob, SongAnalysisRecord
 from app.models.clip import SongClip
-from app.models.composition import CompositionJob
+from app.models.composition import CompositionJob, ComposedVideo
+from app.models.section_video import SectionVideo
 from app.models.song import Song
 from app.models.user import User
 from app.schemas.analysis import (
@@ -361,43 +362,90 @@ def delete_song(
     song = get_song_or_404(song_id, db)
     verify_song_ownership(song, current_user)
     
-    # Delete all related records
-    # Delete clips
-    clips = db.exec(select(SongClip).where(SongClip.song_id == song_id)).all()
-    for clip in clips:
-        db.delete(clip)
-    
-    # Delete analysis record
-    analysis_record = db.exec(
-        select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
-    ).first()
-    if analysis_record:
-        db.delete(analysis_record)
-    
-    # Delete analysis jobs
-    analysis_jobs = db.exec(
-        select(AnalysisJob).where(AnalysisJob.song_id == song_id)
-    ).all()
-    for job in analysis_jobs:
-        db.delete(job)
-    
-    # Delete clip generation jobs
-    clip_jobs = db.exec(
-        select(ClipGenerationJob).where(ClipGenerationJob.song_id == song_id)
-    ).all()
-    for job in clip_jobs:
-        db.delete(job)
-    
-    # Delete composition jobs
-    composition_jobs = db.exec(
-        select(CompositionJob).where(CompositionJob.song_id == song_id)
-    ).all()
-    for job in composition_jobs:
-        db.delete(job)
-    
-    # Delete the song itself
-    db.delete(song)
-    db.commit()
+    try:
+        # Delete all related records
+        # Delete clips
+        clips = db.exec(select(SongClip).where(SongClip.song_id == song_id)).all()
+        for clip in clips:
+            db.delete(clip)
+        
+        # Get analysis record first (before deleting jobs that reference it)
+        analysis_record = db.exec(
+            select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
+        ).first()
+        
+        # Delete analysis jobs that reference the analysis record by analysis_id
+        # (must be deleted before the analysis record due to FK constraint)
+        if analysis_record:
+            analysis_jobs_by_analysis_id = db.exec(
+                select(AnalysisJob).where(AnalysisJob.analysis_id == analysis_record.id)
+            ).all()
+            for job in analysis_jobs_by_analysis_id:
+                db.delete(job)
+        
+        # Delete analysis jobs by song_id (any remaining ones)
+        analysis_jobs = db.exec(
+            select(AnalysisJob).where(AnalysisJob.song_id == song_id)
+        ).all()
+        for job in analysis_jobs:
+            db.delete(job)
+        
+        # Now delete the analysis record (after all jobs referencing it are deleted)
+        if analysis_record:
+            db.delete(analysis_record)
+        
+        # Delete clip generation jobs
+        clip_jobs = db.exec(
+            select(ClipGenerationJob).where(ClipGenerationJob.song_id == song_id)
+        ).all()
+        for job in clip_jobs:
+            db.delete(job)
+        
+        # Delete composed videos first (get IDs before deletion)
+        composed_videos = db.exec(
+            select(ComposedVideo).where(ComposedVideo.song_id == song_id)
+        ).all()
+        composed_video_ids = [video.id for video in composed_videos]
+        
+        # Delete composition jobs that reference these composed videos
+        # (must be deleted before composed videos due to FK constraint)
+        if composed_video_ids:
+            composition_jobs_with_video = db.exec(
+                select(CompositionJob).where(
+                    CompositionJob.composed_video_id.in_(composed_video_ids)  # type: ignore
+                )
+            ).all()
+            for job in composition_jobs_with_video:
+                db.delete(job)
+        
+        # Delete composition jobs by song_id (any remaining ones)
+        composition_jobs = db.exec(
+            select(CompositionJob).where(CompositionJob.song_id == song_id)
+        ).all()
+        for job in composition_jobs:
+            db.delete(job)
+        
+        # Now delete composed videos (after all jobs referencing them are deleted)
+        for video in composed_videos:
+            db.delete(video)
+        
+        # Delete section videos
+        section_videos = db.exec(
+            select(SectionVideo).where(SectionVideo.song_id == song_id)
+        ).all()
+        for video in section_videos:
+            db.delete(video)
+        
+        # Delete the song itself
+        db.delete(song)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to delete song {song_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete song: {str(e)}",
+        ) from e
 
 
 @router.patch(

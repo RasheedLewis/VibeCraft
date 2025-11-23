@@ -28,8 +28,13 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
   }
 
   const handleLogin = () => {
-    onClose()
+    // Open auth modal first, then close projects modal after a brief delay
+    // This prevents the visual "blink" where both modals are closed briefly
     onOpenAuth()
+    // Use setTimeout to ensure AuthModal renders before ProjectsModal closes
+    setTimeout(() => {
+      onClose()
+    }, 50)
   }
 
   const handleDelete = async (songId: string, e: React.MouseEvent) => {

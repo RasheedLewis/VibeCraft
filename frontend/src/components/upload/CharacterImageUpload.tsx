@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import clsx from 'clsx'
 import { apiClient } from '../../lib/apiClient'
 
@@ -13,6 +13,24 @@ export interface CharacterImageUploadProps {
 const MAX_FILE_SIZE_MB = 10
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
+// Info icon component
+const InfoIcon = ({ className, ...props }: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="16" x2="12" y2="12" />
+    <line x1="12" y1="8" x2="12.01" y2="8" />
+  </svg>
+)
+
 export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
   songId,
   onUploadSuccess,
@@ -21,10 +39,36 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
   className,
 }) => {
   const [uploading, setUploading] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [uploadingPoseB, setUploadingPoseB] = useState(false)
+  const [poseAUrl, setPoseAUrl] = useState<string | null>(null)
+  const [poseBUrl, setPoseBUrl] = useState<string | null>(null)
+  const [selectedPose, setSelectedPose] = useState<'A' | 'B'>('A')
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const poseBInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isDraggingPoseB, setIsDraggingPoseB] = useState(false)
+
+  // Load existing images on mount
+  useEffect(() => {
+    const loadImages = async () => {
+      try {
+        const response = await apiClient.get(`/songs/${songId}/character-image/url`)
+        if (response.data.pose_a_url) {
+          setPoseAUrl(response.data.pose_a_url)
+        }
+        if (response.data.pose_b_url) {
+          setPoseBUrl(response.data.pose_b_url)
+        }
+      } catch {
+        // Silently fail - images may not exist yet
+        console.debug('No existing character images found')
+      }
+    }
+    if (songId) {
+      loadImages()
+    }
+  }, [songId])
 
   const validateFile = (file: File): string | null => {
     if (!ALLOWED_TYPES.includes(file.type)) {
@@ -37,7 +81,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
   }
 
   const handleFile = useCallback(
-    async (file: File) => {
+    async (file: File, isPoseB: boolean = false) => {
       const validationError = validateFile(file)
       if (validationError) {
         setError(validationError)
@@ -46,14 +90,11 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
       }
 
       setError(null)
-      setUploading(true)
-
-      // Create preview
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setPreviewUrl(e.target?.result as string)
+      if (isPoseB) {
+        setUploadingPoseB(true)
+      } else {
+        setUploading(true)
       }
-      reader.readAsDataURL(file)
 
       // Upload to backend
       const formData = new FormData()
@@ -61,7 +102,7 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
 
       try {
         const response = await apiClient.post(
-          `/songs/${songId}/character-image`,
+          `/songs/${songId}/character-image?pose=${isPoseB ? 'B' : 'A'}`,
           formData,
           {
             headers: {
@@ -71,7 +112,12 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
         )
 
         const data = response.data
-        onUploadSuccess?.(data.image_url)
+        if (isPoseB) {
+          setPoseBUrl(data.image_url)
+        } else {
+          setPoseAUrl(data.image_url)
+          onUploadSuccess?.(data.image_url)
+        }
         setError(null)
       } catch (err: unknown) {
         const errorMessage =
@@ -82,53 +128,81 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
         setError(errorMessage)
         onUploadError?.(errorMessage)
       } finally {
-        setUploading(false)
+        if (isPoseB) {
+          setUploadingPoseB(false)
+        } else {
+          setUploading(false)
+        }
       }
     },
     [songId, onUploadSuccess, onUploadError],
   )
 
   const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>, isPoseB: boolean = false) => {
       const file = e.target.files?.[0]
       if (file) {
-        handleFile(file)
+        handleFile(file, isPoseB)
       }
     },
     [handleFile],
   )
 
   const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
+    (e: React.DragEvent<HTMLDivElement>, isPoseB: boolean = false) => {
       e.preventDefault()
-      setIsDragging(false)
+      if (isPoseB) {
+        setIsDraggingPoseB(false)
+      } else {
+        setIsDragging(false)
+      }
 
       const file = e.dataTransfer.files[0]
       if (file) {
-        handleFile(file)
+        handleFile(file, isPoseB)
       }
     },
     [handleFile],
   )
 
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    setIsDragging(true)
+  const handleDragOver = useCallback(
+    (e: React.DragEvent<HTMLDivElement>, isPoseB: boolean = false) => {
+      e.preventDefault()
+      if (isPoseB) {
+        setIsDraggingPoseB(true)
+      } else {
+        setIsDragging(true)
+      }
+    },
+    [],
+  )
+
+  const handleDragLeave = useCallback(
+    (e: React.DragEvent<HTMLDivElement>, isPoseB: boolean = false) => {
+      e.preventDefault()
+      if (isPoseB) {
+        setIsDraggingPoseB(false)
+      } else {
+        setIsDragging(false)
+      }
+    },
+    [],
+  )
+
+  const handleClick = useCallback((isPoseB: boolean = false) => {
+    if (isPoseB) {
+      poseBInputRef.current?.click()
+    } else {
+      fileInputRef.current?.click()
+    }
   }, [])
 
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    setIsDragging(false)
-  }, [])
-
-  const handleClick = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [])
+  const imageSize = 'w-32 h-32' // Fixed size for both images
 
   return (
     <div className={clsx('character-image-upload', className)}>
       <div className="flex gap-3">
-        {/* Upload button */}
+        {/* Upload area for Pose A */}
         <div className="flex-1">
           <div
             className={clsx(
@@ -140,25 +214,36 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
               uploading && 'pointer-events-none opacity-60',
               error && 'border-red-500/50',
             )}
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onClick={handleClick}
+            onDrop={(e) => handleDrop(e, false)}
+            onDragOver={(e) => handleDragOver(e, false)}
+            onDragLeave={(e) => handleDragLeave(e, false)}
+            onClick={() => handleClick(false)}
           >
             <input
               ref={fileInputRef}
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              onChange={handleFileSelect}
+              onChange={(e) => handleFileSelect(e, false)}
               className="hidden"
             />
 
-            {previewUrl ? (
-              <div className="flex items-center justify-center p-4">
+            {poseAUrl ? (
+              <div
+                className={clsx(
+                  'flex items-center justify-center rounded-xl overflow-hidden p-1',
+                  imageSize,
+                  selectedPose === 'A' &&
+                    'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10',
+                )}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSelectedPose('A')
+                }}
+              >
                 <img
-                  src={previewUrl}
-                  alt="Character preview"
-                  className="max-h-16 max-w-full rounded object-contain"
+                  src={poseAUrl}
+                  alt="Pose A"
+                  className="w-full h-full object-cover rounded-[5px]"
                 />
               </div>
             ) : (
@@ -189,12 +274,104 @@ export const CharacterImageUpload: React.FC<CharacterImageUploadProps> = ({
               </div>
             )}
           </div>
+          {poseAUrl && (
+            <p className="mt-1 text-xs text-center text-vc-text-secondary">Pose A</p>
+          )}
         </div>
+
+        {/* Pose B placeholder (only shown if Pose A exists) */}
+        {poseAUrl && (
+          <>
+            <div className="flex flex-col items-center">
+              <div
+                className={clsx(
+                  'relative rounded-lg border-2 border-dashed transition-all duration-300 cursor-pointer',
+                  imageSize,
+                  isDraggingPoseB
+                    ? 'border-vc-accent-primary/90 shadow-vc3 bg-vc-accent-primary/10'
+                    : 'border-vc-border/40 hover:border-vc-border/60',
+                  'bg-[rgba(20,20,32,0.4)]/40',
+                  uploadingPoseB && 'pointer-events-none opacity-60',
+                  poseBUrl &&
+                    selectedPose === 'B' &&
+                    'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10',
+                )}
+                onDrop={(e) => handleDrop(e, true)}
+                onDragOver={(e) => handleDragOver(e, true)}
+                onDragLeave={(e) => handleDragLeave(e, true)}
+                onClick={() => {
+                  if (poseBUrl) {
+                    setSelectedPose('B')
+                  } else {
+                    handleClick(true)
+                  }
+                }}
+              >
+                <input
+                  ref={poseBInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(e) => handleFileSelect(e, true)}
+                  className="hidden"
+                />
+
+                {poseBUrl ? (
+                  <div
+                    className={clsx(
+                      'rounded-xl overflow-hidden p-1',
+                      imageSize,
+                      selectedPose === 'B' &&
+                        'ring-2 ring-vc-accent-primary/80 bg-vc-accent-primary/10',
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedPose('B')
+                    }}
+                  >
+                    <img
+                      src={poseBUrl}
+                      alt="Pose B"
+                      className="w-full h-full object-cover rounded-[5px]"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <span className="text-2xl text-vc-text-muted/50">?</span>
+                  </div>
+                )}
+
+                {uploadingPoseB && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm rounded-lg">
+                    <div className="text-center">
+                      <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-vc-accent-primary border-r-transparent"></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {poseBUrl && (
+                <p className="mt-1 text-xs text-center text-vc-text-secondary">Pose B</p>
+              )}
+            </div>
+
+            {/* Tooltip button for Pose B */}
+            <div className="group relative flex items-center">
+              <InfoIcon className="h-3 w-3 text-vc-text-muted hover:text-vc-text-secondary cursor-help" />
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover:block z-10 w-64">
+                <div className="bg-black/90 text-white text-xs rounded-lg px-3 py-2 shadow-lg border border-white/10">
+                  <p className="text-white/80">
+                    Optionally add a 'Pose B' - in the future we'll support video
+                    generation with multiple images.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Template selection button */}
         <button
           onClick={onTemplateSelect}
-          disabled={uploading}
+          disabled={uploading || uploadingPoseB}
           className="flex-1 px-4 py-4 bg-vc-border/30 text-vc-text-secondary rounded-lg hover:bg-vc-border/50 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex flex-col items-center justify-center"
         >
           <svg

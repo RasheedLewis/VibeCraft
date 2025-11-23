@@ -672,6 +672,7 @@ def update_audio_selection(
 async def upload_character_image(
     song_id: UUID,
     image: UploadFile = File(...),
+    pose: str = "A",  # "A" for pose-a (reference), "B" for pose-b
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -679,6 +680,9 @@ async def upload_character_image(
 
     Only available for songs with video_type='short_form'.
     The image will be validated, normalized to JPEG, and stored in S3.
+    
+    Args:
+        pose: "A" for pose-a (reference/primary image) or "B" for pose-b (secondary image)
     """
     settings = get_settings()
 
@@ -690,6 +694,14 @@ async def upload_character_image(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Character consistency only available for short_form videos",
+        )
+
+    # Validate pose parameter
+    pose_upper = pose.upper()
+    if pose_upper not in ("A", "B"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="pose parameter must be 'A' or 'B'",
         )
 
     # Read image bytes
@@ -713,8 +725,11 @@ async def upload_character_image(
             detail=f"Invalid image format: {str(exc)}"
         ) from exc
 
-    # Generate S3 key
-    s3_key = get_character_image_s3_key(str(song_id), "reference")
+    # Generate S3 key based on pose
+    if pose_upper == "A":
+        s3_key = get_character_image_s3_key(str(song_id), "reference")
+    else:  # pose_upper == "B"
+        s3_key = f"songs/{song_id}/character_pose_b.jpg"
 
     # Upload to S3
     try:
@@ -733,30 +748,34 @@ async def upload_character_image(
         ) from exc
 
     # Update song record
-    song.character_reference_image_s3_key = s3_key
-    song.character_consistency_enabled = True
+    if pose_upper == "A":
+        song.character_reference_image_s3_key = s3_key
+        song.character_consistency_enabled = True
+    else:  # pose_upper == "B"
+        song.character_pose_b_s3_key = s3_key
     db.add(song)
     db.commit()
     db.refresh(song)
 
-    # Enqueue background job to generate consistent character image
-    try:
-        from app.core.queue import get_queue
-        from app.services.character_consistency import generate_character_image_job
+    # Enqueue background job to generate consistent character image (only for Pose A)
+    if pose_upper == "A":
+        try:
+            from app.core.queue import get_queue
+            from app.services.character_consistency import generate_character_image_job
 
-        queue = get_queue(
-            queue_name=f"{settings.rq_worker_queue}:character-generation",
-            timeout=300,  # 5 minutes
-        )
-        queue.enqueue(
-            generate_character_image_job,
-            song_id,
-            job_timeout=300,
-        )
-        logger.info(f"Enqueued character image generation job for song {song_id}")
-    except Exception as exc:
-        # Don't fail the upload if job enqueue fails
-        logger.warning(f"Failed to enqueue character image generation job: {exc}")
+            queue = get_queue(
+                queue_name=f"{settings.rq_worker_queue}:character-generation",
+                timeout=300,  # 5 minutes
+            )
+            queue.enqueue(
+                generate_character_image_job,
+                song_id,
+                job_timeout=300,
+            )
+            logger.info(f"Enqueued character image generation job for song {song_id}")
+        except Exception as exc:
+            # Don't fail the upload if job enqueue fails
+            logger.warning(f"Failed to enqueue character image generation job: {exc}")
 
     # Generate presigned URL
     try:

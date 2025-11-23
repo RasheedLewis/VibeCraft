@@ -1,5 +1,29 @@
 # Saturday Plan
 
+## 📊 Testing Findings
+
+### Prompt Over-Engineering: Motion Descriptors May Be Reducing Dance Quality
+
+**Issue:** Analysis of prompt logs shows we may have gone overboard with "rhythmic motion" and motion descriptors generally. The figures are dancing less than they used to.
+
+**Evidence from Prompt Logs:**
+- Heavy emphasis on motion descriptors: 67+ occurrences of "dance/dancing" across 19 prompts
+- Multiple overlapping rhythmic phrases: "rhythmic motion matching the beat", "synchronized to tempo", "dynamic dancing synchronized to BPM"
+- All prompts include extensive motion descriptors: "energetic, driving, dynamic, upbeat energetic dancing, rapid rhythmic dance motion, quick dance steps synchronized to tempo"
+
+**Hypothesis:**
+- Too many motion descriptors may be confusing the model or diluting the core "dancing" instruction
+- The model might be interpreting the complex prompt as abstract motion rather than clear dancing
+- Simpler, more direct prompts may produce better dancing results
+
+**Action Items:**
+- Consider simplifying prompts to focus on clear, direct dancing instructions
+- Test with fewer motion descriptors to see if dance quality improves
+- Compare current prompts with earlier versions that produced better dancing
+- May need to reduce or remove some of the overlapping rhythmic phrases
+
+---
+
 ## 💭 My Thoughts During Testing
 
 ### Beat-Sync Limitations with 8fps Model

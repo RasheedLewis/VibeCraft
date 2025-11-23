@@ -248,6 +248,7 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     # Get character image URLs if character consistency is enabled
     character_image_urls = []
     character_image_url = None
+    song = None
     
     try:
         song = SongRepository.get_by_id(song_id)
@@ -283,14 +284,18 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     metadata = metadata or {}
     
     # Track estimated cost for this clip generation
-    from app.services.cost_tracking import track_video_generation_cost
-    from app.core.constants import VIDEO_MODEL
-    track_video_generation_cost(
-        song_id=song.id,
-        model_name=VIDEO_MODEL,
-        num_clips=1,
-        has_character_consistency=bool(character_image_url),
-    )
+    if song:  # Only track cost if we successfully retrieved the song
+        from app.services.cost_tracking import track_video_generation_cost
+        from app.core.constants import VIDEO_MODEL
+        try:
+            track_video_generation_cost(
+                song_id=song_id,
+                model_name=VIDEO_MODEL,
+                num_clips=1,
+                has_character_consistency=bool(character_image_url),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to track cost for clip {clip_id}: {e}")
 
     try:
         clip = ClipRepository.get_by_id(clip_id)
@@ -869,6 +874,18 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
         if job_id:
             update_job_progress(job_id, 65, "processing")  # Starting concatenation
 
+        # Get beat times from analysis (for beat-synced visual effects)
+        analysis = get_latest_analysis(song_id)
+        beat_times = None
+        if analysis and hasattr(analysis, 'beat_times') and analysis.beat_times:
+            beat_times = analysis.beat_times
+            logger.info(f"Found {len(beat_times)} beat times for beat-synced visual effects")
+        
+        # Get beat effect config
+        from app.core.config import get_beat_effect_config
+        effect_config = get_beat_effect_config()
+        filter_type = effect_config.effect_type if effect_config.enabled else None
+
         # Concatenate clips with audio
         output_path = temp_dir / "composed_video.mp4"
         composition_result = concatenate_clips(
@@ -877,6 +894,9 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
             str(output_path),
             song_duration_sec=effective_duration,
             job_id=job_id,
+            beat_times=beat_times if effect_config.enabled else None,  # Only pass if effects enabled
+            filter_type=filter_type or "flash",  # Use config or default
+            frame_rate=24.0,
         )
         
         if job_id:

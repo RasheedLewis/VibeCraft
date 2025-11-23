@@ -563,8 +563,13 @@ export const UploadPage: React.FC = () => {
     }
   }, [result?.songId])
 
-  // Load song from URL parameter or localStorage on mount
+  // Load song from URL parameter or localStorage on mount (only if authenticated)
   useEffect(() => {
+    // Don't try to load song if not authenticated
+    if (!isAuthenticated || isAuthLoading) {
+      return
+    }
+
     const urlParams = new URLSearchParams(window.location.search)
     const songIdParam =
       urlParams.get('songId') || localStorage.getItem('vibecraft_current_song_id')
@@ -631,7 +636,15 @@ export const UploadPage: React.FC = () => {
 
       void loadSongById()
     }
-  }, [result, fetchSongDetails, analysisPolling, clipPolling])
+  }, [
+    isAuthenticated,
+    isAuthLoading,
+    result,
+    fetchSongDetails,
+    analysisPolling,
+    clipPolling,
+    resetState,
+  ])
 
   useEffect(() => {
     if (!analysisData && clipSummary?.analysis && result?.songId) {

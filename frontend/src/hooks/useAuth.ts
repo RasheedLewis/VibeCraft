@@ -29,6 +29,16 @@ interface RegisterRequest {
 const AUTH_TOKEN_KEY = 'vibecraft_auth_token'
 const AUTH_USER_KEY = 'vibecraft_auth_user'
 
+// App-specific localStorage keys that should be cleared on auth changes
+const APP_STORAGE_KEYS = ['vibecraft_current_song_id']
+
+// Clear all app-specific storage (but not auth keys)
+const clearAppStorage = () => {
+  APP_STORAGE_KEYS.forEach((key) => {
+    localStorage.removeItem(key)
+  })
+}
+
 export function useAuth() {
   const queryClient = useQueryClient()
 
@@ -75,6 +85,8 @@ export function useAuth() {
   // Create setAuth function that has access to refetchUser
   const setAuth = React.useCallback(
     (tokenValue: string, user: UserInfo) => {
+      // Clear app-specific storage on login/register to start fresh
+      clearAppStorage()
       localStorage.setItem(AUTH_TOKEN_KEY, tokenValue)
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
       // Update API client default headers
@@ -93,6 +105,8 @@ export function useAuth() {
 
   // Clear auth data
   const clearAuth = React.useCallback(() => {
+    // Clear app-specific storage on logout
+    clearAppStorage()
     localStorage.removeItem(AUTH_TOKEN_KEY)
     localStorage.removeItem(AUTH_USER_KEY)
     delete apiClient.defaults.headers.common['Authorization']

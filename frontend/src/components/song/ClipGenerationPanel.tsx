@@ -40,10 +40,10 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
   onCompose,
   onPreviewClip,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onRegenerateClip, // Not yet implemented
+  onRegenerateClip: _onRegenerateClip, // Not yet implemented
   onRetryClip,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onRegenerateClips, // Not yet implemented
+  onRegenerateClips: _onRegenerateClips, // Not yet implemented
 }) => {
   const [showRegenerateConfirm, setShowRegenerateConfirm] = React.useState(false)
   const [showRegenerateClipConfirm, setShowRegenerateClipConfirm] = React.useState<

@@ -86,7 +86,15 @@ class TestCompositionExecutionModelSelection:
         mock_section_video.status = "completed"
 
         mock_session_obj = MagicMock()
-        mock_session_obj.get.return_value = mock_section_video
+        # Mock CompositionJob lookup (first call)
+        mock_job = Mock()
+        mock_job.status = "processing"
+        # Mock get_clips_for_composition: it uses session.exec(select(...)) now
+        mock_exec_result = Mock()
+        mock_exec_result.all.return_value = [mock_section_video]
+        mock_session_obj.exec.return_value = mock_exec_result
+        # get() is called for CompositionJob, exec() is called for clips
+        mock_session_obj.get.return_value = mock_job
         mock_session.return_value.__enter__.return_value = mock_session_obj
 
         # This will fail early in the pipeline, but we can verify it tries to use SectionVideo
@@ -101,9 +109,8 @@ class TestCompositionExecutionModelSelection:
             # Expected to fail - we just want to verify the code path
             pass
 
-        # Verify it tried to get SectionVideo (get() is called in the SectionVideo branch)
-        # Note: get() might be called multiple times, but should be called at least once
-        assert mock_session_obj.get.called, "get() should have been called when video_type is full_length"
+        # Verify it tried to get clips using exec() (new bulk query approach)
+        assert mock_session_obj.exec.called, "exec() should have been called to fetch clips when video_type is full_length"
 
     @patch("app.services.composition_execution.session_scope")
     @patch("app.services.composition_execution.SongRepository")
@@ -133,7 +140,15 @@ class TestCompositionExecutionModelSelection:
         mock_song_clip.status = "completed"
 
         mock_session_obj = MagicMock()
-        mock_session_obj.get.return_value = mock_song_clip
+        # Mock CompositionJob lookup (first call)
+        mock_job = Mock()
+        mock_job.status = "processing"
+        # Mock get_clips_for_composition: it uses session.exec(select(...)) now
+        mock_exec_result = Mock()
+        mock_exec_result.all.return_value = [mock_song_clip]
+        mock_session_obj.exec.return_value = mock_exec_result
+        # get() is called for CompositionJob, exec() is called for clips
+        mock_session_obj.get.return_value = mock_job
         mock_session.return_value.__enter__.return_value = mock_session_obj
 
         # This will fail early in the pipeline, but we can verify it tries to use SongClip
@@ -148,8 +163,8 @@ class TestCompositionExecutionModelSelection:
             # Expected to fail - we just want to verify the code path
             pass
 
-        # Verify it tried to get SongClip (get() is called in the SongClip branch)
-        assert mock_session_obj.get.called, "get() should have been called when video_type is short_form"
+        # Verify it tried to get clips using exec() (new bulk query approach)
+        assert mock_session_obj.exec.called, "exec() should have been called to fetch clips when video_type is short_form"
 
     # Commented out: Requires DATABASE_URL environment variable
     # @pytest.mark.skipif(not os.getenv("DATABASE_URL"), reason="Database not configured")

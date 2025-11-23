@@ -106,15 +106,19 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   useEffect(() => {
     if (!onTitleUpdate) return
 
-    const hasShownHint = sessionStorage.getItem('vibecraft_title_hint_shown')
-    if (!hasShownHint) {
+    // Temporarily show every time for testing - remove sessionStorage check
+    // const hasShownHint = sessionStorage.getItem('vibecraft_title_hint_shown')
+    // if (!hasShownHint) {
       // Use setTimeout to avoid setState in effect
       const timer = setTimeout(() => {
         setShowTitleHint(true)
-        sessionStorage.setItem('vibecraft_title_hint_shown', 'true')
+        // Set sessionStorage after animation completes (2.5s animation + buffer)
+        // setTimeout(() => {
+        //   sessionStorage.setItem('vibecraft_title_hint_shown', 'true')
+        // }, 3000)
       }, 1000) // Delay slightly to let page settle
       return () => clearTimeout(timer)
-    }
+    // }
   }, [onTitleUpdate])
 
   // Focus input when entering edit mode
@@ -304,19 +308,22 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
     <>
       <section className="mt-4 w-full space-y-8 pb-0">
         <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-start">
-          <div className="space-y-2 relative md:flex-shrink-0">
+          <div className="space-y-2 relative md:flex-shrink-0 overflow-visible">
             <div className="vc-label">Song profile</div>
-            <div className="relative flex items-baseline gap-4 flex-wrap">
-              <div className="relative max-w-2xl">
+            <div className="relative flex items-baseline gap-4 flex-wrap overflow-visible">
+              <div className="relative max-w-2xl overflow-visible">
                 {/* Subtle pointing animation for editable title */}
                 {showTitleHint && onTitleUpdate && !isEditingTitle && (
                   <div
-                    className="absolute -left-8 top-1/2 -translate-y-1/2 pointer-events-none z-10"
+                    className="absolute left-full top-1/2 -translate-y-1/2 ml-2 pointer-events-none z-10 whitespace-nowrap"
                     style={{
                       animation: 'pointAndFadeSubtle 2.5s ease-in-out forwards',
                     }}
                   >
-                    <div className="text-xl filter drop-shadow-md opacity-70">👆</div>
+                    <div className="text-base filter drop-shadow-md flex items-center gap-1" style={{ opacity: 0.7 }}>
+                      <span>👈</span>
+                      <span className="text-sm text-vc-text-secondary">edit</span>
+                    </div>
                   </div>
                 )}
                 {isEditingTitle ? (
@@ -329,7 +336,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
                     onKeyDown={handleTitleKeyDown}
                     disabled={isSavingTitle}
                     className="font-display text-3xl text-white md:text-4xl bg-transparent border-b-2 border-vc-accent-primary/50 focus:border-vc-accent-primary focus:outline-none disabled:opacity-50"
-                    style={{ margin: 0, padding: 0 }}
+                    style={{ margin: 0, padding: 0, marginRight: '8px' }}
                     maxLength={256}
                   />
                 ) : (
@@ -344,6 +351,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
                       margin: 0,
                       padding: 0,
                       borderBottom: '2px solid transparent',
+                      marginRight: '8px',
                     }}
                   >
                     {displayTitle ?? 'Untitled track'}

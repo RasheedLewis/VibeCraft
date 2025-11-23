@@ -67,6 +67,9 @@ export function useAuth() {
     enabled: !!token,
     retry: false,
     staleTime: 0, // Always refetch when enabled
+    // If there's no token, we're not loading
+    // If query fails, stop loading
+    gcTime: 0, // Don't cache failed queries
   })
 
   // Create setAuth function that has access to refetchUser
@@ -152,9 +155,13 @@ export function useAuth() {
   const user = currentUser || getUser()
   const isAuthenticated = !!currentToken && !!user
 
+  // Only show loading if we have a token and the query is actually enabled
+  // If no token, we're not loading (we know we're not authenticated)
+  const isLoading = !!token && isLoadingUser
+
   return {
     currentUser: user,
-    isLoading: isLoadingUser,
+    isLoading,
     isAuthenticated,
     login: loginMutation.mutateAsync,
     register: registerMutation.mutateAsync,

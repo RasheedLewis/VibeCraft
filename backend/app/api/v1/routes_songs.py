@@ -16,7 +16,9 @@ from app.api.deps import get_db
 from app.api.v1.utils import ensure_no_analysis, get_song_or_404, update_song_field, verify_song_ownership
 from app.core.auth import get_current_user
 from app.core.config import get_settings
+from app.models.analysis import AnalysisJob, ClipGenerationJob, SongAnalysisRecord
 from app.models.clip import SongClip
+from app.models.composition import CompositionJob
 from app.models.song import Song
 from app.models.user import User
 from app.schemas.analysis import (
@@ -183,7 +185,7 @@ async def upload_song(
     if len(existing_songs_count) >= 5:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="sorry create a new account, limit of 5 reached",
+            detail="Oops—sorry! You must create a new account—limit of 5 reached :(",
         )
 
     settings = get_settings()
@@ -327,6 +329,60 @@ def get_song(
     song = get_song_or_404(song_id, db)
     verify_song_ownership(song, current_user)
     return song
+
+
+@router.delete(
+    "/{song_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a song",
+    response_model=None,
+)
+def delete_song(
+    song_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete a song and all related records. Only deletes songs owned by the current user."""
+    song = get_song_or_404(song_id, db)
+    verify_song_ownership(song, current_user)
+    
+    # Delete all related records
+    # Delete clips
+    clips = db.exec(select(SongClip).where(SongClip.song_id == song_id)).all()
+    for clip in clips:
+        db.delete(clip)
+    
+    # Delete analysis record
+    analysis_record = db.exec(
+        select(SongAnalysisRecord).where(SongAnalysisRecord.song_id == song_id)
+    ).first()
+    if analysis_record:
+        db.delete(analysis_record)
+    
+    # Delete analysis jobs
+    analysis_jobs = db.exec(
+        select(AnalysisJob).where(AnalysisJob.song_id == song_id)
+    ).all()
+    for job in analysis_jobs:
+        db.delete(job)
+    
+    # Delete clip generation jobs
+    clip_jobs = db.exec(
+        select(ClipGenerationJob).where(ClipGenerationJob.song_id == song_id)
+    ).all()
+    for job in clip_jobs:
+        db.delete(job)
+    
+    # Delete composition jobs
+    composition_jobs = db.exec(
+        select(CompositionJob).where(CompositionJob.song_id == song_id)
+    ).all()
+    for job in composition_jobs:
+        db.delete(job)
+    
+    # Delete the song itself
+    db.delete(song)
+    db.commit()
 
 
 @router.patch(

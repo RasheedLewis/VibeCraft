@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import React, { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../../lib/apiClient'
 import { useAuth } from '../../hooks/useAuth'
 import { VCButton } from '../vibecraft'
@@ -19,6 +19,8 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
   onOpenAuth,
 }) => {
   const { currentUser, isAuthenticated, logout } = useAuth()
+  const queryClient = useQueryClient()
+  const [deletingSongId, setDeletingSongId] = useState<string | null>(null)
 
   const handleLogout = () => {
     logout()
@@ -30,12 +32,50 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
     onOpenAuth()
   }
 
-  const { data: songs, isLoading } = useQuery<SongRead[]>({
+  const handleDelete = async (songId: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent opening the project when clicking delete
+
+    if (
+      !confirm(
+        'Are you sure you want to delete this project? This action cannot be undone.',
+      )
+    ) {
+      return
+    }
+
+    setDeletingSongId(songId)
+    try {
+      await apiClient.delete(`/songs/${songId}`)
+      // Optimistically update the cache by removing the deleted song
+      queryClient.setQueryData<SongRead[]>(['songs'], (oldSongs) => {
+        if (!oldSongs) return oldSongs
+        return oldSongs.filter((song) => song.id !== songId)
+      })
+      // Also invalidate to ensure we get fresh data
+      await queryClient.invalidateQueries({ queryKey: ['songs'] })
+      // Refetch to ensure consistency
+      await refetch()
+    } catch (error) {
+      console.error('Failed to delete song:', error)
+      // Revert optimistic update on error
+      await queryClient.invalidateQueries({ queryKey: ['songs'] })
+      await refetch()
+      alert('Failed to delete project. Please try again.')
+    } finally {
+      setDeletingSongId(null)
+    }
+  }
+
+  const {
+    data: songs,
+    isLoading,
+    refetch,
+  } = useQuery<SongRead[]>({
     queryKey: ['songs'],
     queryFn: async () => {
       const response = await apiClient.get<SongRead[]>('/songs/')
       const allSongs = response.data
-      
+
       // Filter to only show songs with complete analysis
       // Check if analysis exists for each song by attempting to fetch it
       const songsWithAnalysis = await Promise.allSettled(
@@ -46,9 +86,9 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
           } catch {
             return null
           }
-        })
+        }),
       )
-      
+
       // Return only songs where analysis fetch succeeded
       return songsWithAnalysis
         .map((result) => (result.status === 'fulfilled' ? result.value : null))
@@ -87,6 +127,9 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
               {currentUser?.display_name || currentUser?.email}
             </p>
           </div>
+          <p className="text-white/50 text-xs italic flex-1 text-center mx-4">
+            Projects only appear once song analysis completes.
+          </p>
           <div className="flex gap-3">
             {isAuthenticated ? (
               <VCButton variant="secondary" onClick={handleLogout}>
@@ -129,9 +172,29 @@ export const ProjectsModal: React.FC<ProjectsModalProps> = ({
                   onOpenProject(song.id)
                   onClose()
                 }}
-                className="w-full bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20 hover:bg-white/20 transition-all cursor-pointer"
+                className="relative w-full bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20 hover:bg-white/20 transition-all cursor-pointer"
               >
-                <h3 className="text-lg font-semibold text-white mb-1">
+                <button
+                  onClick={(e) => handleDelete(song.id, e)}
+                  disabled={deletingSongId === song.id}
+                  className="absolute top-2 right-2 text-white/50 hover:text-white transition-colors p-1 hover:bg-white/20 rounded z-10 disabled:opacity-50"
+                  aria-label="Delete project"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+                <h3 className="text-lg font-semibold text-white mb-1 pr-8">
                   {song.title || 'Untitled Song'}
                 </h3>
                 <p className="text-white/70 text-sm mb-1">{song.original_filename}</p>

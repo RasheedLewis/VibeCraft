@@ -752,6 +752,7 @@ export const UploadPage: React.FC = () => {
             'Content-Type': 'multipart/form-data',
           },
           signal: abortController.signal,
+          timeout: 120000, // 2 minute timeout for large files
           onUploadProgress: (event) => {
             if (!event.total) return
             const percentage = Math.min(
@@ -790,11 +791,25 @@ export const UploadPage: React.FC = () => {
         }
 
         console.error('Upload failed', err)
-        const message =
-          (err as { response?: { data?: { detail?: string } } }).response?.data?.detail ??
+        const axiosError = err as {
+          response?: { data?: { detail?: string } }
+          message?: string
+          code?: string
+        }
+        let message =
+          axiosError.response?.data?.detail ??
+          axiosError.message ??
           'Upload failed. Please try again.'
+
+        // Handle timeout errors
+        if (axiosError.code === 'ECONNABORTED' || message.includes('timeout')) {
+          message =
+            'Upload timed out. The file may be too large or the connection is slow. Please try again.'
+        }
+
         setError(message)
         setStage('error')
+        setProgress(0)
       }
     },
     [isAuthenticated, resetState, fetchSongDetails, clipPolling],
@@ -887,26 +902,25 @@ export const UploadPage: React.FC = () => {
           </div>
         )}
 
-        {!isAuthLoading && (
-          <button
-            onClick={() => {
-              if (isAuthenticated) {
-                setProjectsModalOpen(true)
-              } else {
-                setAuthModalOpen(true)
-              }
-              setShowProfileHint(false)
-            }}
-            className="relative flex h-16 w-16 items-center justify-center rounded-full bg-vc-accent-primary shadow-vc2 hover:shadow-vc3 hover:bg-[#7A76FF] transition-all active:scale-[0.98] overflow-hidden"
-            aria-label={isAuthenticated ? 'Open projects' : 'Login'}
-          >
-            <img
-              src="/img/vibe_lightning_simple.png"
-              alt="Profile"
-              className="w-full h-full object-cover"
-            />
-          </button>
-        )}
+        <button
+          onClick={() => {
+            if (isAuthenticated) {
+              setProjectsModalOpen(true)
+            } else {
+              setAuthModalOpen(true)
+            }
+            setShowProfileHint(false)
+          }}
+          className="relative flex h-16 w-16 items-center justify-center rounded-full bg-vc-accent-primary shadow-vc2 hover:shadow-vc3 hover:bg-[#7A76FF] transition-all active:scale-[0.98] overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label={isAuthenticated ? 'Open projects' : 'Login'}
+          disabled={isAuthLoading}
+        >
+          <img
+            src="/img/vibe_lightning_simple.png"
+            alt="Profile"
+            className="w-full h-full object-cover"
+          />
+        </button>
       </div>
 
       {analysisState !== 'completed' && (

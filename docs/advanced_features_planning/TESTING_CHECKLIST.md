@@ -35,7 +35,7 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] While logged out, try to access `/` or `/projects` directly
 - [ ] **Expected:** Redirects to `/login`
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
@@ -69,13 +69,15 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] **Expected:** Navigates to upload page with `?songId=...` in URL
 - [ ] **Expected:** Project state loads correctly
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 
 ## 💾 Feature 3: State Persistence
 
-**Location:** Frontend `UploadPage.tsx`, localStorage key: `vibecraft_current_song_id`
+**Location:** Frontend `UploadPage.tsx`, URL parameter `?songId=...`
+
+**Note:** Original intention was not to require songId to persist in URL/localStorage, but now that we have a project list modal, we can recover state by selecting projects from the list. The project list serves as the primary way to resume work on existing projects.
 
 ### Test Page Refresh
 - [ ] Upload a song and complete some steps (e.g., select video type, start analysis)
@@ -84,14 +86,15 @@ This checklist helps you systematically test all features implemented in this br
 - [ ] **Expected:** Same song loads, same stage, URL still has `songId` parameter
 - [ ] **Expected:** Can continue where you left off
 
-### Test localStorage
-- [ ] Open browser DevTools → Application → Local Storage
-- [ ] Look for `vibecraft_current_song_id`
-- [ ] **Expected:** Contains the current song ID
-- [ ] Navigate to different project
-- [ ] **Expected:** `vibecraft_current_song_id` updates
+### Test Project List Recovery
+- [ ] Upload a song and complete some steps
+- [ ] Close the browser tab or navigate away
+- [ ] Open the app again and click the profile button
+- [ ] **Expected:** Project appears in the projects modal
+- [ ] Click on the project
+- [ ] **Expected:** Project state loads correctly from the project list
 
-**Status:** ⬜ Not Started | 🟡 In Progress | ✅ Passed | ❌ Failed
+**Status:** ✅ Passed
 
 ---
 

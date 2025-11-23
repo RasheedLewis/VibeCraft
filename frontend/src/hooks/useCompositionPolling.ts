@@ -24,8 +24,14 @@ export const useCompositionPolling = ({
     let cancelled = false
     let timeoutId: number | undefined
 
+    // Poll counter for debugging (temporary)
+    let pollCount = 0
+    
     const poll = async () => {
       try {
+        pollCount += 1
+        console.log(`[POLL-COUNT] useCompositionPolling poll #${pollCount} for jobId: ${jobId}`)
+        
         const { data } = await apiClient.get<CompositionJobStatusResponse>(
           `/songs/${songId}/compose/${jobId}/status`,
         )

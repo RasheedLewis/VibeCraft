@@ -38,8 +38,14 @@ export function useJobPolling<T>({
       timeoutIdRef.current = undefined
     }
 
+    // Poll counter for debugging (temporary)
+    const pollCountRef = useRef(0)
+    
     const pollStatus = async () => {
       try {
+        pollCountRef.current += 1
+        console.log(`[POLL-COUNT] useJobPolling poll #${pollCountRef.current} for jobId: ${jobId}`)
+        
         const response = await fetchStatus(jobId)
         if (cancelledRef.current) return
 

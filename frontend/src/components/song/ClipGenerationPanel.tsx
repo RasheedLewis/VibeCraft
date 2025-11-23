@@ -180,7 +180,7 @@ export const ClipGenerationPanel: React.FC<ClipGenerationPanelProps> = ({
     ? 'Composing…'
     : hasComposedVideo
       ? 'Composed'
-      : 'Compose when done'
+      : 'Compose'
 
   return (
     <section className="space-y-3">

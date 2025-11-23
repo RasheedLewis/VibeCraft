@@ -132,8 +132,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """Middleware to apply rate limiting to all requests."""
 
     async def dispatch(self, request: Request, call_next):
-        # Skip rate limiting for health checks
-        if request.url.path in ["/healthz", "/api/v1/health"]:
+        # Skip rate limiting for health checks and polling endpoints
+        # Polling endpoints need to be exempted because frontend polls frequently (every 3-5 seconds)
+        polling_paths = [
+            "/healthz",
+            "/api/v1/health",
+            "/clips/status",  # Clip status polling
+            "/jobs/",  # Job status polling
+            "/compose/",  # Composition status polling
+            "/analysis",  # Analysis status polling
+        ]
+        if any(path in request.url.path for path in polling_paths):
             return await call_next(request)
 
         identifier = get_client_identifier(request)

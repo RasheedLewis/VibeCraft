@@ -435,7 +435,15 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
           <VCButton
             variant="primary"
             size="md"
-            onClick={onConfirm}
+            onClick={(e) => {
+              // Prevent click if disabled
+              if (confirmButtonDisabled) {
+                e.preventDefault()
+                e.stopPropagation()
+                return
+              }
+              onConfirm()
+            }}
             disabled={confirmButtonDisabled}
             iconRight={<ArrowRightIcon />}
           >

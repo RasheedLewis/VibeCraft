@@ -1061,11 +1061,7 @@ export const UploadPage: React.FC = () => {
                           analysisState === 'queued' ||
                           analysisState === 'processing'
                         }
-                        confirmButtonText={
-                          analysisState === 'queued' || analysisState === 'processing'
-                            ? 'Starting Analysis...'
-                            : 'Confirm & Start Analysis'
-                        }
+                        confirmButtonText="Confirm & Start Analysis"
                       />
                     )
                   })()}

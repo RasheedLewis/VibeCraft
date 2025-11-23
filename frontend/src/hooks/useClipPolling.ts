@@ -143,8 +143,14 @@ export function useClipPolling(songId: string | null) {
     let cancelled = false
     let timeoutId: number | undefined
 
+    // Poll counter for debugging (temporary)
+    let pollCount = 0
+    
     const pollClipSummary = async () => {
       try {
+        pollCount += 1
+        console.log(`[POLL-COUNT] useClipPolling pollClipSummary #${pollCount} for songId: ${songId}`)
+        
         const { data } = await apiClient.get<ClipGenerationSummary>(
           `/songs/${songId}/clips/status`,
         )

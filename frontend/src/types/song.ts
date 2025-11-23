@@ -146,6 +146,7 @@ export interface SongRead {
   selected_start_sec?: number | null
   selected_end_sec?: number | null
   video_type?: 'full_length' | 'short_form' | null
+  template?: 'abstract' | 'environment' | 'character' | 'minimal' | null
   character_reference_image_s3_key?: string | null
   character_pose_b_s3_key?: string | null
   character_consistency_enabled?: boolean

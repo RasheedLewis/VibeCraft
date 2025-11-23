@@ -88,3 +88,14 @@ class VideoTypeUpdate(BaseModel):
 class TitleUpdate(BaseModel):
     title: str = Field(max_length=256, description="Song title")
 
+
+class TemplateUpdate(BaseModel):
+    template: str = Field(description="Visual style template: 'abstract', 'environment', 'character', or 'minimal'")
+    
+    @model_validator(mode='after')
+    def validate_template(self) -> 'TemplateUpdate':
+        valid_templates = ["abstract", "environment", "character", "minimal"]
+        if self.template not in valid_templates:
+            raise ValueError(f"template must be one of {valid_templates}")
+        return self
+

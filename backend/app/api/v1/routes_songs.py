@@ -38,6 +38,7 @@ from app.schemas.song import (
     AudioSelectionUpdate,
     SongRead,
     SongUploadResponse,
+    TemplateUpdate,
     TitleUpdate,
     VideoTypeUpdate,
 )
@@ -598,6 +599,25 @@ def update_song_title(
     verify_song_ownership(song, current_user)
     
     return update_song_field(song, "title", title_update.title, db)
+
+
+@router.patch(
+    "/{song_id}/template",
+    response_model=SongRead,
+    summary="Set visual style template for song",
+)
+def set_template(
+    song_id: UUID,
+    template: TemplateUpdate,
+    db: Session = Depends(get_db),
+) -> Song:
+    """Set the visual style template (abstract, environment, character, minimal) for a song.
+    
+    This affects the visual style of generated video clips.
+    """
+    song = get_song_or_404(song_id, db)
+    
+    return update_song_field(song, "template", template.template, db)
 
 
 @router.patch(

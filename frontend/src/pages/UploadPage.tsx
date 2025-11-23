@@ -46,6 +46,7 @@ import {
 } from '../components/upload/Icons'
 import { AudioSelectionTimeline } from '../components/upload/AudioSelectionTimeline'
 import { VideoTypeSelector } from '../components/upload/VideoTypeSelector'
+import { TemplateSelector } from '../components/upload/TemplateSelector'
 import { CharacterImageUpload } from '../components/upload/CharacterImageUpload'
 import { TemplateCharacterModal } from '../components/upload/TemplateCharacterModal'
 import { SelectedTemplateDisplay } from '../components/upload/SelectedTemplateDisplay'
@@ -88,6 +89,7 @@ export const UploadPage: React.FC = () => {
   const [hideCharacterConsistency, setHideCharacterConsistency] = useState(false)
   const [showNoCharacterConfirm, setShowNoCharacterConfirm] = useState(false)
   const [showProfileHint, setShowProfileHint] = useState(false)
+  const [template, setTemplate] = useState<'abstract' | 'environment' | 'character' | 'minimal' | null>(null)
 
   // Use custom hooks for video type and audio selection
   const videoTypeSelection = useVideoTypeSelection({
@@ -112,6 +114,16 @@ export const UploadPage: React.FC = () => {
   // Sync video type selection state
   const videoType = videoTypeSelection.videoType
   // const isSettingVideoType = videoTypeSelection.isSetting
+
+  // Sync template from songDetails
+  useEffect(() => {
+    if (songDetails?.template) {
+      setTemplate(songDetails.template as 'abstract' | 'environment' | 'character' | 'minimal')
+    } else if (songDetails && !songDetails.template) {
+      // Default to 'abstract' if no template is set
+      setTemplate('abstract')
+    }
+  }, [songDetails])
 
   // Hide video type selector 3 seconds after analysis begins (fade out)
   // COMMENTED OUT: Timing logic for fade-out
@@ -489,6 +501,22 @@ export const UploadPage: React.FC = () => {
       } catch (err) {
         console.error('Failed to update title:', err)
         throw err
+      }
+    },
+    [result?.songId, fetchSongDetails],
+  )
+
+  const handleTemplateUpdate = useCallback(
+    async (newTemplate: 'abstract' | 'environment' | 'character' | 'minimal') => {
+      if (!result?.songId) return
+      try {
+        setTemplate(newTemplate)
+        await apiClient.patch(`/songs/${result.songId}/template`, { template: newTemplate })
+        // Refresh song details to get updated template
+        await fetchSongDetails(result.songId)
+      } catch (err) {
+        console.error('Failed to update template:', err)
+        setError(extractErrorMessage(err, 'Failed to update visual style template'))
       }
     },
     [result?.songId, fetchSongDetails],
@@ -1171,6 +1199,15 @@ export const UploadPage: React.FC = () => {
                     onSelect={videoTypeSelection.setVideoType}
                     selectedType={videoType}
                   />
+                  {videoType && (
+                    <div className="mt-4 pt-4 border-t border-vc-border">
+                      <div className="vc-label mb-2">Visual Style</div>
+                      <TemplateSelector
+                        onSelect={handleTemplateUpdate}
+                        selectedTemplate={template}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null
@@ -1369,6 +1406,17 @@ export const UploadPage: React.FC = () => {
                 )}
               </section>
             )}
+
+          {/* Template Selector - shown when video type is selected */}
+          {videoType && (
+            <section className="mb-4">
+              <div className="vc-label mb-2">Visual Style</div>
+              <TemplateSelector
+                onSelect={handleTemplateUpdate}
+                selectedTemplate={template}
+              />
+            </section>
+          )}
 
           {/* Song Profile View - shown after selection is made (for short-form) or directly (for full-length) */}
           {(videoType === 'full_length' ||

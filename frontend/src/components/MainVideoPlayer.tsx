@@ -287,6 +287,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const railRef = useRef<HTMLDivElement | null>(null)
   const pendingVideoSeekRef = useRef<number | null>(null)
+  const justResetRef = useRef<boolean>(false)
 
   const [isPlaying, setIsPlaying] = useState(false)
   const [current, setCurrent] = useState(0)
@@ -303,6 +304,31 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   const [showLyrics, setShowLyrics] = useState(true)
 
   const usingExternalAudio = Boolean(audioUrl)
+
+  // Shared function to handle time clamping and stopping at end
+  const handleTimeClamp = useCallback(
+    (currentTime: number, mediaElement: HTMLAudioElement | HTMLVideoElement) => {
+      // If we just reset, ignore the first timeupdate to avoid race condition
+      if (justResetRef.current) {
+        justResetRef.current = false
+        setCurrent(0)
+        return
+      }
+
+      // Clamp current time to duration for display
+      const clampedTime = Math.min(currentTime, durationSec)
+      setCurrent(clampedTime)
+
+      // If we've reached or exceeded the duration and media is playing, stop and reset
+      if (currentTime >= durationSec && !mediaElement.paused) {
+        mediaElement.pause()
+        mediaElement.currentTime = 0
+        setIsPlaying(false)
+        setCurrent(0)
+      }
+    },
+    [durationSec],
+  )
 
   const resolveClipForTime = useCallback(
     (time: number): PlayerClip | null => {
@@ -372,9 +398,26 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     const videoEl = videoRef.current
 
     if (usingExternalAudio && audioEl) {
-      const handleTime = () => setCurrent(audioEl.currentTime)
+      const handleTime = () => {
+        handleTimeClamp(audioEl.currentTime, audioEl)
+        // Also pause video if audio stops
+        if (audioEl.paused && videoEl) {
+          videoEl.pause()
+        }
+      }
       const handlePlay = () => setIsPlaying(true)
       const handlePause = () => setIsPlaying(false)
+      const handleEnded = () => {
+        // When audio ends, reset to beginning
+        audioEl.pause()
+        audioEl.currentTime = 0
+        setIsPlaying(false)
+        setCurrent(0)
+        if (videoEl) {
+          videoEl.pause()
+          videoEl.currentTime = 0
+        }
+      }
 
       audioEl.volume = muted ? 0 : volume
       audioEl.muted = muted
@@ -383,6 +426,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
       audioEl.addEventListener('timeupdate', handleTime)
       audioEl.addEventListener('play', handlePlay)
       audioEl.addEventListener('pause', handlePause)
+      audioEl.addEventListener('ended', handleEnded)
 
       if (videoEl) {
         videoEl.muted = true
@@ -393,13 +437,23 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
         audioEl.removeEventListener('timeupdate', handleTime)
         audioEl.removeEventListener('play', handlePlay)
         audioEl.removeEventListener('pause', handlePause)
+        audioEl.removeEventListener('ended', handleEnded)
       }
     }
 
     if (videoEl) {
-      const handleTime = () => setCurrent(videoEl.currentTime)
+      const handleTime = () => {
+        handleTimeClamp(videoEl.currentTime, videoEl)
+      }
       const handlePlay = () => setIsPlaying(true)
       const handlePause = () => setIsPlaying(false)
+      const handleEnded = () => {
+        // When video ends, reset to beginning and stop
+        videoEl.pause()
+        videoEl.currentTime = 0
+        setIsPlaying(false)
+        setCurrent(0)
+      }
 
       videoEl.volume = muted ? 0 : volume
       videoEl.muted = muted
@@ -408,14 +462,25 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
       videoEl.addEventListener('timeupdate', handleTime)
       videoEl.addEventListener('play', handlePlay)
       videoEl.addEventListener('pause', handlePause)
+      videoEl.addEventListener('ended', handleEnded)
 
       return () => {
         videoEl.removeEventListener('timeupdate', handleTime)
         videoEl.removeEventListener('play', handlePlay)
         videoEl.removeEventListener('pause', handlePause)
+        videoEl.removeEventListener('ended', handleEnded)
       }
     }
-  }, [usingExternalAudio, volume, muted, playbackRate, audioUrl, videoUrl])
+  }, [
+    usingExternalAudio,
+    volume,
+    muted,
+    playbackRate,
+    audioUrl,
+    videoUrl,
+    durationSec,
+    handleTimeClamp,
+  ])
 
   useEffect(() => {
     if (!usingExternalAudio) return
@@ -502,8 +567,16 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     if (isPlaying) {
       videoEl.pause()
     } else {
+      // If video is at or past the end, reset to beginning before playing
+      if (videoEl.currentTime >= durationSec) {
+        videoEl.currentTime = 0
+        setCurrent(0)
+        justResetRef.current = true // Flag to ignore next timeupdate
+      }
       videoEl.play().catch((err) => {
         console.error('[MainVideoPlayer] Video play failed:', err)
+        setIsPlaying(false)
+        justResetRef.current = false
       })
     }
   }

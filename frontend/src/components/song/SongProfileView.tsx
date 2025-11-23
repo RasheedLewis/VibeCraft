@@ -194,22 +194,72 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
     durationValue ??
     activePlayerClip?.endSec ??
     null
+  // Calculate timeline offset: if there's a selected range, clips should be relative to that start
+  const timelineOffset =
+    songDetails.selected_start_sec != null ? songDetails.selected_start_sec : 0
+
+  // Normalize clips relative to timeline start and filter/sort them
   const playerClips =
-    clipSummary?.clips?.map((clip) => ({
-      id: clip.id,
-      index: clip.clipIndex,
-      startSec: clip.startSec,
-      endSec: clip.endSec,
-      videoUrl: composedVideoUrl ?? clip.videoUrl ?? undefined,
-      thumbUrl: clip.videoUrl ?? composedPosterUrl ?? undefined,
-    })) ?? []
-  const playerBeatGrid = analysisData.beatTimes?.map((time) => ({ t: time })) ?? []
+    clipSummary?.clips
+      ?.filter((clip) => {
+        // Filter out clips that are completely outside the visible range
+        if (
+          songDetails.selected_start_sec != null &&
+          songDetails.selected_end_sec != null
+        ) {
+          return (
+            clip.endSec > songDetails.selected_start_sec &&
+            clip.startSec < songDetails.selected_end_sec
+          )
+        }
+        return true
+      })
+      .sort((a, b) => a.startSec - b.startSec) // Sort by start time
+      .map((clip) => ({
+        id: clip.id,
+        index: clip.clipIndex,
+        // Normalize clip times relative to timeline start
+        startSec: clip.startSec - timelineOffset,
+        endSec: clip.endSec - timelineOffset,
+        videoUrl: composedVideoUrl ?? clip.videoUrl ?? undefined,
+        thumbUrl: clip.videoUrl ?? composedPosterUrl ?? undefined,
+      })) ?? []
+  // Normalize beat grid and lyrics relative to timeline offset
+  const playerBeatGrid =
+    analysisData.beatTimes
+      ?.filter((time) => {
+        // Filter beats within visible range if there's a selected range
+        if (
+          songDetails.selected_start_sec != null &&
+          songDetails.selected_end_sec != null
+        ) {
+          return (
+            time >= songDetails.selected_start_sec && time <= songDetails.selected_end_sec
+          )
+        }
+        return true
+      })
+      .map((time) => ({ t: time - timelineOffset })) ?? []
   const playerLyrics =
-    analysisData.sectionLyrics?.map((line) => ({
-      t: line.startSec,
-      text: line.text,
-      dur: line.endSec - line.startSec,
-    })) ?? []
+    analysisData.sectionLyrics
+      ?.filter((line) => {
+        // Filter lyrics within visible range if there's a selected range
+        if (
+          songDetails.selected_start_sec != null &&
+          songDetails.selected_end_sec != null
+        ) {
+          return (
+            line.endSec > songDetails.selected_start_sec &&
+            line.startSec < songDetails.selected_end_sec
+          )
+        }
+        return true
+      })
+      .map((line) => ({
+        t: line.startSec - timelineOffset,
+        text: line.text,
+        dur: line.endSec - line.startSec,
+      })) ?? []
 
   return (
     <section className="mt-4 w-full space-y-8 pb-0">

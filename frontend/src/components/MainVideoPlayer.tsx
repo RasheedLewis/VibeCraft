@@ -366,8 +366,35 @@ const clampRelativeTimeForClip = (clip: PlayerClip, globalTime: number) => {
 
 const findClipForGlobalTime = (clips: PlayerClip[], time: number) => {
   if (!clips.length) return null
+
+  // Find the clip that contains this time
   const match = clips.find((clip) => time >= clip.startSec && time < clip.endSec)
-  return match ?? clips[clips.length - 1]
+  if (match) return match
+
+  // If no match, find the nearest clip
+  // If time is before all clips, return the first clip
+  if (time < clips[0].startSec) {
+    return clips[0]
+  }
+
+  // If time is after all clips, return the last clip
+  if (time >= clips[clips.length - 1].endSec) {
+    return clips[clips.length - 1]
+  }
+
+  // Time is in a gap between clips - find the clip that starts after this time
+  // and return the one just before it (the clip that should be active)
+  for (let i = 0; i < clips.length - 1; i++) {
+    if (time >= clips[i].endSec && time < clips[i + 1].startSec) {
+      // Return the clip that just ended (or the next one if we're closer to it)
+      const distToPrev = time - clips[i].endSec
+      const distToNext = clips[i + 1].startSec - time
+      return distToPrev < distToNext ? clips[i] : clips[i + 1]
+    }
+  }
+
+  // Fallback to last clip
+  return clips[clips.length - 1]
 }
 
 export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
@@ -699,6 +726,68 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
     seekTo(target)
   }
 
+  // Navigate to next/previous clip boundary
+  const jumpToNextClip = () => {
+    if (!clips.length) {
+      jump(5) // Fallback to time-based jump
+      return
+    }
+    // Sort clips by startSec to ensure correct order
+    const sortedClips = [...clips].sort((a, b) => a.startSec - b.startSec)
+
+    // Find the next clip that starts after the current time
+    const nextClip = sortedClips.find((clip) => clip.startSec > current)
+    if (nextClip) {
+      seekTo(nextClip.startSec)
+    } else {
+      // Already past all clips, jump to end or forward 5s
+      jump(5)
+    }
+  }
+
+  const jumpToPreviousClip = () => {
+    if (!clips.length) {
+      jump(-5) // Fallback to time-based jump
+      return
+    }
+    // Sort clips by startSec to ensure correct order
+    const sortedClips = [...clips].sort((a, b) => a.startSec - b.startSec)
+
+    // Find the current clip
+    const currentClip = findClipForGlobalTime(sortedClips, current)
+
+    // If we're at the very beginning of the current clip (within 0.3s), jump to previous clip
+    if (currentClip && current <= currentClip.startSec + 0.3) {
+      // Find the previous clip
+      const currentIndex = sortedClips.findIndex((c) => c.id === currentClip.id)
+      if (currentIndex > 0) {
+        seekTo(sortedClips[currentIndex - 1].startSec)
+        return
+      } else {
+        // Already at first clip, jump to start
+        seekTo(Math.max(0, currentClip.startSec))
+        return
+      }
+    }
+
+    // Otherwise, find the previous clip that starts before the current time
+    // Iterate backwards to find the last clip that starts before current time
+    let prevClip: PlayerClip | null = null
+    for (let i = sortedClips.length - 1; i >= 0; i--) {
+      if (sortedClips[i].startSec < current) {
+        prevClip = sortedClips[i]
+        break
+      }
+    }
+
+    if (prevClip) {
+      seekTo(prevClip.startSec)
+    } else {
+      // Before all clips, jump to start or backward 5s
+      jump(-5)
+    }
+  }
+
   const seekTo = (time: number) => {
     const newTime = clampValue(time, 0, durationSec)
     if (usingExternalAudio && audioRef.current) {
@@ -879,8 +968,11 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
       <div className="flex items-center justify-between p-3 bg-[rgba(0,0,0,0.3)] border-t border-vc-border/20">
         {/* Left side playback controls */}
         <div className="flex items-center gap-2">
-          {/* Skip Back: Jump backward 5 seconds (J key) */}
-          <TransportButton onClick={() => jump(-5)} title="Back 5s (J)">
+          {/* Skip Back: Jump to previous clip boundary or backward 5 seconds (J key) */}
+          <TransportButton
+            onClick={clips.length > 0 ? jumpToPreviousClip : () => jump(-5)}
+            title={clips.length > 0 ? 'Previous clip (J)' : 'Back 5s (J)'}
+          >
             <SkipBackIcon className="h-4 w-4" />
           </TransportButton>
           {/* Play/Pause: Toggle playback (Space/K key) */}
@@ -891,8 +983,11 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
               <PlayIcon className="h-5 w-5" />
             )}
           </TransportButton>
-          {/* Skip Forward: Jump forward 5 seconds (L key) */}
-          <TransportButton onClick={() => jump(5)} title="Forward 5s (L)">
+          {/* Skip Forward: Jump to next clip boundary or forward 5 seconds (L key) */}
+          <TransportButton
+            onClick={clips.length > 0 ? jumpToNextClip : () => jump(5)}
+            title={clips.length > 0 ? 'Next clip (L)' : 'Forward 5s (L)'}
+          >
             <SkipForwardIcon className="h-4 w-4" />
           </TransportButton>
           {/* Time Display: Shows current time / total duration */}

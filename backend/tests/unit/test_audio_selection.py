@@ -14,7 +14,7 @@ class TestValidateAudioSelection:
 
     def test_valid_selection(self):
         """Test that a valid selection passes validation."""
-        validate_audio_selection(start_sec=10.0, end_sec=20.0, song_duration_sec=60.0)
+        validate_audio_selection(start_sec=10.0, end_sec=28.0, song_duration_sec=60.0)
 
     def test_valid_at_song_start(self):
         """Test that selection starting at 0 is valid."""
@@ -67,8 +67,8 @@ class TestValidateAudioSelection:
 
     def test_short_song_valid_selection(self):
         """Test that valid selection works for short songs."""
-        # Song is 15 seconds, selection is 9 seconds (minimum)
-        validate_audio_selection(start_sec=1.0, end_sec=10.0, song_duration_sec=15.0)
+        # Song is 20 seconds, selection is 18 seconds (minimum)
+        validate_audio_selection(start_sec=1.0, end_sec=19.0, song_duration_sec=20.0)
 
     def test_short_song_exceeds_duration_raises_error(self):
         """Test that selection cannot exceed short song duration."""

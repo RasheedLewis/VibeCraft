@@ -335,7 +335,7 @@ class TestAudioSelectionEndpoint:
             _cleanup_song(song_id)
 
     def test_update_selection_boundary_1s(self):
-        """Test selection at exactly 1 second (boundary condition)."""
+        """Test selection at exactly 18 seconds (boundary condition)."""
         song_id = uuid4()
         song_duration = 60.0
 
@@ -356,19 +356,19 @@ class TestAudioSelectionEndpoint:
             with TestClient(create_app()) as client:
                 response = client.patch(
                     f"/api/v1/songs/{song_id}/selection",
-                    json={"start_sec": 10.0, "end_sec": 11.0},  # Exactly 1s
+                    json={"start_sec": 10.0, "end_sec": 28.0},  # Exactly 18s
                 )
                 assert response.status_code == 200
                 data = response.json()
                 assert data["selected_start_sec"] == 10.0
-                assert data["selected_end_sec"] == 11.0
+                assert data["selected_end_sec"] == 28.0
         finally:
             _cleanup_song(song_id)
 
     def test_update_selection_short_song(self):
         """Test selection on song shorter than 30 seconds."""
         song_id = uuid4()
-        song_duration = 15.0  # Shorter than 30s
+        song_duration = 20.0  # Shorter than 30s but meets 18s minimum
 
         with session_scope() as session:
             song = Song(
@@ -385,15 +385,15 @@ class TestAudioSelectionEndpoint:
 
         try:
             with TestClient(create_app()) as client:
-                # Should allow selection of entire song (15s)
+                # Should allow selection of entire song (20s)
                 response = client.patch(
                     f"/api/v1/songs/{song_id}/selection",
-                    json={"start_sec": 0.0, "end_sec": 15.0},
+                    json={"start_sec": 0.0, "end_sec": 20.0},
                 )
                 assert response.status_code == 200
                 data = response.json()
                 assert data["selected_start_sec"] == 0.0
-                assert data["selected_end_sec"] == 15.0
+                assert data["selected_end_sec"] == 20.0
         finally:
             _cleanup_song(song_id)
 

@@ -9,6 +9,7 @@ import replicate
 
 from app.core.config import get_settings
 from app.schemas.scene import SceneSpec
+from app.services.image_processing import pad_and_upload_image_to_9_16
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +217,7 @@ def generate_section_video(
     reference_image_url: Optional[str] = None,
     reference_image_urls: Optional[list[str]] = None,
     pose: Optional[str] = None,  # "A" or "B" - maps to index 0 or 1 in reference_image_urls
+    video_type: Optional[str] = None,  # "short_form" or "full_length" - determines if image should be padded to 9:16
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
     song_id: Optional[UUID] = None,  # For prompt logging
@@ -232,8 +234,11 @@ def generate_section_video(
         reference_image_url: Optional single image URL for image-to-video generation
         reference_image_urls: Optional list of image URLs (tries multiple, falls back to single)
         pose: Optional pose selection ("A" -> index 0, "B" -> index 1) for selecting from reference_image_urls
+        video_type: Optional video type ("short_form" or "full_length") - if "short_form", character images are padded to 9:16
         max_poll_attempts: Maximum number of polling attempts
         poll_interval_sec: Seconds between polling attempts
+        song_id: Optional song ID for prompt logging
+        clip_id: Optional clip ID for prompt logging
 
     Returns:
         Tuple of (success, video_url, metadata_dict)
@@ -342,6 +347,28 @@ def generate_section_video(
                 logger.warning(f"Invalid pose '{pose}', expected 'A' or 'B', using index 0 instead")
             
             selected_image_url = image_urls[selected_index]
+            
+            # For Short Form videos (9:16), pad character image to 9:16 aspect ratio
+            # This ensures the video output matches 9:16 (TikTok/Instagram/YouTube Shorts format)
+            if video_type == "short_form" and song_id:
+                try:
+                    logger.info(
+                        f"[VIDEO-GEN] Padding character image to 9:16 for Short Form video "
+                        f"(song_id={song_id})"
+                    )
+                    selected_image_url = pad_and_upload_image_to_9_16(
+                        image_url=selected_image_url,
+                        song_id=str(song_id),
+                        expires_in=3600,
+                    )
+                    logger.info(f"[VIDEO-GEN] Using padded 9:16 image: {selected_image_url[:50]}...")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to pad image to 9:16, using original image: {e}. "
+                        f"Video may not be 9:16 aspect ratio."
+                    )
+                    # Continue with original image - video generation will still work
+            
             input_params["first_frame_image"] = selected_image_url
             
             if len(image_urls) > 1:

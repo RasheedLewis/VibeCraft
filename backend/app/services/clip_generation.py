@@ -267,16 +267,18 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     except Exception as e:
         logger.warning(f"Error checking character consistency: {e}")
 
-    # Get selected pose from song if available
+    # Get selected pose and video type from song if available
     selected_pose = None
+    video_type = None
     if song:
         selected_pose = getattr(song, 'character_selected_pose', None) or 'A'
+        video_type = getattr(song, 'video_type', None)
     
     logger.info(
         f"[CLIP-GEN] Clip {clip_id}: Calling generate_section_video with "
         f"character_image_url={'set' if character_image_url else 'none'}, "
         f"character_image_urls count={len(character_image_urls)}, "
-        f"selected_pose={selected_pose}, "
+        f"selected_pose={selected_pose}, video_type={video_type}, "
         f"num_frames={clip_num_frames}, fps={clip_fps}, "
         f"clip.duration_sec={clip.duration_sec}, scene_spec.duration_sec={scene_spec.duration_sec}"
     )
@@ -288,6 +290,7 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
         reference_image_url=character_image_url,  # Fallback single image
         reference_image_urls=character_image_urls if len(character_image_urls) > 0 else None,  # Try multiple
         pose=selected_pose,  # Pass pose parameter: "A" -> index 0, "B" -> index 1
+        video_type=video_type,  # Pass video_type to determine if image should be padded to 9:16
         song_id=song_id,  # Pass song_id for prompt logging
         clip_id=clip_id,  # Pass clip_id for prompt logging
     )

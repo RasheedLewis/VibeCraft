@@ -214,27 +214,34 @@ input_params = {
 
 **Implementation Steps:**
 
-1. **Create 9:16 Placeholder Image:**
-   ```python
-   # Generate 1080x1920 image (9:16 aspect ratio)
-   # Can be solid color, gradient, or composited with character
-   nine_sixteen_image = create_9_16_placeholder(width=1080, height=1920)
-   ```
+1. **Process Character Images to 9:16:**
+   - When character image is provided and we need 9:16 output:
+     - Download character image from URL
+     - Add white space (equal amounts above and below) to pad to 9:16 aspect ratio
+     - Upload padded image to temporary S3 location or use in-memory
+     - Use padded image as `first_frame_image`
+   - This ensures the character stays centered and the video is 9:16
 
-2. **Handle Character Images:**
-   - If character image provided, resize/crop to 9:16
-   - Or composite character into 9:16 canvas
-   - Use as `first_frame_image`
+2. **Image Padding Function:**
+   ```python
+   def pad_image_to_9_16(image_bytes: bytes, target_width: int = 1080) -> bytes:
+       """
+       Pad image to 9:16 aspect ratio by adding white space above and below.
+       Maintains original image aspect ratio, centers it vertically.
+       """
+       # Calculate target height (9:16 ratio)
+       target_height = int(target_width * 16 / 9)
+       # Open image, calculate padding, create new image with white background
+       # Paste original image centered vertically
+   ```
 
 3. **Update Video Generation:**
    ```python
-   input_params = {
-       "prompt": optimized_prompt,
-       "duration": 6,  # or 10 for 768p
-       "resolution": "1080p",
-       "prompt_optimizer": True,
-       "first_frame_image": nine_sixteen_image,  # 9:16 image = 9:16 output!
-   }
+   # If character image provided and aspect_ratio="9:16":
+   if character_image_url and aspect_ratio == "9:16":
+       # Download image, pad to 9:16, use as first_frame_image
+       padded_image = pad_image_to_9_16(character_image_bytes)
+       input_params["first_frame_image"] = upload_padded_image(padded_image)
    ```
 
 4. **Update Composition:**

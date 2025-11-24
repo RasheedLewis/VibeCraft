@@ -1,5 +1,4 @@
 import logging
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -41,22 +40,17 @@ def create_app() -> FastAPI:
     # Strip quotes that might be included in env var value
     logger = logging.getLogger(__name__)
     
-    # Get raw value for debugging
-    raw_cors_origins = os.getenv("CORS_ORIGINS", settings.cors_origins)
-    logger.info(f"Raw CORS_ORIGINS env var: {repr(raw_cors_origins)}")
-    logger.info(f"Settings cors_origins value: {repr(settings.cors_origins)}")
-    
     cors_origins = [
         origin.strip().strip('"').strip("'")
         for origin in settings.cors_origins.split(",") 
         if origin.strip()
     ]
     
-    # Log CORS configuration for debugging
-    logger.info(f"Parsed CORS origins: {cors_origins}")
     if not cors_origins:
         logger.error("ERROR: No CORS origins configured! CORS will not work.")
         logger.error("Please set CORS_ORIGINS environment variable in Railway.")
+    else:
+        logger.info(f"CORS origins configured: {cors_origins}")
     
     # CORS middleware must be added BEFORE rate limiting to handle OPTIONS preflight requests
     # Note: If cors_origins is empty, CORS won't work. This is intentional - we need explicit origins.
@@ -74,21 +68,6 @@ def create_app() -> FastAPI:
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
-    
-    @app.get("/debug/cors", tags=["debug"])
-    async def debug_cors() -> dict:
-        """Debug endpoint to check CORS configuration."""
-        # Re-parse to ensure we have current values
-        debug_cors_origins = [
-            origin.strip().strip('"').strip("'")
-            for origin in settings.cors_origins.split(",") 
-            if origin.strip()
-        ]
-        return {
-            "cors_origins": debug_cors_origins,
-            "raw_env_var": os.getenv("CORS_ORIGINS", "NOT SET"),
-            "settings_value": settings.cors_origins,
-        }
 
     app.include_router(api_router, prefix=settings.api_v1_prefix)
 

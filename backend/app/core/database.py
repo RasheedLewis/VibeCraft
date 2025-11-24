@@ -74,16 +74,33 @@ def init_db() -> None:
     _ensure_song_schema()
     _ensure_song_clip_schema()
     SQLModel.metadata.create_all(bind=engine)
-    with Session(engine) as session:
-        if not session.get(User, DEFAULT_USER_ID):
-            session.add(
-                User(
-                    id=DEFAULT_USER_ID,
-                    display_name="Default User",
-                    email=None,
-                )
+    
+    # Try to create default user, but handle missing columns gracefully
+    # This allows the app to start even if migrations haven't been run yet
+    try:
+        with Session(engine) as session:
+            # Use raw SQL to check if user exists to avoid model column issues
+            from sqlalchemy import text
+            result = session.execute(
+                text("SELECT id FROM users WHERE id = :user_id"),
+                {"user_id": str(DEFAULT_USER_ID)}
             )
-            session.commit()
+            if not result.fetchone():
+                # Insert using raw SQL to avoid model column issues
+                session.execute(
+                    text("INSERT INTO users (id, display_name, email) VALUES (:id, :display_name, :email)"),
+                    {
+                        "id": str(DEFAULT_USER_ID),
+                        "display_name": "Default User",
+                        "email": None
+                    }
+                )
+                session.commit()
+    except Exception as e:
+        # If this fails (e.g., missing columns), log but don't crash
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Could not create default user (this is OK if migrations haven't run): {e}")
 
 
 def get_session() -> Generator[Session, None, None]:

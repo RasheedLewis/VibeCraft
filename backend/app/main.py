@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -15,7 +16,13 @@ from app.core.rate_limiting import RateLimitMiddleware
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     # Startup
-    init_db()
+    logger = logging.getLogger(__name__)
+    try:
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        logger.warning("Application will continue but database operations may fail")
     yield
     # Shutdown (if needed in the future)
 
@@ -32,7 +39,6 @@ def create_app() -> FastAPI:
 
     # Parse CORS origins from comma-separated string
     # Strip quotes that might be included in env var value
-    import logging
     logger = logging.getLogger(__name__)
     
     # Get raw value for debugging
@@ -72,8 +78,14 @@ def create_app() -> FastAPI:
     @app.get("/debug/cors", tags=["debug"])
     async def debug_cors() -> dict:
         """Debug endpoint to check CORS configuration."""
+        # Re-parse to ensure we have current values
+        debug_cors_origins = [
+            origin.strip().strip('"').strip("'")
+            for origin in settings.cors_origins.split(",") 
+            if origin.strip()
+        ]
         return {
-            "cors_origins": cors_origins,
+            "cors_origins": debug_cors_origins,
             "raw_env_var": os.getenv("CORS_ORIGINS", "NOT SET"),
             "settings_value": settings.cors_origins,
         }

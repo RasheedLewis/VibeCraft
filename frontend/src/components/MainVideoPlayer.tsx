@@ -343,6 +343,7 @@ interface MainVideoPlayerProps {
   waveform?: number[]
   onDownload?: () => void
   videoType?: 'full_length' | 'short_form'
+  isComposedVideo?: boolean
 }
 
 const clampValue = (value: number, min: number, max: number) =>
@@ -411,6 +412,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   waveform,
   onDownload,
   videoType = 'full_length',
+  isComposedVideo = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -1079,7 +1081,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   }, [clips, activeClipId, current])
 
   return (
-    <div className="vc-card p-0 overflow-hidden" onKeyDown={onKey} tabIndex={0}>
+    <div className="overflow-hidden" onKeyDown={onKey} tabIndex={0}>
       <div className="relative bg-black overflow-hidden">
         <audio
           ref={audioRef}
@@ -1088,44 +1090,48 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           className="hidden"
         />
         {/* Video container with zoom transform */}
-        <div
-          className={clsx(
-            'w-full flex items-center justify-center overflow-hidden',
-            videoType === 'short_form' ? 'aspect-[9/16]' : 'aspect-video',
-          )}
-        >
-          <video
-            key={(() => {
-              if (!videoUrl) return 'video-none'
-              try {
-                // Use S3 key path as stable identifier (doesn't change when presigned URL regenerates)
-                const url = new URL(videoUrl)
-                return `video-${url.pathname}`
-              } catch {
-                // Fallback to full URL if parsing fails
-                return `video-${videoUrl}`
-              }
-            })()}
-            ref={videoRef}
-            src={videoUrl || undefined}
-            poster={posterUrl ?? undefined}
-            className="w-full h-full object-contain"
-            style={{
-              transform: `scale(${videoZoom})`,
-              transformOrigin: 'center center',
-            }}
-            onClick={togglePlay}
-            muted={usingExternalAudio ? true : muted}
-            controls={false}
-            playsInline
-            onError={() => {
-              console.error('[MainVideoPlayer] Video error', {
-                error: videoRef.current?.error,
-                networkState: videoRef.current?.networkState,
-                readyState: videoRef.current?.readyState,
-              })
-            }}
-          />
+        <div className="flex items-center justify-center">
+          <div
+            className={clsx(
+              'flex items-center justify-center overflow-hidden',
+              videoType === 'short_form'
+                ? 'w-full max-w-[45%] aspect-[9/16]'
+                : 'w-full aspect-video',
+            )}
+          >
+            <video
+              key={(() => {
+                if (!videoUrl) return 'video-none'
+                try {
+                  // Use S3 key path as stable identifier (doesn't change when presigned URL regenerates)
+                  const url = new URL(videoUrl)
+                  return `video-${url.pathname}`
+                } catch {
+                  // Fallback to full URL if parsing fails
+                  return `video-${videoUrl}`
+                }
+              })()}
+              ref={videoRef}
+              src={videoUrl || undefined}
+              poster={posterUrl ?? undefined}
+              className="w-full h-full object-contain"
+              style={{
+                transform: `scale(${videoZoom})`,
+                transformOrigin: 'center center',
+              }}
+              onClick={togglePlay}
+              muted={usingExternalAudio ? true : isComposedVideo ? muted : true}
+              controls={false}
+              playsInline
+              onError={() => {
+                console.error('[MainVideoPlayer] Video error', {
+                  error: videoRef.current?.error,
+                  networkState: videoRef.current?.networkState,
+                  readyState: videoRef.current?.readyState,
+                })
+              }}
+            />
+          </div>
         </div>
 
         {/* A/B Loop Markers: Vertical lines on video showing A and B loop point positions */}

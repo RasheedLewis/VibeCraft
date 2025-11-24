@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import React, { useState, useRef, useEffect } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
 import { SectionCard, VCCard, VCButton } from '../vibecraft'
@@ -263,8 +264,8 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
     null
   const playerVideoUrl = composedVideoUrl ?? activePlayerClip?.videoUrl ?? null
   const playerPosterUrl = composedPosterUrl ?? activePlayerClip?.videoUrl ?? undefined
-  // Only use audio URL if we don't have a composed video (composed video includes audio)
-  const playerAudioUrl = composedVideoUrl ? null : audioUrl
+  // Only use audio URL for composed videos (which have embedded audio). Clip previews should not have audio.
+  const playerAudioUrl = null
 
   // Calculate duration: use selected range if available, otherwise use composed video duration or sum of clips
   const selectedDuration =
@@ -488,7 +489,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
 
         {playerVideoUrl && playerDurationSec ? (
           <section className="space-y-3">
-            <div className="vc-label">
+            <div className="vc-label text-center">
               {composedVideoUrl
                 ? 'Your Final Video'
                 : `Preview${
@@ -503,24 +504,37 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
                 // Reset video player state if needed
               }}
             >
-              <MainVideoPlayer
-                videoUrl={playerVideoUrl}
-                audioUrl={playerAudioUrl ?? undefined}
-                posterUrl={playerPosterUrl}
-                durationSec={playerDurationSec}
-                clips={playerClips}
-                activeClipId={activePlayerClip?.id ?? undefined}
-                onClipSelect={onPlayerClipSelect}
-                beatGrid={playerBeatGrid}
-                lyrics={playerLyrics}
-                waveform={waveformValues}
-                onDownload={
-                  playerVideoUrl
-                    ? () => window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
-                    : undefined
-                }
-                videoType={songDetails.video_type ?? 'full_length'}
-              />
+              <div className="flex justify-center">
+                <div
+                  className={clsx(
+                    'w-full',
+                    songDetails.video_type === 'short_form'
+                      ? 'max-w-[70%]'
+                      : 'max-w-[33%]',
+                  )}
+                >
+                  <MainVideoPlayer
+                    videoUrl={playerVideoUrl}
+                    audioUrl={playerAudioUrl ?? undefined}
+                    posterUrl={playerPosterUrl}
+                    durationSec={playerDurationSec}
+                    clips={playerClips}
+                    activeClipId={activePlayerClip?.id ?? undefined}
+                    onClipSelect={onPlayerClipSelect}
+                    beatGrid={playerBeatGrid}
+                    lyrics={playerLyrics}
+                    waveform={waveformValues}
+                    onDownload={
+                      playerVideoUrl
+                        ? () =>
+                            window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
+                        : undefined
+                    }
+                    videoType={songDetails.video_type ?? 'full_length'}
+                    isComposedVideo={Boolean(composedVideoUrl)}
+                  />
+                </div>
+              </div>
             </ErrorBoundary>
           </section>
         ) : null}

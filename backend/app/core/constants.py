@@ -63,5 +63,5 @@ VALID_VIDEO_TYPES = [VIDEO_TYPE_FULL_LENGTH, VIDEO_TYPE_SHORT_FORM]
 
 # Audio selection constants
 MAX_AUDIO_SELECTION_DURATION_SEC = 30.0
-MIN_AUDIO_SELECTION_DURATION_SEC = 9.0  # Minimum 9 seconds to support 3 clips × 3 seconds minimum
+MIN_AUDIO_SELECTION_DURATION_SEC = 18.0  # Minimum 18 seconds to support 3 clips × 3 seconds minimum
 

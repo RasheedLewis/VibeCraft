@@ -529,7 +529,7 @@ export const AudioSelectionTimeline: React.FC<AudioSelectionTimelineProps> = ({
       {/* Minimum duration message */}
       {showMinDurationMessage && (
         <div className="mt-2 rounded-lg border border-yellow-500/40 bg-[rgba(234,179,8,0.12)] px-3 py-2 text-xs text-yellow-400 transition-opacity duration-300">
-          Minimum is 9 seconds
+          Minimum is 18 seconds
         </div>
       )}
 

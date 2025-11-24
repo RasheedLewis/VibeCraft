@@ -102,6 +102,8 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
   const [showCelebration, setShowCelebration] = useState(false)
   const [celebrationFading, setCelebrationFading] = useState(false)
   const celebrationShownRef = useRef(false)
+  const celebrationElementRef = useRef<HTMLDivElement | null>(null)
+  const celebrationTimersRef = useRef<{ fadeTimer?: number; hideTimer?: number }>({})
 
   // Update title value when songDetails changes
   useEffect(() => {
@@ -189,28 +191,71 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       celebrationShownRef.current = true
       setShowCelebration(true)
       setCelebrationFading(false)
-      // Add extra 1.5 seconds for short-form videos
-      const extraTime = songDetails.video_type === 'short_form' ? 1500 : 0
-      // Start fade-out right after pulse completes (2s pulse + 0.3s buffer = 2.3s)
-      const fadeTimer = setTimeout(() => {
-        setCelebrationFading(true)
-      }, 2300 + extraTime)
-      // Fully hide after fade-out completes (1.2 seconds for fade)
-      const hideTimer = setTimeout(() => {
-        setShowCelebration(false)
-        setCelebrationFading(false)
-      }, 3500 + extraTime) // 2.3s display + 1.2s fade + extra time for short-form
-      return () => {
-        clearTimeout(fadeTimer)
-        clearTimeout(hideTimer)
-      }
     } else if (!composedVideoUrl) {
       // Reset when composed video is removed (e.g., new project)
       celebrationShownRef.current = false
       setShowCelebration(false)
       setCelebrationFading(false)
+      // Clear any pending timers
+      if (celebrationTimersRef.current.fadeTimer) {
+        clearTimeout(celebrationTimersRef.current.fadeTimer)
+      }
+      if (celebrationTimersRef.current.hideTimer) {
+        clearTimeout(celebrationTimersRef.current.hideTimer)
+      }
+      celebrationTimersRef.current = {}
     }
-  }, [composedVideoUrl, animationsDisabled, songDetails.video_type])
+  }, [composedVideoUrl, animationsDisabled])
+
+  // Start animation timers when celebration element comes into view
+  useEffect(() => {
+    if (animationsDisabled || !showCelebration || !celebrationElementRef.current) {
+      return
+    }
+
+    const element = celebrationElementRef.current
+
+    // Intersection Observer to detect when element comes into view
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        // Only start timers once when element becomes visible
+        if (entry.isIntersecting && !celebrationTimersRef.current.fadeTimer) {
+          // Add extra 1.5 seconds for short-form videos
+          const extraTime = songDetails.video_type === 'short_form' ? 1500 : 0
+          // Start fade-out right after pulse completes (2s pulse + 0.3s buffer = 2.3s)
+          const fadeTimer = window.setTimeout(() => {
+            setCelebrationFading(true)
+          }, 2300 + extraTime)
+          // Fully hide after fade-out completes (1.2 seconds for fade)
+          const hideTimer = window.setTimeout(() => {
+            setShowCelebration(false)
+            setCelebrationFading(false)
+          }, 3500 + extraTime) // 2.3s display + 1.2s fade + extra time for short-form
+
+          celebrationTimersRef.current = { fadeTimer, hideTimer }
+        }
+      },
+      {
+        threshold: 0.1, // Trigger when 10% of element is visible
+        rootMargin: '0px', // No margin
+      },
+    )
+
+    observer.observe(element)
+
+    return () => {
+      observer.disconnect()
+      // Clean up timers on unmount
+      if (celebrationTimersRef.current.fadeTimer) {
+        clearTimeout(celebrationTimersRef.current.fadeTimer)
+      }
+      if (celebrationTimersRef.current.hideTimer) {
+        clearTimeout(celebrationTimersRef.current.hideTimer)
+      }
+      celebrationTimersRef.current = {}
+    }
+  }, [showCelebration, animationsDisabled, songDetails.video_type])
   const composedPosterUrl = clipSummary?.composedVideoPosterUrl ?? null
   const activePlayerClip =
     completedClipEntries.find((clip) => clip.id === playerActiveClipId) ??
@@ -482,6 +527,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
         {/* Celebration animation - fires once when composition completes (not if animations disabled) */}
         {!animationsDisabled && showCelebration && (
           <div
+            ref={celebrationElementRef}
             className="relative w-full flex flex-col items-center overflow-hidden"
             style={{
               opacity: celebrationFading ? 0 : 1,

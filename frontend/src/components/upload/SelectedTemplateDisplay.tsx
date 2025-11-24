@@ -211,7 +211,7 @@ export const SelectedTemplateDisplay: React.FC<SelectedTemplateDisplayProps> = (
     return null
   }
 
-  const imageSize = 'w-32 h-32' // Same size as CharacterImageUpload
+  const imageSize = 'w-48 h-48' // Increased size for better visibility
 
   return (
     <div className={`space-y-4 ${className || ''}`}>

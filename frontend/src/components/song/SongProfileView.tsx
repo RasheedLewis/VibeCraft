@@ -349,14 +349,14 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
                     onBlur={handleTitleBlur}
                     onKeyDown={handleTitleKeyDown}
                     disabled={isSavingTitle}
-                    className="font-display text-3xl text-white md:text-4xl bg-transparent border-b-2 border-vc-accent-primary/50 focus:border-vc-accent-primary focus:outline-none disabled:opacity-50"
+                    className="font-display text-2xl text-white md:text-3xl bg-transparent border-b-2 border-vc-accent-primary/50 focus:border-vc-accent-primary focus:outline-none disabled:opacity-50"
                     style={{ margin: 0, padding: 0, marginRight: '8px' }}
                     maxLength={256}
                   />
                 ) : (
                   <h1
                     onClick={handleTitleClick}
-                    className={`font-display text-3xl text-white md:text-4xl ${
+                    className={`font-display text-2xl text-white md:text-3xl ${
                       onTitleUpdate
                         ? 'cursor-text hover:text-vc-accent-primary/80 transition-colors'
                         : ''

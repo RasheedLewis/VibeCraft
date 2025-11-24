@@ -342,6 +342,7 @@ interface MainVideoPlayerProps {
   lyrics?: PlayerLyricLine[]
   waveform?: number[]
   onDownload?: () => void
+  videoType?: 'full_length' | 'short_form'
 }
 
 const clampValue = (value: number, min: number, max: number) =>
@@ -409,6 +410,7 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
   lyrics = [],
   waveform,
   onDownload,
+  videoType = 'full_length',
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -1086,7 +1088,12 @@ export const MainVideoPlayer: React.FC<MainVideoPlayerProps> = ({
           className="hidden"
         />
         {/* Video container with zoom transform */}
-        <div className="w-full aspect-video flex items-center justify-center overflow-hidden">
+        <div
+          className={clsx(
+            'w-full flex items-center justify-center overflow-hidden',
+            videoType === 'short_form' ? 'aspect-[9/16]' : 'aspect-video',
+          )}
+        >
           <video
             key={(() => {
               if (!videoUrl) return 'video-none'

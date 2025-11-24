@@ -519,6 +519,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
                     ? () => window.open(playerVideoUrl, '_blank', 'noopener,noreferrer')
                     : undefined
                 }
+                videoType={songDetails.video_type ?? 'full_length'}
               />
             </ErrorBoundary>
           </section>

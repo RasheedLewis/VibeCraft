@@ -5,7 +5,7 @@ from sqlalchemy import inspect, text
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.core.config import get_settings
-from app.models import DEFAULT_USER_ID, SongClip, User
+from app.models import DEFAULT_USER_ID, SongClip
 
 settings = get_settings()
 # Disable GSS/Kerberos authentication to prevent crashes in forked processes (RQ workers)

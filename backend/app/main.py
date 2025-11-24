@@ -30,8 +30,9 @@ def create_app() -> FastAPI:
     )
 
     # Parse CORS origins from comma-separated string
+    # Strip quotes that might be included in env var value
     cors_origins = [
-        origin.strip() 
+        origin.strip().strip('"').strip("'")
         for origin in settings.cors_origins.split(",") 
         if origin.strip()
     ]
@@ -40,7 +41,10 @@ def create_app() -> FastAPI:
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"CORS origins configured: {cors_origins}")
+    if not cors_origins:
+        logger.warning("WARNING: No CORS origins configured! CORS will not work.")
     
+    # CORS middleware must be added BEFORE rate limiting to handle OPTIONS preflight requests
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
@@ -49,7 +53,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Add rate limiting middleware
+    # Add rate limiting middleware (after CORS so OPTIONS requests pass through)
     app.add_middleware(RateLimitMiddleware)
 
     @app.get("/healthz", tags=["health"])

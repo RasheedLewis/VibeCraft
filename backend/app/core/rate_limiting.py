@@ -132,6 +132,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """Middleware to apply rate limiting to all requests."""
 
     async def dispatch(self, request: Request, call_next):
+        # Skip rate limiting for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        
         # Skip rate limiting for health checks and polling endpoints
         # Polling endpoints need to be exempted because frontend polls frequently (every 3-5 seconds)
         polling_paths = [

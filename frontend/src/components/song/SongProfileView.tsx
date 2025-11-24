@@ -189,15 +189,17 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       celebrationShownRef.current = true
       setShowCelebration(true)
       setCelebrationFading(false)
+      // Add extra 1.5 seconds for short-form videos
+      const extraTime = songDetails.video_type === 'short_form' ? 1500 : 0
       // Start fade-out right after pulse completes (2s pulse + 0.3s buffer = 2.3s)
       const fadeTimer = setTimeout(() => {
         setCelebrationFading(true)
-      }, 2300)
+      }, 2300 + extraTime)
       // Fully hide after fade-out completes (1.2 seconds for fade)
       const hideTimer = setTimeout(() => {
         setShowCelebration(false)
         setCelebrationFading(false)
-      }, 3500) // 2.3s display + 1.2s fade
+      }, 3500 + extraTime) // 2.3s display + 1.2s fade + extra time for short-form
       return () => {
         clearTimeout(fadeTimer)
         clearTimeout(hideTimer)
@@ -208,7 +210,7 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
       setShowCelebration(false)
       setCelebrationFading(false)
     }
-  }, [composedVideoUrl, animationsDisabled])
+  }, [composedVideoUrl, animationsDisabled, songDetails.video_type])
   const composedPosterUrl = clipSummary?.composedVideoPosterUrl ?? null
   const activePlayerClip =
     completedClipEntries.find((clip) => clip.id === playerActiveClipId) ??
@@ -510,8 +512,19 @@ export const SongProfileView: React.FC<SongProfileViewProps> = ({
                 <p className="text-sm text-vc-text-secondary">
                   Composition complete • Ready to share
                 </p>
+                {songDetails.video_type === 'short_form' && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-base font-semibold" style={{ color: '#fbbf24' }}>
+                      Optimized for short-form platforms!
+                    </p>
+                    <p className="text-sm" style={{ color: '#fcd34d' }}>
+                      TikTok, IG Reels, YouTube Shorts
+                    </p>
+                  </div>
+                )}
                 <p className="text-xs text-vc-text-muted mt-2">
-                  Shared videos are valid for 1 week
+                  Shared video URLs are valid for{' '}
+                  <span style={{ color: '#dc2626' }}>1 week</span>
                 </p>
               </div>
             </div>

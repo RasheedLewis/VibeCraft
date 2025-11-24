@@ -23,10 +23,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_TARGET_RESOLUTION = (1920, 1080)  # 16:9 for full_length
 DEFAULT_TARGET_RESOLUTION_9_16 = (1080, 1920)  # 9:16 for short_form
 DEFAULT_TARGET_FPS = 24
+DEFAULT_TARGET_FPS_SHORT_FORM = 30  # 30fps for social media
 DEFAULT_VIDEO_CODEC = "libx264"
 DEFAULT_AUDIO_CODEC = "aac"
 DEFAULT_AUDIO_BITRATE = "192k"
 DEFAULT_CRF = 23  # Quality setting for H.264 (lower = better quality, 18-28 is typical range)
+
+# Optimized encoding settings for Short Form videos (social media)
+SHORT_FORM_VIDEO_BITRATE = "6M"  # Target bitrate
+SHORT_FORM_VIDEO_MAXRATE = "8M"  # Maximum bitrate
+SHORT_FORM_VIDEO_BUFSIZE = "12M"  # Buffer size
+SHORT_FORM_PRESET = "medium"  # Encoding speed/quality balance
 
 
 @dataclass
@@ -350,6 +357,7 @@ def concatenate_clips(
     beat_times: Optional[list[float]] = None,  # Beat timestamps for visual sync effects
     filter_type: str = "flash",  # Effect type: flash, color_burst, zoom_pulse, brightness_pulse, glitch
     frame_rate: float = 24.0,  # Video frame rate for effect timing
+    video_type: Optional[str] = None,  # "short_form" or "full_length" - determines encoding settings
 ) -> CompositionResult:
     """
     Concatenate video clips with beat-synced visual effects.
@@ -618,16 +626,44 @@ def concatenate_clips(
             final_video_input = ffmpeg.input(str(temp_video_path))
             audio_input = ffmpeg.input(str(audio_path))
             
+            # Optimized encoding for Short Form videos (social media)
+            if video_type == "short_form":
+                # Use bitrate control, 30fps, and faststart for social media optimization
+                output_kwargs = {
+                    "vcodec": DEFAULT_VIDEO_CODEC,
+                    "acodec": DEFAULT_AUDIO_CODEC,
+                    "audio_bitrate": DEFAULT_AUDIO_BITRATE,
+                    "b:v": SHORT_FORM_VIDEO_BITRATE,
+                    "maxrate": SHORT_FORM_VIDEO_MAXRATE,
+                    "bufsize": SHORT_FORM_VIDEO_BUFSIZE,
+                    "preset": SHORT_FORM_PRESET,
+                    "r": DEFAULT_TARGET_FPS_SHORT_FORM,  # 30fps for social media
+                    "movflags": "+faststart",  # Enable streaming/quick preview
+                    "t": song_duration_sec,  # Ensure exact duration match
+                    "async": 1,  # Audio resampling for sync
+                }
+                logger.info(
+                    f"Using optimized encoding for Short Form video: "
+                    f"bitrate={SHORT_FORM_VIDEO_BITRATE}, fps={DEFAULT_TARGET_FPS_SHORT_FORM}, faststart enabled"
+                )
+            else:
+                # Standard encoding for Full Length videos
+                output_kwargs = {
+                    "vcodec": DEFAULT_VIDEO_CODEC,
+                    "acodec": DEFAULT_AUDIO_CODEC,
+                    "audio_bitrate": DEFAULT_AUDIO_BITRATE,
+                    "crf": DEFAULT_CRF,  # Variable quality
+                    "preset": "medium",
+                    "t": song_duration_sec,  # Ensure exact duration match
+                    "async": 1,  # Audio resampling for sync
+                }
+            
             (
                 ffmpeg.output(
                     final_video_input["v"],
                     audio_input["a"],
                     str(output_path),
-                    vcodec=DEFAULT_VIDEO_CODEC,
-                    acodec=DEFAULT_AUDIO_CODEC,
-                    audio_bitrate=DEFAULT_AUDIO_BITRATE,
-                    t=song_duration_sec,  # Ensure exact duration match
-                    **{"async": 1},  # Audio resampling for sync
+                    **output_kwargs,
                 )
                 .overwrite_output()
                 .run(cmd=ffmpeg_bin, quiet=True, capture_stderr=True)

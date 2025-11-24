@@ -1086,6 +1086,9 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
 
         # Concatenate clips with audio
         output_path = temp_dir / "composed_video.mp4"
+        song = SongRepository.get_by_id(song_id)
+        video_type = getattr(song, 'video_type', None) if song else None
+        
         composition_result = concatenate_clips(
             [str(path) for path in normalized_paths],
             str(audio_path),
@@ -1095,6 +1098,7 @@ def compose_song_video(song_id: UUID, job_id: Optional[str] = None) -> tuple[str
             beat_times=beat_times if effect_config.enabled else None,  # Only pass if effects enabled
             filter_type=filter_type or "flash",  # Use config or default
             frame_rate=24.0,
+            video_type=video_type,  # Pass video_type for optimized encoding
         )
         
         if job_id:

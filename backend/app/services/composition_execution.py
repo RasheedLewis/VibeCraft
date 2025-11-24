@@ -362,6 +362,9 @@ def execute_composition_pipeline(
             effect_config = get_beat_effect_config()
             filter_type = effect_config.effect_type if effect_config.enabled else None
             
+            # Get video_type from song for optimized encoding
+            video_type = getattr(song, 'video_type', None)
+            
             composition_result = concatenate_clips(
                 normalized_clip_paths=normalized_paths,
                 audio_path=audio_path,
@@ -370,6 +373,7 @@ def execute_composition_pipeline(
                 beat_times=beat_times if effect_config.enabled else None,  # Only pass if effects enabled
                 filter_type=filter_type or "flash",  # Use config or default
                 frame_rate=24.0,
+                video_type=video_type,  # Pass video_type for optimized encoding
             )
             logger.info(
                 f"Composed video: {composition_result.duration_sec:.2f}s, "

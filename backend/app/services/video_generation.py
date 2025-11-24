@@ -13,15 +13,42 @@ from app.services.image_processing import (
     pad_and_upload_image_to_9_16,
     create_and_upload_9_16_placeholder,
 )
+from app.services.video_providers import MinimaxHailuoProvider, VideoGenerationProvider
 
 logger = logging.getLogger(__name__)
 
-# Replicate video generation model
-# Using Minimax Hailuo 2.3 for text-to-video generation
-# Model: minimax/hailuo-2.3
-# Note: Using model owner/name format - Replicate will use latest version
+# Default video generation provider
+# Can be swapped out for different models/APIs by changing this
+_default_provider: Optional[VideoGenerationProvider] = None
+
+
+def get_video_provider() -> VideoGenerationProvider:
+    """
+    Get the default video generation provider.
+    
+    Returns:
+        VideoGenerationProvider instance (defaults to MinimaxHailuoProvider)
+    """
+    global _default_provider
+    if _default_provider is None:
+        _default_provider = MinimaxHailuoProvider()
+    return _default_provider
+
+
+def set_video_provider(provider: VideoGenerationProvider) -> None:
+    """
+    Set a custom video generation provider (useful for testing or switching models).
+    
+    Args:
+        provider: VideoGenerationProvider instance
+    """
+    global _default_provider
+    _default_provider = provider
+
+
+# Legacy constants for backward compatibility
 VIDEO_MODEL = "minimax/hailuo-2.3"
-IMAGE_TO_VIDEO_MODEL = "minimax/hailuo-2.3"  # Same model supports image input
+IMAGE_TO_VIDEO_MODEL = "minimax/hailuo-2.3"
 
 
 def _generate_image_to_video(
@@ -72,28 +99,13 @@ def _generate_image_to_video(
         # Optimize prompt for the specific API/model
         from app.services.prompt_enhancement import optimize_prompt_for_api
 
+        provider = get_video_provider()
         optimized_prompt = optimize_prompt_for_api(
             prompt=scene_spec.prompt,
-            api_name=IMAGE_TO_VIDEO_MODEL,
+            api_name=provider.model_name,
             bpm=None,  # Will extract from prompt if available
         )
 
-        # Prepare input parameters for Minimax Hailuo 2.3
-        # API supports: prompt, duration (6 or 10s), resolution ("768p" or "1080p"), 
-        # prompt_optimizer (bool), first_frame_image (optional)
-        # Note: API only supports 6s (1080p) or 6s/10s (768p)
-        # We'll generate 6s clips and trim to desired duration if needed
-        
-        # Determine resolution based on video type
-        # 1080p for short_form (9:16), 768p for full_length (16:9)
-        # Note: 1080p only supports 6s duration
-        if video_type == "short_form":
-            resolution = "1080p"
-            duration = 6  # 1080p only supports 6s
-        else:
-            resolution = "768p"
-            duration = 6  # Use 6s for consistency
-        
         # CHARACTER CONSISTENCY: Both image AND prompt are used together
         # - Image provides visual character reference (appearance, style, pose)
         # - Prompt describes scene, motion, and action
@@ -102,7 +114,7 @@ def _generate_image_to_video(
         # For Short Form videos (9:16), pad character image to 9:16 aspect ratio
         # This ensures the video output matches 9:16 (TikTok/Instagram/YouTube Shorts format)
         image_url_to_use = reference_image_url
-        if video_type == "short_form" and song_id:
+        if provider.should_pad_image_for_9_16(video_type, True) and song_id:
             try:
                 logger.info(
                     f"[VIDEO-GEN] Padding character image to 9:16 for Short Form image-to-video "
@@ -122,17 +134,14 @@ def _generate_image_to_video(
                 )
                 # Continue with original image - video generation will still work
         
-        input_params = {
-            "first_frame_image": image_url_to_use,  # Reference character image for consistency
-            "prompt": optimized_prompt,  # Scene prompt (used together with image)
-            "duration": duration,
-            "resolution": resolution,
-            "prompt_optimizer": True,
-        }
-        logger.info(
-            f"[VIDEO-GEN] Image-to-video API params: duration={duration}s, "
-            f"resolution={resolution}, video_type={video_type}, "
-            f"requested_duration={scene_spec.duration_sec}s"
+        # Use provider to prepare API-specific parameters
+        # Update scene_spec with optimized prompt for provider
+        scene_spec_with_optimized = scene_spec.model_copy(update={"prompt": optimized_prompt})
+        input_params = provider.prepare_image_to_video_params(
+            scene_spec=scene_spec_with_optimized,
+            reference_image_url=image_url_to_use,
+            video_type=video_type,
+            seed=seed,
         )
 
         if seed is not None:
@@ -157,10 +166,11 @@ def _generate_image_to_video(
         )
 
         # Get model version
-        model = client.models.get(IMAGE_TO_VIDEO_MODEL)
+        provider = get_video_provider()
+        model = client.models.get(provider.model_name)
         version = model.latest_version
 
-        logger.info(f"[VIDEO-GEN] Calling Replicate API: model={IMAGE_TO_VIDEO_MODEL}, has_image={'first_frame_image' in input_params}")
+        logger.info(f"[VIDEO-GEN] Calling Replicate API: model={provider.model_name}, has_image={'first_frame_image' in input_params}")
         prediction = client.predictions.create(
             version=version,
             input=input_params,
@@ -171,14 +181,10 @@ def _generate_image_to_video(
 
         # Poll for completion
         video_url = None
-        metadata = {
-            "duration": input_params["duration"],
-            "resolution": input_params["resolution"],
-            "seed": seed,
-            "job_id": job_id,
-            "generation_type": "image-to-video",
-            "reference_image_url": reference_image_url,
-        }
+        provider = get_video_provider()
+        metadata = provider.extract_metadata_from_params(input_params, seed=seed)
+        metadata["job_id"] = job_id
+        metadata["reference_image_url"] = reference_image_url
 
         for attempt in range(max_poll_attempts):
             prediction = client.predictions.get(job_id)
@@ -329,81 +335,28 @@ def generate_section_video(
         # Optimize prompt for the specific API/model
         from app.services.prompt_enhancement import optimize_prompt_for_api
         
+        provider = get_video_provider()
         optimized_prompt = optimize_prompt_for_api(
             prompt=scene_spec.prompt,
-            api_name=VIDEO_MODEL,
+            api_name=provider.model_name,
             bpm=None,  # Will extract from prompt if available
         )
         
-        # Prepare input parameters for Minimax Hailuo 2.3
-        # API supports: prompt, duration (6 or 10s), resolution ("768p" or "1080p"), 
-        # prompt_optimizer (bool), first_frame_image (optional)
-        # Note: API only supports 6s (1080p) or 6s/10s (768p)
-        # We'll generate 6s clips and trim to desired duration if needed
+        # Update scene_spec with optimized prompt for provider
+        scene_spec_with_optimized = scene_spec.model_copy(update={"prompt": optimized_prompt})
         
-        # Determine resolution based on video type
-        # 1080p for short_form (9:16), 768p for full_length (16:9)
-        # Note: 1080p only supports 6s duration
-        if video_type == "short_form":
-            resolution = "1080p"
-            duration = 6  # 1080p only supports 6s
-        else:
-            resolution = "768p"
-            # Use 6s for most clips, 10s if we want longer (but typically we'll use 6s and trim)
-            duration = 6
-        
-        input_params = {
-            "prompt": optimized_prompt,
-            "duration": duration,
-            "resolution": resolution,
-            "prompt_optimizer": True,
-        }
-        logger.info(
-            f"[VIDEO-GEN] Text-to-video API params: duration={duration}s, "
-            f"resolution={resolution}, video_type={video_type}, "
-            f"requested_duration={scene_spec.duration_sec}s"
-        )
-
-        # For Short Form videos (9:16) without character images, use 9:16 placeholder
-        # This ensures the video output matches 9:16 (TikTok/Instagram/YouTube Shorts format)
-        if video_type == "short_form" and not image_urls and song_id:
-            try:
-                logger.info(
-                    f"[VIDEO-GEN] Creating 9:16 placeholder for Short Form text-to-video "
-                    f"(song_id={song_id})"
-                )
-                placeholder_url = create_and_upload_9_16_placeholder(
-                    song_id=str(song_id),
-                    expires_in=3600,
-                )
-                input_params["first_frame_image"] = placeholder_url
-                logger.info(f"[VIDEO-GEN] Using 9:16 placeholder: {placeholder_url[:50]}...")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to create 9:16 placeholder, video may not be 9:16 aspect ratio: {e}"
-                )
-                # Continue without placeholder - video generation will still work
-
-        # CHARACTER CONSISTENCY: Add image input if provided (for image-to-video)
-        # - Both image AND prompt are used together (image = character reference, prompt = scene/motion)
-        # - They complement each other - image doesn't replace prompt
-        # - Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
-        if image_urls:
+        # Handle reference images for image-to-video
+        # Only process images if we're actually doing image-to-video (not after fallback)
+        selected_image_url = None
+        if image_urls and is_image_to_video:
             # Select image based on pose parameter
             # The image_urls list from _get_character_image_urls() is ordered by selected_pose:
             # - If selected_pose="A": [pose_a_url, pose_b_url] (selected pose A at index 0)
             # - If selected_pose="B": [pose_b_url, pose_a_url] (selected pose B at index 0)
             # Since selected_pose is passed as the pose parameter, index 0 is always the selected pose.
-            # The pose parameter mapping A->0, B->1 is relative to the list order, which depends on selected_pose.
-            # For now, we use index 0 (the selected pose, which is first in the list).
-            # If pose parameter is provided and differs from selected_pose, we'd need additional logic
-            # to find the correct image, but currently we pass selected_pose as pose, so index 0 is correct.
             selected_index = 0  # Default to first image (selected pose, which is always first in list)
             
             if pose and pose.upper() in ("A", "B"):
-                # The pose parameter should match selected_pose (which is passed from clip_generation.py)
-                # So index 0 is correct. If we wanted to support pose != selected_pose, we'd need to
-                # track which image is which pose, but that's not currently implemented.
                 logger.debug(f"Using pose '{pose}' (selected pose), selecting index 0 from image_urls list")
             elif pose:
                 logger.warning(f"Invalid pose '{pose}', expected 'A' or 'B', using index 0 instead")
@@ -412,7 +365,7 @@ def generate_section_video(
             
             # For Short Form videos (9:16), pad character image to 9:16 aspect ratio
             # This ensures the video output matches 9:16 (TikTok/Instagram/YouTube Shorts format)
-            if video_type == "short_form" and song_id:
+            if provider.should_pad_image_for_9_16(video_type, True) and song_id:
                 try:
                     logger.info(
                         f"[VIDEO-GEN] Padding character image to 9:16 for Short Form video "
@@ -431,8 +384,6 @@ def generate_section_video(
                     )
                     # Continue with original image - video generation will still work
             
-            input_params["first_frame_image"] = selected_image_url
-            
             if len(image_urls) > 1:
                 logger.info(
                     f"Using image at index {selected_index} (pose={pose or 'default'}) for image-to-video generation "
@@ -441,9 +392,36 @@ def generate_section_video(
             else:
                 logger.info(f"Using image-to-video generation with reference image: {selected_image_url}")
             logger.debug(f"Both image and prompt are being used: image={selected_image_url[:50]}..., prompt={optimized_prompt[:100]}...")
-
-        if seed is not None:
-            input_params["seed"] = seed
+        
+        # For Short Form videos (9:16) without character images, use 9:16 placeholder
+        # This ensures the video output matches 9:16 (TikTok/Instagram/YouTube Shorts format)
+        # Only create placeholder if we're doing text-to-video (not image-to-video)
+        placeholder_url = None
+        if not is_image_to_video and provider.should_create_9_16_placeholder(video_type, bool(image_urls)) and song_id:
+            try:
+                logger.info(
+                    f"[VIDEO-GEN] Creating 9:16 placeholder for Short Form text-to-video "
+                    f"(song_id={song_id})"
+                )
+                placeholder_url = create_and_upload_9_16_placeholder(
+                    song_id=str(song_id),
+                    expires_in=3600,
+                )
+                logger.info(f"[VIDEO-GEN] Using 9:16 placeholder: {placeholder_url[:50]}...")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to create 9:16 placeholder, video may not be 9:16 aspect ratio: {e}"
+                )
+                # Continue without placeholder - video generation will still work
+        
+        # Use provider to prepare API-specific parameters
+        reference_image_for_params = selected_image_url or placeholder_url
+        input_params = provider.prepare_text_to_video_params(
+            scene_spec=scene_spec_with_optimized,
+            video_type=video_type,
+            reference_image_url=reference_image_for_params,
+            seed=seed,
+        )
 
         generation_type = "image-to-video" if is_image_to_video else "text-to-video"
         logger.info(
@@ -465,11 +443,12 @@ def generate_section_video(
 
         # Start the prediction (async - use predictions.create for long-running jobs)
         # Get the model version first
-        model = client.models.get(VIDEO_MODEL)
+        provider = get_video_provider()
+        model = client.models.get(provider.model_name)
         version = model.latest_version
         
         logger.info(
-            f"[VIDEO-GEN] Calling Replicate API: model={VIDEO_MODEL}, "
+            f"[VIDEO-GEN] Calling Replicate API: model={provider.model_name}, "
             f"generation_type={generation_type}, has_image={'first_frame_image' in input_params}"
         )
         prediction = client.predictions.create(
@@ -482,13 +461,9 @@ def generate_section_video(
 
         # Poll for completion
         video_url = None
-        metadata = {
-            "duration": input_params["duration"],
-            "resolution": input_params["resolution"],
-            "seed": seed,
-            "job_id": job_id,
-            "generation_type": generation_type,
-        }
+        provider = get_video_provider()
+        metadata = provider.extract_metadata_from_params(input_params, seed=seed)
+        metadata["job_id"] = job_id
         if is_image_to_video and image_urls:
             metadata["reference_image_url"] = image_urls[0] if image_urls else None
 

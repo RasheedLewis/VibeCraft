@@ -264,7 +264,7 @@ class TestVerifyComposedVideo:
 
     @patch("app.services.video_composition.subprocess.run")
     def test_verify_fails_on_resolution_mismatch(self, mock_run):
-        """Test that verification fails on resolution mismatch."""
+        """Test that verification fails on resolution mismatch when expected_resolution is provided."""
         probe_output = {
             "streams": [
                 {
@@ -282,8 +282,9 @@ class TestVerifyComposedVideo:
         mock_result.returncode = 0
         mock_run.return_value = mock_result
 
+        # When explicit expected_resolution is provided and doesn't match, should raise error
         with pytest.raises(RuntimeError, match="Resolution mismatch"):
-            verify_composed_video("output.mp4")
+            verify_composed_video("output.mp4", expected_resolution=(1920, 1080))
 
     @patch("app.services.video_composition.subprocess.run")
     def test_verify_fails_on_empty_file(self, mock_run):

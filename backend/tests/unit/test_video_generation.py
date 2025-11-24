@@ -69,10 +69,9 @@ class TestGenerateSectionVideo:
         assert video_url == "https://replicate.delivery/pbxt/video.mp4"
         assert metadata["job_id"] == "pred-123"
         assert metadata["seed"] == 42
-        assert metadata["fps"] == 8
-        # Resolution values are implementation details - just verify they exist
-        assert "resolution_width" in metadata
-        assert "resolution_height" in metadata
+        # New API uses duration and resolution instead of fps, num_frames, width, height
+        assert metadata["duration"] == 6
+        assert metadata["resolution"] == "768p"
 
         # Verify API calls
         mock_client.predictions.create.assert_called_once()

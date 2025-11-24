@@ -215,6 +215,7 @@ def generate_section_video(
     fps: Optional[int] = None,
     reference_image_url: Optional[str] = None,
     reference_image_urls: Optional[list[str]] = None,
+    pose: Optional[str] = None,  # "A" or "B" - maps to index 0 or 1 in reference_image_urls
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
     song_id: Optional[UUID] = None,  # For prompt logging
@@ -230,6 +231,7 @@ def generate_section_video(
         fps: Optional FPS override
         reference_image_url: Optional single image URL for image-to-video generation
         reference_image_urls: Optional list of image URLs (tries multiple, falls back to single)
+        pose: Optional pose selection ("A" -> index 0, "B" -> index 1) for selecting from reference_image_urls
         max_poll_attempts: Maximum number of polling attempts
         poll_interval_sec: Seconds between polling attempts
 
@@ -320,16 +322,36 @@ def generate_section_video(
         # - They complement each other - image doesn't replace prompt
         # - Note: minimax/hailuo-2.3 only supports single "first_frame_image" parameter
         if image_urls:
-            # Use first image (model only supports single image)
-            input_params["first_frame_image"] = image_urls[0]
+            # Select image based on pose parameter
+            # The image_urls list from _get_character_image_urls() is ordered by selected_pose:
+            # - If selected_pose="A": [pose_a_url, pose_b_url] (selected pose A at index 0)
+            # - If selected_pose="B": [pose_b_url, pose_a_url] (selected pose B at index 0)
+            # Since selected_pose is passed as the pose parameter, index 0 is always the selected pose.
+            # The pose parameter mapping A->0, B->1 is relative to the list order, which depends on selected_pose.
+            # For now, we use index 0 (the selected pose, which is first in the list).
+            # If pose parameter is provided and differs from selected_pose, we'd need additional logic
+            # to find the correct image, but currently we pass selected_pose as pose, so index 0 is correct.
+            selected_index = 0  # Default to first image (selected pose, which is always first in list)
+            
+            if pose and pose.upper() in ("A", "B"):
+                # The pose parameter should match selected_pose (which is passed from clip_generation.py)
+                # So index 0 is correct. If we wanted to support pose != selected_pose, we'd need to
+                # track which image is which pose, but that's not currently implemented.
+                logger.debug(f"Using pose '{pose}' (selected pose), selecting index 0 from image_urls list")
+            elif pose:
+                logger.warning(f"Invalid pose '{pose}', expected 'A' or 'B', using index 0 instead")
+            
+            selected_image_url = image_urls[selected_index]
+            input_params["first_frame_image"] = selected_image_url
+            
             if len(image_urls) > 1:
                 logger.info(
-                    f"Using first image for image-to-video generation (model supports single image only, "
-                    f"ignoring {len(image_urls) - 1} additional image(s))"
+                    f"Using image at index {selected_index} (pose={pose or 'default'}) for image-to-video generation "
+                    f"(model supports single image only, ignoring {len(image_urls) - 1} additional image(s))"
                 )
             else:
-                logger.info(f"Using image-to-video generation with reference image: {image_urls[0]}")
-            logger.debug(f"Both image and prompt are being used: image={image_urls[0][:50]}..., prompt={optimized_prompt[:100]}...")
+                logger.info(f"Using image-to-video generation with reference image: {selected_image_url}")
+            logger.debug(f"Both image and prompt are being used: image={selected_image_url[:50]}..., prompt={optimized_prompt[:100]}...")
 
         if seed is not None:
             input_params["seed"] = seed

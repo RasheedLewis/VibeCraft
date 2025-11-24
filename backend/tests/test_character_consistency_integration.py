@@ -172,6 +172,176 @@ class TestCharacterImageUpload:
         finally:
             _cleanup_song(song_id)
 
+    @patch("app.api.v1.routes_songs.upload_bytes_to_s3")
+    @patch("app.api.v1.routes_songs.generate_presigned_get_url")
+    @patch("app.core.queue.get_queue")
+    def test_upload_character_image_pose_a(
+        self, mock_get_queue, mock_presigned, mock_upload
+    ):
+        """Test character image upload with pose='A' parameter."""
+        song_id = uuid4()
+        with session_scope() as session:
+            song = Song(
+                id=song_id,
+                user_id=DEFAULT_USER_ID,
+                original_filename="test.mp3",
+                original_file_size=1000,
+                original_s3_key="songs/test.mp3",
+                video_type="short_form",
+            )
+            session.add(song)
+            session.commit()
+
+        try:
+            mock_presigned.return_value = "https://presigned-url.com/image.jpg"
+            mock_queue = MagicMock()
+            mock_get_queue.return_value = mock_queue
+            image_bytes = _create_test_image()
+
+            with TestClient(create_app()) as client:
+                response = client.post(
+                    f"/api/v1/songs/{song_id}/character-image?pose=A",
+                    files={"image": ("test.jpg", image_bytes, "image/jpeg")},
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["status"] == "uploaded"
+                
+                # Verify song was updated with pose A (reference image)
+                with session_scope() as session:
+                    updated_song = session.get(Song, song_id)
+                    assert updated_song.character_reference_image_s3_key is not None
+                    assert updated_song.character_consistency_enabled is True
+                    assert updated_song.character_pose_b_s3_key is None  # Pose B should not be set
+
+        finally:
+            _cleanup_song(song_id)
+
+    @patch("app.api.v1.routes_songs.upload_bytes_to_s3")
+    @patch("app.api.v1.routes_songs.generate_presigned_get_url")
+    def test_upload_character_image_pose_b(
+        self, mock_presigned, mock_upload
+    ):
+        """Test character image upload with pose='B' parameter."""
+        song_id = uuid4()
+        with session_scope() as session:
+            song = Song(
+                id=song_id,
+                user_id=DEFAULT_USER_ID,
+                original_filename="test.mp3",
+                original_file_size=1000,
+                original_s3_key="songs/test.mp3",
+                video_type="short_form",
+            )
+            session.add(song)
+            session.commit()
+
+        try:
+            mock_presigned.return_value = "https://presigned-url.com/image.jpg"
+            image_bytes = _create_test_image()
+
+            with TestClient(create_app()) as client:
+                response = client.post(
+                    f"/api/v1/songs/{song_id}/character-image?pose=B",
+                    files={"image": ("test.jpg", image_bytes, "image/jpeg")},
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["status"] == "uploaded"
+                
+                # Verify song was updated with pose B (pose_b_s3_key)
+                with session_scope() as session:
+                    updated_song = session.get(Song, song_id)
+                    assert updated_song.character_pose_b_s3_key is not None
+                    assert updated_song.character_reference_image_s3_key is None  # Pose A should not be set
+                    # Note: character_consistency_enabled is only set for pose A
+                    assert updated_song.character_consistency_enabled is False
+
+        finally:
+            _cleanup_song(song_id)
+
+    @patch("app.api.v1.routes_songs.upload_bytes_to_s3")
+    @patch("app.api.v1.routes_songs.generate_presigned_get_url")
+    @patch("app.core.queue.get_queue")
+    def test_upload_character_image_pose_absent_defaults_to_a(
+        self, mock_get_queue, mock_presigned, mock_upload
+    ):
+        """Test character image upload without pose parameter defaults to 'A'."""
+        song_id = uuid4()
+        with session_scope() as session:
+            song = Song(
+                id=song_id,
+                user_id=DEFAULT_USER_ID,
+                original_filename="test.mp3",
+                original_file_size=1000,
+                original_s3_key="songs/test.mp3",
+                video_type="short_form",
+            )
+            session.add(song)
+            session.commit()
+
+        try:
+            mock_presigned.return_value = "https://presigned-url.com/image.jpg"
+            mock_queue = MagicMock()
+            mock_get_queue.return_value = mock_queue
+            image_bytes = _create_test_image()
+
+            with TestClient(create_app()) as client:
+                # Don't include pose parameter - should default to "A"
+                response = client.post(
+                    f"/api/v1/songs/{song_id}/character-image",
+                    files={"image": ("test.jpg", image_bytes, "image/jpeg")},
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["status"] == "uploaded"
+                
+                # Verify song was updated with pose A (default)
+                with session_scope() as session:
+                    updated_song = session.get(Song, song_id)
+                    assert updated_song.character_reference_image_s3_key is not None
+                    assert updated_song.character_consistency_enabled is True
+
+        finally:
+            _cleanup_song(song_id)
+
+    def test_upload_character_image_pose_invalid(self):
+        """Test character image upload with invalid pose parameter returns 400."""
+        song_id = uuid4()
+        with session_scope() as session:
+            song = Song(
+                id=song_id,
+                user_id=DEFAULT_USER_ID,
+                original_filename="test.mp3",
+                original_file_size=1000,
+                original_s3_key="songs/test.mp3",
+                video_type="short_form",
+            )
+            session.add(song)
+            session.commit()
+
+        try:
+            image_bytes = _create_test_image()
+
+            with TestClient(create_app()) as client:
+                # Test with invalid pose values
+                for invalid_pose in ["C", "X", "invalid", "1", "2", ""]:
+                    response = client.post(
+                        f"/api/v1/songs/{song_id}/character-image?pose={invalid_pose}",
+                        files={"image": ("test.jpg", image_bytes, "image/jpeg")},
+                    )
+
+                    assert response.status_code == 400
+                    data = response.json()
+                    assert "pose" in data["detail"].lower()
+                    assert ("A" in data["detail"] or "B" in data["detail"])
+
+        finally:
+            _cleanup_song(song_id)
+
 
 @pytest.mark.skipif(not DB_AVAILABLE, reason="Database not available")
 class TestCharacterConsistencyWorkflow:

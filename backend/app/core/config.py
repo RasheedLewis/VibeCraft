@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
     api_log_level: str = Field(default="info", alias="API_LOG_LEVEL")
+    
+    cors_origins: str = Field(
+        default="http://localhost:5173,http://localhost:3000",
+        alias="CORS_ORIGINS",
+        description="Comma-separated list of allowed CORS origins"
+    )
 
     database_url: str = Field(
         default="postgresql+psycopg://postgres:postgres@localhost:5432/ai_music_video",

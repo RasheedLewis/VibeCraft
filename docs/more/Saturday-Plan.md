@@ -117,10 +117,10 @@
 ---
 
 Here's what's on my mind, I don't have an organized plan yet.
-If I say (TTL) refer to Temp-Troubleshooting-Log.md, if I say (BSIP) refer to BEAT-SYNC-IMPLEMENTATION-PLAN.md, if I say (MTG) refer to MANUAL_TESTING_GUIDE.md
+Note: Some referenced documents (Temp-Troubleshooting-Log.md, BEAT-SYNC-IMPLEMENTATION-PLAN.md, MANUAL_TESTING_GUIDE.md) no longer exist.
 
-- Beat-synced visual effects, (TTL) line 132 - I'd like to verify it's happening - maybe temporarily exaggerating its effect and duration for manual inspection
-- Beat-synced visual effects, (TTL) line 136 - why on earth is this only applying for the first 50 beats? we need to do it for the whole duration - when the clip is short-form
+- Beat-synced visual effects - I'd like to verify it's happening - maybe temporarily exaggerating its effect and duration for manual inspection
+- Beat-synced visual effects - why on earth is this only applying for the first 50 beats? we need to do it for the whole duration - when the clip is short-form
 - Dancing, one of my poses, the video I got back it was barely dancing. We can try prompt-engineering to make it dance a lot. May swap out poses, too.
 - Can we transition to actual beats instead of a pre-computed list based on BPM?
 - Why not generate more than 2 clips concurrently?
@@ -138,21 +138,21 @@ If I say (TTL) refer to Temp-Troubleshooting-Log.md, if I say (BSIP) refer to BE
 - Easy win, check max file size
 - Easy win but also a spike, try Veo (Veo3?)
 - General spike work on prompts — this is probably most important, just so open-ended
-- Gotta actually deploy all these changes to prod - oh, and update Architecture (ARCH.md in root)
+- Gotta actually deploy all these changes to prod - oh, and update Architecture (Architecture.md in root)
 - Oh uh I need to test actually uploading an image, like the use case could be brand avatar!
 - I want to see if I can pass multiple (e.g. two) reference images - and if not, alter UX to let user choose 'pose 2' from the templates
 - Wait a sec, if an image is supplied, is that used *instead* of the text prompt?! No no no let's check that logic and make sure it's both
-- Hmm in (MTG) line 496, what's this "glitch effect"? How can I test that (perhaps exaggerate the effect while testing)?
-- In fact, I want to get a summary of all the beat-sync and all the visual effects and a list of how to test/observe them. You could start by reading BEAT-SYNC-IMPLEMENTATION-PLAN.md which lists effects—that whole doc was (supposedly) implemented
-- (MTG) lines 542-554 mentions trim/extend but I'm unfamiliar with testing that, I guess this is a special case of my request on the line above
+- What's this "glitch effect"? How can I test that (perhaps exaggerate the effect while testing)?
+- In fact, I want to get a summary of all the beat-sync and all the visual effects and a list of how to test/observe them. See `beat-sync-effects-guide.md` for effects documentation.
+- Trim/extend functionality - I'm unfamiliar with testing that, I guess this is a special case of my request on the line above
 - I do need user testing. I'd love to get Arial to try it out, but that might not happen. I don't know who else...Nick? I want to know whether, or how close, this is to something useful. I can also get, from anyone, their impression of both "overall fun" and "beat sync", plus their suggestions.
 - Is there really no good source on how rhythmic prompts affect generated video? If I had time, I'd love to gather findings and write a brief report
 - To analyze prompts, I need to go back to my setup and testing facilities in the video-api-testing/ branch — which I abandoned too soon! Certainly I want to iterate rapidly on short clips (like 4 seconds - to generate just 1 clip, for speed) and log the full prompt passed. And do that 50 times!!
-- Is `interrogate_reference_image` mentioned in CHARACTER_CONSISTENCY_IMPLEMENTATION.md actually used (and how would I know)? Oh and, uh, do I need to get an OpenAI key if I want to try using the Vision model?
+- Is `interrogate_reference_image` actually used (and how would I know)? Oh and, uh, do I need to get an OpenAI key if I want to try using the Vision model?
 - I think I probably want to add a lot more comments to code, not for niggling details but for important foundational, character-consistency, or beat-sync logic, and probably update CODE_ANALYSIS_REPORT as well for a high-level overview of all the code.
 - Yeah seeing prompts passed, transparently, as easily as possible, for a high-iteration flow, is a top priority to nail down asap.
 - Although today is manual-heavy, when I do identify chunks of work, I want to break it into parallel groups that two agents can work simultaneously.
-- Hmm so do we have any transition effects at all? I'm reading Technical-Exploration.md line 553 that would add them, but it's an Approach that we didn't implement
+- Hmm so do we have any transition effects at all? I'm reading adv-features-technical-exploration.md line 553 that would add them, but it's an Approach that we didn't implement
 - And-oh my god-same doc line 898, do we currently pass any bpm-aware prompting, other than literal bpm? because this is low-hanging fruit!
 - Also, same doc line 1837, did we implement all those effects/filters? Probably, or at least we should've.
 - Let's apply an approach in Temp-TODO-FIX-THIS-POLLING just a one-commit thing but test E2E flow as polling has proven tricky.

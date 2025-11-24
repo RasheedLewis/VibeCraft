@@ -81,7 +81,5 @@ cd frontend && railway up
 **Key refactoring:** Video generation provider pattern, beat filter applicator, image processing utilities
 
 ### Related Docs
-- `PERFORMANCE_OPTIMIZATION_REPORT.md` - Full optimization analysis
-- `video_playback_and_clip_duration_fixes.md` - Duration fixes documentation
-- `Saturday-Plan.md` - Original testing plan
-- `TESTING_CHECKLIST.md` - Testing guide
+- `to-delete-video_playback_and_clip_duration_fixes.md` - Duration fixes documentation
+- `saturday-plan.md` - Original testing plan

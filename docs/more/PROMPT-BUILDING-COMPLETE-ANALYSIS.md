@@ -830,7 +830,7 @@ if "hailuo" in api_lower or "minimax" in api_lower:
 
 **Status:** ✅ **FIXED** - Templates are now fully implemented
 
-**Previous Issue:** The `Prompt-Building-Flow.md` document noted that templates were not implemented, but the code shows they are now working correctly in `build_prompt()` function (lines 322-329).
+**Previous Issue:** Previous documentation noted that templates were not implemented, but the code shows they are now working correctly in `build_prompt()` function (lines 322-329).
 
 **Current Implementation:**
 - Template types are properly mapped to visual style strings
@@ -948,5 +948,5 @@ The prompt building system in VibeCraft is a sophisticated multi-stage pipeline 
 
 ---
 
-*Document generated from analysis of `PROMPT-ANALYSIS-REPORT.md` and `Prompt-Building-Flow.md`*
+*Document generated from analysis of prompt building code and related documentation*
 

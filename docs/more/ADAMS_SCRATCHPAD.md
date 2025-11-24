@@ -3,7 +3,7 @@
 ## Latest Notes
 
 - We still don't really have beat-aligned number-of-frames requested - if we technically do, it won't make any difference for a model that only gives us 8fps we probably need 24+ to see that matter
-- Still would love to test various prompt thingies, ideally rigirously with like library & guidelines
+- Still would love to test various prompt thingies, ideally rigorously with like library & guidelines
 - 
 
 ## Would-Be-Nice

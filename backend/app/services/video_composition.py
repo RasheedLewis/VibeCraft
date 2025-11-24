@@ -20,7 +20,8 @@ from app.services.composition_job import update_job_progress
 logger = logging.getLogger(__name__)
 
 # Default composition settings
-DEFAULT_TARGET_RESOLUTION = (1920, 1080)
+DEFAULT_TARGET_RESOLUTION = (1920, 1080)  # 16:9 for full_length
+DEFAULT_TARGET_RESOLUTION_9_16 = (1080, 1920)  # 9:16 for short_form
 DEFAULT_TARGET_FPS = 24
 DEFAULT_VIDEO_CODEC = "libx264"
 DEFAULT_AUDIO_CODEC = "aac"
@@ -202,18 +203,21 @@ def validate_composition_inputs(
 def normalize_clip(
     input_path: str | Path,
     output_path: str | Path,
-    target_resolution: tuple[int, int] = DEFAULT_TARGET_RESOLUTION,
+    target_resolution: Optional[tuple[int, int]] = None,
     target_fps: int = DEFAULT_TARGET_FPS,
     target_duration_sec: Optional[float] = None,
     ffmpeg_bin: str | None = None,
 ) -> None:
     """
     Normalize a clip to target resolution and FPS, optionally trimming to target duration.
+    
+    If target_resolution is not provided, auto-detects aspect ratio from input video
+    and uses appropriate resolution (9:16 -> 1080x1920, 16:9 -> 1920x1080).
 
     Args:
         input_path: Path to input video file
         output_path: Path to output video file
-        target_resolution: Target resolution (width, height)
+        target_resolution: Target resolution (width, height). If None, auto-detects from input.
         target_fps: Target FPS
         target_duration_sec: Optional target duration in seconds. If provided and clip is longer, it will be trimmed.
         ffmpeg_bin: Path to ffmpeg binary (defaults to config)
@@ -223,6 +227,54 @@ def normalize_clip(
     """
     settings = get_settings()
     ffmpeg_bin = ffmpeg_bin or settings.ffmpeg_bin
+
+    # Auto-detect aspect ratio if target_resolution not provided
+    if target_resolution is None:
+        try:
+            import subprocess as sp
+            import json as json_lib
+            ffprobe_bin = (ffmpeg_bin or settings.ffmpeg_bin).replace("ffmpeg", "ffprobe")
+            probe_cmd = [
+                ffprobe_bin,
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "json",
+                str(input_path),
+            ]
+            result = sp.run(probe_cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                probe_data = json_lib.loads(result.stdout)
+                streams = probe_data.get("streams", [])
+                if streams and "width" in streams[0] and "height" in streams[0]:
+                    input_width = int(streams[0]["width"])
+                    input_height = int(streams[0]["height"])
+                    input_aspect = input_width / input_height if input_height > 0 else 1.0
+                    
+                    # Determine target resolution based on aspect ratio
+                    # 9:16 = 0.5625, 16:9 = 1.777...
+                    # Use threshold: < 0.7 = 9:16, >= 0.7 = 16:9
+                    if input_aspect < 0.7:
+                        target_resolution = DEFAULT_TARGET_RESOLUTION_9_16
+                        logger.info(
+                            f"Auto-detected 9:16 aspect ratio ({input_width}x{input_height}), "
+                            f"using target resolution {target_resolution[0]}x{target_resolution[1]}"
+                        )
+                    else:
+                        target_resolution = DEFAULT_TARGET_RESOLUTION
+                        logger.info(
+                            f"Auto-detected 16:9 aspect ratio ({input_width}x{input_height}), "
+                            f"using target resolution {target_resolution[0]}x{target_resolution[1]}"
+                        )
+                else:
+                    target_resolution = DEFAULT_TARGET_RESOLUTION
+                    logger.warning("Could not detect video dimensions, defaulting to 16:9")
+            else:
+                target_resolution = DEFAULT_TARGET_RESOLUTION
+                logger.warning("Could not probe video for aspect ratio, defaulting to 16:9")
+        except Exception as e:
+            target_resolution = DEFAULT_TARGET_RESOLUTION
+            logger.warning(f"Error auto-detecting aspect ratio, defaulting to 16:9: {e}")
 
     target_width, target_height = target_resolution
 
@@ -881,7 +933,7 @@ def extend_clip_to_beat_boundary(
 
 def verify_composed_video(
     video_path: str | Path,
-    expected_resolution: tuple[int, int] = DEFAULT_TARGET_RESOLUTION,
+    expected_resolution: Optional[tuple[int, int]] = None,
     expected_fps: int = DEFAULT_TARGET_FPS,
     ffmpeg_bin: str | None = None,
 ) -> CompositionResult:
@@ -966,12 +1018,30 @@ def verify_composed_video(
         width = int(video_stream.get("width", 0))
         height = int(video_stream.get("height", 0))
 
-        # Verify requirements
-        expected_width, expected_height = expected_resolution
-        if width != expected_width or height != expected_height:
-            raise RuntimeError(
-                f"Resolution mismatch: expected {expected_width}x{expected_height}, got {width}x{height}"
-            )
+        # Verify requirements (if expected_resolution provided)
+        if expected_resolution:
+            expected_width, expected_height = expected_resolution
+            if width != expected_width or height != expected_height:
+                raise RuntimeError(
+                    f"Resolution mismatch: expected {expected_width}x{expected_height}, got {width}x{height}"
+                )
+        else:
+            # Auto-detect expected resolution based on aspect ratio
+            aspect_ratio = width / height if height > 0 else 1.0
+            if aspect_ratio < 0.7:  # 9:16
+                expected_resolution = DEFAULT_TARGET_RESOLUTION_9_16
+                logger.info(f"Auto-detected 9:16 video ({width}x{height})")
+            else:  # 16:9
+                expected_resolution = DEFAULT_TARGET_RESOLUTION
+                logger.info(f"Auto-detected 16:9 video ({width}x{height})")
+            
+            # Verify it matches expected for that aspect ratio
+            expected_width, expected_height = expected_resolution
+            if width != expected_width or height != expected_height:
+                logger.warning(
+                    f"Resolution doesn't match standard: got {width}x{height}, "
+                    f"expected {expected_width}x{expected_height} for detected aspect ratio"
+                )
 
         if abs(fps - expected_fps) > 1:  # Allow 1 FPS tolerance
             logger.warning(f"FPS mismatch: expected {expected_fps}, got {fps}")

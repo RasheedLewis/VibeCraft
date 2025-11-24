@@ -9,7 +9,10 @@ import replicate
 
 from app.core.config import get_settings
 from app.schemas.scene import SceneSpec
-from app.services.image_processing import pad_and_upload_image_to_9_16
+from app.services.image_processing import (
+    pad_and_upload_image_to_9_16,
+    create_and_upload_9_16_placeholder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ def _generate_image_to_video(
     seed: Optional[int] = None,
     num_frames: Optional[int] = None,
     fps: Optional[int] = None,
+    video_type: Optional[str] = None,  # "short_form" or "full_length" - determines resolution
     max_poll_attempts: int = 180,
     poll_interval_sec: float = 5.0,
     song_id: Optional[UUID] = None,  # For prompt logging
@@ -74,29 +78,61 @@ def _generate_image_to_video(
             bpm=None,  # Will extract from prompt if available
         )
 
-        effective_fps = fps or 8
-        frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
-        logger.info(
-            f"[VIDEO-GEN] Image-to-video frame calculation: "
-            f"num_frames param={num_frames}, scene_spec.duration_sec={scene_spec.duration_sec}, "
-            f"effective_fps={effective_fps}, calculated frame_count={frame_count}"
-        )
-
+        # Prepare input parameters for Minimax Hailuo 2.3
+        # API supports: prompt, duration (6 or 10s), resolution ("768p" or "1080p"), 
+        # prompt_optimizer (bool), first_frame_image (optional)
+        # Note: API only supports 6s (1080p) or 6s/10s (768p)
+        # We'll generate 6s clips and trim to desired duration if needed
+        
+        # Determine resolution based on video type
+        # 1080p for short_form (9:16), 768p for full_length (16:9)
+        # Note: 1080p only supports 6s duration
+        if video_type == "short_form":
+            resolution = "1080p"
+            duration = 6  # 1080p only supports 6s
+        else:
+            resolution = "768p"
+            duration = 6  # Use 6s for consistency
+        
         # CHARACTER CONSISTENCY: Both image AND prompt are used together
         # - Image provides visual character reference (appearance, style, pose)
         # - Prompt describes scene, motion, and action
         # - They complement each other - image doesn't replace prompt
+        
+        # For Short Form videos (9:16), pad character image to 9:16 aspect ratio
+        # This ensures the video output matches 9:16 (TikTok/Instagram/YouTube Shorts format)
+        image_url_to_use = reference_image_url
+        if video_type == "short_form" and song_id:
+            try:
+                logger.info(
+                    f"[VIDEO-GEN] Padding character image to 9:16 for Short Form image-to-video "
+                    f"(song_id={song_id})"
+                )
+                from app.services.image_processing import pad_and_upload_image_to_9_16
+                image_url_to_use = pad_and_upload_image_to_9_16(
+                    image_url=reference_image_url,
+                    song_id=str(song_id),
+                    expires_in=3600,
+                )
+                logger.info(f"[VIDEO-GEN] Using padded 9:16 image: {image_url_to_use[:50]}...")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to pad image to 9:16, using original image: {e}. "
+                    f"Video may not be 9:16 aspect ratio."
+                )
+                # Continue with original image - video generation will still work
+        
         input_params = {
-            "first_frame_image": reference_image_url,  # Reference character image for consistency
+            "first_frame_image": image_url_to_use,  # Reference character image for consistency
             "prompt": optimized_prompt,  # Scene prompt (used together with image)
-            "num_frames": max(1, min(frame_count, 120)),
-            "width": 576,
-            "height": 320,
-            "fps": effective_fps,
+            "duration": duration,
+            "resolution": resolution,
+            "prompt_optimizer": True,
         }
         logger.info(
-            f"[VIDEO-GEN] Image-to-video API params: num_frames={input_params['num_frames']}, "
-            f"fps={input_params['fps']}, width={input_params['width']}, height={input_params['height']}"
+            f"[VIDEO-GEN] Image-to-video API params: duration={duration}s, "
+            f"resolution={resolution}, video_type={video_type}, "
+            f"requested_duration={scene_spec.duration_sec}s"
         )
 
         if seed is not None:
@@ -136,10 +172,8 @@ def _generate_image_to_video(
         # Poll for completion
         video_url = None
         metadata = {
-            "fps": input_params["fps"],
-            "num_frames": input_params["num_frames"],
-            "resolution_width": input_params["width"],
-            "resolution_height": input_params["height"],
+            "duration": input_params["duration"],
+            "resolution": input_params["resolution"],
             "seed": seed,
             "job_id": job_id,
             "generation_type": "image-to-video",
@@ -281,6 +315,7 @@ def generate_section_video(
                     seed=seed,
                     num_frames=num_frames,
                     fps=fps,
+                    video_type=video_type,  # Pass video_type for resolution selection
                     max_poll_attempts=max_poll_attempts,
                     poll_interval_sec=poll_interval_sec,
                     song_id=song_id,  # Pass song_id for prompt logging
@@ -301,26 +336,53 @@ def generate_section_video(
         )
         
         # Prepare input parameters for Minimax Hailuo 2.3
-        # Supports both text-to-video and image-to-video
-        # Parameters: prompt, num_frames, width, height, fps, seed, image (optional)
-        effective_fps = fps or 8
-        frame_count = num_frames if num_frames and num_frames > 0 else int(round(scene_spec.duration_sec * effective_fps))
-        logger.info(
-            f"[VIDEO-GEN] Text-to-video frame calculation: "
-            f"num_frames param={num_frames}, scene_spec.duration_sec={scene_spec.duration_sec}, "
-            f"effective_fps={effective_fps}, calculated frame_count={frame_count}"
-        )
+        # API supports: prompt, duration (6 or 10s), resolution ("768p" or "1080p"), 
+        # prompt_optimizer (bool), first_frame_image (optional)
+        # Note: API only supports 6s (1080p) or 6s/10s (768p)
+        # We'll generate 6s clips and trim to desired duration if needed
+        
+        # Determine resolution based on video type
+        # 1080p for short_form (9:16), 768p for full_length (16:9)
+        # Note: 1080p only supports 6s duration
+        if video_type == "short_form":
+            resolution = "1080p"
+            duration = 6  # 1080p only supports 6s
+        else:
+            resolution = "768p"
+            # Use 6s for most clips, 10s if we want longer (but typically we'll use 6s and trim)
+            duration = 6
+        
         input_params = {
             "prompt": optimized_prompt,
-            "num_frames": max(1, min(frame_count, 120)),
-            "width": 576,  # Smaller resolution = faster/cheaper (XL supports up to 1024)
-            "height": 320,  # 16:9 aspect ratio (576x320)
-            "fps": effective_fps,
+            "duration": duration,
+            "resolution": resolution,
+            "prompt_optimizer": True,
         }
         logger.info(
-            f"[VIDEO-GEN] Text-to-video API params: num_frames={input_params['num_frames']}, "
-            f"fps={input_params['fps']}, width={input_params['width']}, height={input_params['height']}"
+            f"[VIDEO-GEN] Text-to-video API params: duration={duration}s, "
+            f"resolution={resolution}, video_type={video_type}, "
+            f"requested_duration={scene_spec.duration_sec}s"
         )
+
+        # For Short Form videos (9:16) without character images, use 9:16 placeholder
+        # This ensures the video output matches 9:16 (TikTok/Instagram/YouTube Shorts format)
+        if video_type == "short_form" and not image_urls and song_id:
+            try:
+                logger.info(
+                    f"[VIDEO-GEN] Creating 9:16 placeholder for Short Form text-to-video "
+                    f"(song_id={song_id})"
+                )
+                placeholder_url = create_and_upload_9_16_placeholder(
+                    song_id=str(song_id),
+                    expires_in=3600,
+                )
+                input_params["first_frame_image"] = placeholder_url
+                logger.info(f"[VIDEO-GEN] Using 9:16 placeholder: {placeholder_url[:50]}...")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to create 9:16 placeholder, video may not be 9:16 aspect ratio: {e}"
+                )
+                # Continue without placeholder - video generation will still work
 
         # CHARACTER CONSISTENCY: Add image input if provided (for image-to-video)
         # - Both image AND prompt are used together (image = character reference, prompt = scene/motion)
@@ -421,16 +483,14 @@ def generate_section_video(
         # Poll for completion
         video_url = None
         metadata = {
-            "fps": input_params["fps"],
-            "num_frames": input_params["num_frames"],
-            "resolution_width": input_params["width"],
-            "resolution_height": input_params["height"],
+            "duration": input_params["duration"],
+            "resolution": input_params["resolution"],
             "seed": seed,
             "job_id": job_id,
             "generation_type": generation_type,
         }
-        if reference_image_url:
-            metadata["reference_image_url"] = reference_image_url
+        if is_image_to_video and image_urls:
+            metadata["reference_image_url"] = image_urls[0] if image_urls else None
 
         for attempt in range(max_poll_attempts):
             prediction = client.predictions.get(job_id)

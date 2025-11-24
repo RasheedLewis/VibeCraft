@@ -160,3 +160,97 @@ def pad_and_upload_image_to_9_16(
     except Exception as e:
         raise RuntimeError(f"Failed to generate presigned URL for padded image: {str(e)}") from e
 
+
+def create_9_16_placeholder_image(
+    target_width: int = TARGET_9_16_WIDTH,
+    background_color: Tuple[int, int, int] = (255, 255, 255),  # White
+) -> bytes:
+    """
+    Create a 9:16 placeholder image (solid color background).
+    
+    This is used for text-to-video generation when no character image is provided
+    but we want to generate a 9:16 video (Short Form format).
+    
+    Args:
+        target_width: Target width for 9:16 output (default: 1080)
+        background_color: RGB color for background (default: white)
+    
+    Returns:
+        Placeholder image bytes in JPEG format
+    """
+    target_height = int(target_width * 16 / 9)  # 9:16 aspect ratio
+    
+    logger.info(
+        f"Creating 9:16 placeholder image: {target_width}x{target_height}"
+    )
+    
+    # Create solid color image
+    placeholder_image = Image.new("RGB", (target_width, target_height), background_color)
+    
+    # Convert to JPEG bytes
+    output = BytesIO()
+    placeholder_image.save(output, format="JPEG", quality=95)
+    return output.getvalue()
+
+
+def create_and_upload_9_16_placeholder(
+    song_id: str,
+    expires_in: int = 3600,
+    target_width: int = TARGET_9_16_WIDTH,
+    background_color: Tuple[int, int, int] = (255, 255, 255),
+) -> str:
+    """
+    Create a 9:16 placeholder image, upload to S3, and return presigned URL.
+    
+    This is used for text-to-video generation when no character image is provided
+    but we want to generate a 9:16 video (Short Form format).
+    
+    Args:
+        song_id: Song ID for organizing the placeholder in S3
+        expires_in: Expiration time for the presigned URL (seconds)
+        target_width: Target width for 9:16 output (default: 1080)
+        background_color: RGB color for background (default: white)
+    
+    Returns:
+        Presigned S3 URL to the placeholder image
+    
+    Raises:
+        RuntimeError: If S3 upload fails
+    """
+    settings = get_settings()
+    
+    # Create placeholder image
+    try:
+        placeholder_bytes = create_9_16_placeholder_image(
+            target_width=target_width,
+            background_color=background_color,
+        )
+        logger.info(f"Created 9:16 placeholder image, size: {len(placeholder_bytes)} bytes")
+    except Exception as e:
+        raise RuntimeError(f"Failed to create 9:16 placeholder image: {str(e)}") from e
+    
+    # Upload placeholder image to S3
+    placeholder_key = f"songs/{song_id}/placeholder_9_16_{uuid4()}.jpg"
+    try:
+        upload_bytes_to_s3(
+            bucket_name=settings.s3_bucket_name,
+            key=placeholder_key,
+            data=placeholder_bytes,
+            content_type="image/jpeg",
+        )
+        logger.info(f"Uploaded 9:16 placeholder to S3: {placeholder_key}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to upload 9:16 placeholder to S3: {str(e)}") from e
+    
+    # Generate presigned URL
+    try:
+        presigned_url = generate_presigned_get_url(
+            bucket_name=settings.s3_bucket_name,
+            key=placeholder_key,
+            expires_in=expires_in,
+        )
+        logger.info(f"Generated presigned URL for 9:16 placeholder (expires in {expires_in}s)")
+        return presigned_url
+    except Exception as e:
+        raise RuntimeError(f"Failed to generate presigned URL for 9:16 placeholder: {str(e)}") from e
+

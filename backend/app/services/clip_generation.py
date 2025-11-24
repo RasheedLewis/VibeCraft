@@ -299,11 +299,12 @@ def run_clip_generation_job(clip_id: UUID) -> dict[str, object]:
     # Track estimated cost for this clip generation
     if song:  # Only track cost if we successfully retrieved the song
         from app.services.cost_tracking import track_video_generation_cost
-        from app.core.constants import VIDEO_MODEL
+        from app.services.video_generation import get_video_provider
         try:
+            provider = get_video_provider()
             track_video_generation_cost(
                 song_id=song_id,
-                model_name=VIDEO_MODEL,
+                model_name=provider.model_name,
                 num_clips=1,
                 has_character_consistency=bool(character_image_url),
             )

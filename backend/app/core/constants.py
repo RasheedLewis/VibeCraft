@@ -38,7 +38,7 @@ ACCEPTABLE_ALIGNMENT = 0.1  # 100ms acceptable drift
 
 # Replicate models
 WHISPER_MODEL = "openai/whisper:8099696689d249cf8b122d833c36ac3f75505c666a395ca40ef26f68e7d3d16e"
-VIDEO_MODEL = "minimax/hailuo-2.3"
+# VIDEO_MODEL removed - use get_video_provider().model_name from app.services.video_generation instead
 
 # Polling configuration
 DEFAULT_MAX_POLL_ATTEMPTS = 180

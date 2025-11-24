@@ -46,9 +46,6 @@ def set_video_provider(provider: VideoGenerationProvider) -> None:
     _default_provider = provider
 
 
-# Legacy constants for backward compatibility
-VIDEO_MODEL = "minimax/hailuo-2.3"
-IMAGE_TO_VIDEO_MODEL = "minimax/hailuo-2.3"
 
 
 def _generate_image_to_video(

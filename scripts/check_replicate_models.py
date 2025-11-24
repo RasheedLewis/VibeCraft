@@ -14,7 +14,7 @@ if str(backend_dir) not in sys.path:
 
 import replicate  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
-from app.services.video_generation import VIDEO_MODEL  # noqa: E402
+from app.services.video_generation import get_video_provider  # noqa: E402
 
 # Common text-to-video models to check (alternatives to current model)
 MODELS_TO_CHECK = [
@@ -35,11 +35,13 @@ def verify_current_model():
     try:
         client = replicate.Client(api_token=settings.replicate_api_token)
         
-        print(f"🔍 Checking current model: {VIDEO_MODEL}")
+        provider = get_video_provider()
+        current_model = provider.model_name
+        print(f"🔍 Checking current model: {current_model}")
         print("-" * 60)
         
         try:
-            model = client.models.get(VIDEO_MODEL)
+            model = client.models.get(current_model)
             print(f"✅ Model found: {model.name}")
             print(f"   Owner: {model.owner}")
             print(f"   Description: {model.description[:100] if model.description else 'N/A'}...")
@@ -67,7 +69,7 @@ def verify_current_model():
         except Exception as e:
             error_str = str(e)
             if "404" in error_str or "not found" in error_str.lower():
-                print(f"❌ Model not found: {VIDEO_MODEL}")
+                print(f"❌ Model not found: {current_model}")
                 print("\n💡 Try searching for text-to-video models:")
                 print("   Visit: https://replicate.com/explore?query=text+to+video")
             else:
@@ -88,12 +90,15 @@ def list_alternative_models():
         print("❌ REPLICATE_API_TOKEN not configured")
         return
     
+    provider = get_video_provider()
+    current_model = provider.model_name
+    
     print("\n🔍 Checking alternative models...")
     print("=" * 60)
     
     results = []
     for model_name in MODELS_TO_CHECK:
-        if model_name == VIDEO_MODEL:
+        if model_name == current_model:
             continue  # Skip current model
         
         try:
@@ -122,8 +127,10 @@ def list_alternative_models():
     else:
         print("\n⚠️  No alternative models found")
     
+    provider = get_video_provider()
+    current_model = provider.model_name
     print("💡 Check Replicate pricing: https://replicate.com/pricing")
-    print(f"   Current model ({VIDEO_MODEL}): Check pricing on Replicate")
+    print(f"   Current model ({current_model}): Check pricing on Replicate")
 
 
 if __name__ == "__main__":

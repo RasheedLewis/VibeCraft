@@ -99,7 +99,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           </svg>
         </button>
 
-        <h1 className="text-3xl font-bold text-white mb-2 text-center">VibeCraft</h1>
+        <h1 className="text-3xl font-bold text-white mb-2 text-center flex items-center justify-center gap-2">
+          <img
+            src="/img/vibe_lightning_simple.png"
+            alt=""
+            className="w-8 h-8 object-contain"
+          />
+          VibeCraft
+        </h1>
         <p className="text-white/70 text-center mb-8">AI Music Video Generator</p>
 
         <div className="flex gap-4 mb-6">

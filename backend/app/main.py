@@ -36,6 +36,11 @@ def create_app() -> FastAPI:
         if origin.strip()
     ]
     
+    # Log CORS configuration for debugging
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"CORS origins configured: {cors_origins}")
+    
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,

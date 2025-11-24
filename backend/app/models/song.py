@@ -43,7 +43,7 @@ class Song(SQLModel, table=True):
     character_interrogation_prompt: Optional[str] = Field(default=None)
     character_generated_image_s3_key: Optional[str] = Field(default=None, max_length=1024)
     total_generation_cost_usd: Optional[float] = Field(default=None, ge=0)  # Total cost in USD for video generation
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column_kwargs={"onupdate": lambda: datetime.now(UTC)},

@@ -1,7 +1,8 @@
 # Code Analysis Report: VibeCraft Repository
 
 **Generated:** Analysis of all backend and frontend code files (excluding tests)  
-**Goals:** (a) Identify dead code, (b) Understand repository structure, (c) Document current architecture
+**Goals:** (a) Identify dead code, (b) Understand repository structure, (c) Document current architecture  
+**Last Updated:** Current analysis of codebase with authentication, character consistency, video types, and advanced features
 
 ---
 
@@ -9,25 +10,27 @@
 
 ### Overview
 
-The frontend is a **React + TypeScript** application built with **Vite**. It's a single-page
-application (SPA) focused on uploading songs, analyzing them, generating video clips, and
-composing final videos.
+The frontend is a **React + TypeScript** application built with **Vite**. It's a multi-page application focused on uploading songs, analyzing them, generating video clips, and composing final videos with advanced features like character consistency, video type selection, and audio segment selection.
 
 **Tech Stack:**
 
 - React 18+ (with hooks)
 - TypeScript
 - Vite (build tool)
+- React Router (routing)
+- TanStack Query (React Query) for data fetching
 - Tailwind CSS (via `vibecraft-theme.css`)
 - Axios (HTTP client)
 - clsx (CSS class utility)
 
 **Architecture:**
 
-- Single-page app with one main page (`UploadPage`)
+- Multi-page app with routing (`/`, `/public`, `/login`, `/projects`)
 - Component-based UI with reusable VibeCraft design system components
 - Type-safe API client with TypeScript interfaces
 - State management via React hooks with custom polling hooks
+- React Query for server state management
+- Error boundaries for error handling
 - Well-organized utilities and constants
 
 ---
@@ -47,10 +50,10 @@ composing final videos.
 #### `frontend/src/App.tsx`
 
 **Status:** ✅ Active  
-**Usage:** Root React component
+**Usage:** Root React component with routing
 
-- Simple wrapper that renders `UploadPage`
-- No routing (single page app)
+- Sets up React Router with BrowserRouter
+- Defines routes: `/` (UploadPage), `/public` (UploadPage public view), `/login` (LoginPage), `/projects` (ProjectsPage)
 - **Used by:** `main.tsx`
 
 ---
@@ -59,8 +62,8 @@ composing final videos.
 
 #### `frontend/src/pages/UploadPage.tsx`
 
-**Status:** ✅ Active (~800 lines - significantly refactored from previous 2,283 lines)  
-**Usage:** The only page in the application - handles entire user flow
+**Status:** ✅ Active (~1,700+ lines - comprehensive upload and video generation flow)  
+**Usage:** Main page for uploading songs and generating videos
 
 **Key Responsibilities:**
 
@@ -70,43 +73,88 @@ composing final videos.
    - Enforces 7-minute max duration
    - Shows upload progress
 
-2. **Song Analysis**
+2. **Video Type Selection**
+   - Uses `useVideoTypeSelection` hook
+   - Supports `full_length` and `short_form` video types
+   - Triggers analysis automatically for full_length videos
+   - Requires audio selection for short_form videos
+
+3. **Audio Selection** (for short_form videos)
+   - Uses `useAudioSelection` hook
+   - `AudioSelectionTimeline` component for selecting song segment
+   - Validates selection duration (min/max constraints)
+   - Saves selection to backend
+
+4. **Template Character Selection**
+   - `TemplateSelector` component for choosing character templates
+   - `TemplateCharacterModal` for viewing template details
+   - `CharacterImageUpload` for custom character images
+   - Character consistency options
+
+5. **Song Analysis**
    - Uses `useAnalysisPolling` hook for analysis job polling
    - Displays analysis results via `SongProfileView`
    - Handles analysis state transitions
 
-3. **Clip Generation**
+6. **Clip Generation**
    - Uses `useClipPolling` hook for clip generation status
    - Delegates clip management to `SongProfileView`
    - Handles clip generation job lifecycle
 
-4. **Video Composition**
+7. **Video Composition**
    - Uses `useCompositionPolling` hook for composition job status
    - Manages composition job state
    - Displays final composed video
 
 **Key Features:**
 
-- Significantly refactored from monolithic component
-- Uses custom hooks for polling logic (extracted from component)
-- Delegates UI rendering to specialized components
-- Cleaner state management (fewer useState hooks)
-- Better separation of concerns
+- Authentication integration with `useAuth` hook
+- Public view mode (`/public` route)
+- Animations control based on user preferences
+- Error boundaries for graceful error handling
+- Projects modal for accessing saved projects
+- Template character system integration
+- Character consistency workflow
+- Video type-specific flows
 
 **Dependencies:**
 
 - `apiClient` - All API calls
 - `MainVideoPlayer` - Video preview
-- Custom hooks: `useAnalysisPolling`, `useClipPolling`, `useCompositionPolling`
-- Components: `UploadCard`, `SongProfileView`, `BackgroundOrbs`, `RequirementPill`
-- Utilities: `extractErrorMessage`, `mapMoodToMoodKind`, `computeDuration`, `normalizeClipStatus`
+- Custom hooks: `useAnalysisPolling`, `useClipPolling`, `useCompositionPolling`, `useVideoTypeSelection`, `useAudioSelection`, `useAuth`
+- Components: `UploadCard`, `SongProfileView`, `BackgroundOrbs`, `RequirementPill`, `AudioSelectionTimeline`, `VideoTypeSelector`, `TemplateSelector`, `CharacterImageUpload`, `TemplateCharacterModal`, `SelectedTemplateDisplay`, `ProjectsModal`, `AuthModal`
+- Utilities: `extractErrorMessage`, `mapMoodToMoodKind`, `computeDuration`, `normalizeClipStatus`, `shouldDisableAnimations`
 - Constants: `ACCEPTED_MIME_TYPES`, `MAX_DURATION_SECONDS`
 
 **State Management:**
 
-- Reduced from 20+ useState hooks to ~10 focused state variables
+- Multiple focused state variables for different concerns
 - Polling logic extracted to custom hooks
+- React Query for server state
 - Component composition replaces inline sub-components
+
+#### `frontend/src/pages/LoginPage.tsx`
+
+**Status:** ✅ Active  
+**Usage:** User authentication page
+
+- Login and registration forms
+- Uses `useAuth` hook for authentication
+- Redirects to home page on success
+- Error handling for auth failures
+- **Used by:** React Router (`/login` route)
+
+#### `frontend/src/pages/ProjectsPage.tsx`
+
+**Status:** ✅ Active  
+**Usage:** User projects listing page
+
+- Lists all user's songs/projects
+- Uses React Query to fetch songs
+- Requires authentication (redirects to login if not authenticated)
+- Navigation to individual projects
+- Create new project button
+- **Used by:** React Router (future route)
 
 ---
 
@@ -216,6 +264,71 @@ composing final videos.
 - SVG icons for upload flow
 - **Used by:** Upload components
 
+##### `AudioSelectionTimeline.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Audio segment selection component
+
+- Interactive timeline for selecting song segment
+- Visual selection range
+- Duration validation
+- **Used by:** `UploadPage`
+
+##### `VideoTypeSelector.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Video type selection component
+
+- Radio buttons for `full_length` vs `short_form`
+- Visual descriptions of each type
+- **Used by:** `UploadPage`
+
+##### `TemplateSelector.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Template character selection component
+
+- Displays available template characters
+- Character previews
+- **Used by:** `UploadPage`
+
+##### `TemplateCharacterModal.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Modal for viewing template character details
+
+- Shows character poses (A and B)
+- Character description
+- Apply template functionality
+- **Used by:** `UploadPage`
+
+##### `CharacterImageUpload.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Custom character image upload component
+
+- File upload for character reference image
+- Image preview
+- Character consistency options
+- **Used by:** `UploadPage`
+
+##### `CharacterPreview.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Character preview component
+
+- Displays character image preview
+- **Used by:** Character-related components
+
+##### `SelectedTemplateDisplay.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Display selected template character
+
+- Shows currently selected template
+- Pose selection (A/B)
+- **Used by:** `UploadPage`
+
 ---
 
 #### `frontend/src/components/song/` - Song Profile Components
@@ -296,6 +409,14 @@ composing final videos.
 - Visual representation of mood features
 - **Used by:** `SongProfileView`
 
+##### `PromptViewer.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Prompt display component
+
+- Shows generation prompts for clips
+- **Used by:** `SongProfileView`
+
 ---
 
 #### `frontend/src/components/vibecraft/` - Design System Components
@@ -312,7 +433,7 @@ composing final videos.
 - Sizes: `sm`, `md`, `lg`
 - Supports left/right icons
 - Loading state
-- **Used by:** `UploadPage`, `SectionCard`, `SongProfileView`
+- **Used by:** `UploadPage`, `SectionCard`, `SongProfileView`, `LoginPage`, `ProjectsPage`
 
 ##### `VCIconButton.tsx`
 
@@ -387,7 +508,68 @@ composing final videos.
 **Usage:** Barrel export for all vibecraft components
 
 - Re-exports all components for convenient importing
-- **Used by:** `UploadPage`, `SongProfileView`
+- **Used by:** `UploadPage`, `SongProfileView`, `LoginPage`, `ProjectsPage`
+
+---
+
+#### `frontend/src/components/auth/` - Authentication Components
+
+**Status:** ✅ All Active  
+**Usage:** Authentication-related components
+
+##### `AuthModal.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Authentication modal component
+
+- Login and registration forms
+- Modal overlay
+- Uses `useAuth` hook
+- **Used by:** `UploadPage`
+
+---
+
+#### `frontend/src/components/projects/` - Projects Components
+
+**Status:** ✅ All Active  
+**Usage:** Projects management components
+
+##### `ProjectsModal.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Projects listing modal
+
+- Shows user's projects/songs
+- Navigation to projects
+- Create new project
+- **Used by:** `UploadPage`
+
+---
+
+#### `frontend/src/components/ErrorFallback.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Global error boundary fallback
+
+- Catches React errors
+- Displays error message
+- **Used by:** Error boundary wrapper
+
+#### `frontend/src/components/SectionErrorFallback.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Section-specific error fallback
+
+- Catches errors in section components
+- **Used by:** Section error boundaries
+
+#### `frontend/src/components/VideoPlayerErrorFallback.tsx`
+
+**Status:** ✅ Active  
+**Usage:** Video player error fallback
+
+- Catches video player errors
+- **Used by:** Video player error boundaries
 
 ---
 
@@ -433,6 +615,47 @@ composing final videos.
 - Manages composition state
 - **Used by:** `UploadPage`
 
+#### `frontend/src/hooks/useAuth.ts`
+
+**Status:** ✅ Active  
+**Usage:** Authentication hook
+
+- Manages authentication state
+- Login, register, logout functions
+- Token management (localStorage)
+- User info fetching with React Query
+- API client header management
+- **Used by:** `UploadPage`, `LoginPage`, `ProjectsPage`, `AuthModal`
+
+#### `frontend/src/hooks/useAudioSelection.ts`
+
+**Status:** ✅ Active  
+**Usage:** Audio selection hook
+
+- Manages audio segment selection state
+- Saves selection to backend
+- Loads existing selection from song
+- **Used by:** `UploadPage`
+
+#### `frontend/src/hooks/useVideoTypeSelection.ts`
+
+**Status:** ✅ Active  
+**Usage:** Video type selection hook
+
+- Manages video type state (`full_length` or `short_form`)
+- Saves video type to backend
+- Triggers analysis for full_length videos
+- **Used by:** `UploadPage`
+
+#### `frontend/src/hooks/useFeatureFlags.ts`
+
+**Status:** ✅ Active  
+**Usage:** Feature flags hook
+
+- Fetches feature flags from backend
+- React Query integration
+- **Used by:** Components that need feature flags
+
 ---
 
 ### Utilities & Libraries
@@ -449,6 +672,7 @@ composing final videos.
 - Development fallback to localhost (build-time replacement)
 - Automatic `/api/v1` suffix handling
 - Production error if API URL not configured
+- Authorization header management (for JWT tokens)
 
 **Exports:**
 
@@ -549,6 +773,20 @@ composing final videos.
 
 ---
 
+#### `frontend/src/utils/animations.ts`
+
+**Status:** ✅ Active  
+**Usage:** Animation control utilities
+
+**Functions:**
+
+- `shouldDisableAnimations` - Determine if animations should be disabled
+- Checks public view mode and user preferences
+
+**Used by:** `UploadPage`
+
+---
+
 ### Constants
 
 #### `frontend/src/constants/upload.ts`
@@ -560,6 +798,8 @@ composing final videos.
 
 - `ACCEPTED_MIME_TYPES` - Allowed audio MIME types
 - `MAX_DURATION_SECONDS` - Maximum song duration (7 minutes)
+- `MAX_AUDIO_FILE_SIZE_MB` - Maximum file size in MB
+- `MAX_AUDIO_FILE_SIZE_BYTES` - Maximum file size in bytes
 
 **Used by:** `UploadPage`, `UploadCard`
 
@@ -586,7 +826,7 @@ composing final videos.
 - `SongSection` - Section data
 - `SectionLyrics` - Lyrics with timing
 - `SongAnalysis` - Full analysis result
-- `SongRead` - Song database record
+- `SongRead` - Song database record (includes new fields: `selected_start_sec`, `selected_end_sec`, `video_type`, `template`, `character_reference_image_s3_key`, `character_pose_b_s3_key`, `character_selected_pose`, `character_consistency_enabled`, `total_generation_cost_usd`, etc.)
 
 **Used by:** All components and hooks (type annotations, API responses)
 
@@ -710,14 +950,17 @@ composing final videos.
 
 - **Pattern:** React hooks (`useState`, `useEffect`, `useCallback`, `useMemo`, `useRef`)
 - **Custom hooks:** Polling logic extracted to reusable hooks
-- **Complexity:** `UploadPage` has ~10 focused state variables (improved from 20+)
-- **Separation:** State management separated by concern (upload, analysis, clips, composition)
+- **Server state:** React Query (TanStack Query) for API data
+- **Complexity:** `UploadPage` has multiple focused state variables for different concerns
+- **Separation:** State management separated by concern (upload, analysis, clips, composition, auth, video type, audio selection)
 
 #### API Communication
 
 - **Pattern:** Axios client (`apiClient`) with TypeScript types
 - **Polling:** Custom hooks (`useJobPolling`, `useAnalysisPolling`, `useClipPolling`, `useCompositionPolling`)
+- **Data fetching:** React Query for server state
 - **Error handling:** Centralized error extraction utilities
+- **Authentication:** JWT tokens in Authorization header
 
 #### Component Structure
 
@@ -725,12 +968,20 @@ composing final videos.
 - **Reusability:** Design system components (`vibecraft/`) are well-structured
 - **Composition:** Components compose well (e.g., `SongProfileView` uses multiple sub-components)
 - **Extraction:** Large components broken down into focused sub-components
+- **Error boundaries:** React error boundaries for graceful error handling
+
+#### Routing
+
+- **Pattern:** React Router with BrowserRouter
+- **Routes:** `/` (UploadPage), `/public` (UploadPage public view), `/login` (LoginPage), `/projects` (ProjectsPage)
+- **Navigation:** Programmatic navigation with `useNavigate`
 
 #### Styling Approach
 
 - **Pattern:** Tailwind CSS + custom CSS classes
 - **Design system:** Centralized in `vibecraft-theme.css`
 - **Consistency:** Components use design tokens consistently
+- **Animations:** User-controlled animations (can be disabled)
 
 ---
 
@@ -738,41 +989,58 @@ composing final videos.
 
 ```text
 main.tsx
-  └─> App.tsx
-       └─> UploadPage.tsx
-            ├─> apiClient (lib/apiClient.ts)
-            ├─> useAnalysisPolling (hooks/useAnalysisPolling.ts)
-            │    └─> useJobPolling (hooks/useJobPolling.ts)
-            ├─> useClipPolling (hooks/useClipPolling.ts)
-            │    └─> useJobPolling (hooks/useJobPolling.ts)
-            ├─> useCompositionPolling (hooks/useCompositionPolling.ts)
-            │    └─> useJobPolling (hooks/useJobPolling.ts)
-            ├─> UploadCard (components/upload/UploadCard.tsx)
-            │    ├─> RequirementPill
-            │    └─> Icons
-            ├─> SongProfileView (components/song/SongProfileView.tsx)
-            │    ├─> SongTimeline
-            │    ├─> WaveformDisplay
-            │    ├─> ClipGenerationPanel
-            │    ├─> AnalysisSectionRow
-            │    ├─> MoodVectorMeter
-            │    ├─> GenreBadge
-            │    ├─> MoodBadge
-            │    └─> SectionCard
-            │         ├─> SectionMoodTag
-            │         └─> SectionAudioPlayer
-            ├─> MainVideoPlayer (components/MainVideoPlayer.tsx)
-            ├─> BackgroundOrbs
-            └─> vibecraft components (components/vibecraft/)
-                 ├─> VCButton
-                 ├─> VCCard
-                 ├─> VCBadge
-                 ├─> VCIconButton
-                 └─> SectionCard
-                      ├─> VCCard
-                      ├─> VCButton
-                      └─> SectionMoodTag
-                           └─> VCBadge
+  └─> App.tsx (with React Router)
+       ├─> UploadPage.tsx
+       │    ├─> apiClient (lib/apiClient.ts)
+       │    ├─> useAuth (hooks/useAuth.ts)
+       │    │    └─> React Query
+       │    ├─> useAnalysisPolling (hooks/useAnalysisPolling.ts)
+       │    │    └─> useJobPolling (hooks/useJobPolling.ts)
+       │    ├─> useClipPolling (hooks/useClipPolling.ts)
+       │    │    └─> useJobPolling (hooks/useJobPolling.ts)
+       │    ├─> useCompositionPolling (hooks/useCompositionPolling.ts)
+       │    │    └─> useJobPolling (hooks/useJobPolling.ts)
+       │    ├─> useVideoTypeSelection (hooks/useVideoTypeSelection.ts)
+       │    ├─> useAudioSelection (hooks/useAudioSelection.ts)
+       │    ├─> UploadCard (components/upload/UploadCard.tsx)
+       │    │    ├─> RequirementPill
+       │    │    └─> Icons
+       │    ├─> AudioSelectionTimeline (components/upload/AudioSelectionTimeline.tsx)
+       │    ├─> VideoTypeSelector (components/upload/VideoTypeSelector.tsx)
+       │    ├─> TemplateSelector (components/upload/TemplateSelector.tsx)
+       │    ├─> CharacterImageUpload (components/upload/CharacterImageUpload.tsx)
+       │    ├─> TemplateCharacterModal (components/upload/TemplateCharacterModal.tsx)
+       │    ├─> SelectedTemplateDisplay (components/upload/SelectedTemplateDisplay.tsx)
+       │    ├─> SongProfileView (components/song/SongProfileView.tsx)
+       │    │    ├─> SongTimeline
+       │    │    ├─> WaveformDisplay
+       │    │    ├─> ClipGenerationPanel
+       │    │    ├─> AnalysisSectionRow
+       │    │    ├─> MoodVectorMeter
+       │    │    ├─> PromptViewer
+       │    │    ├─> GenreBadge
+       │    │    ├─> MoodBadge
+       │    │    └─> SectionCard
+       │    │         ├─> SectionMoodTag
+       │    │         └─> SectionAudioPlayer
+       │    ├─> MainVideoPlayer (components/MainVideoPlayer.tsx)
+       │    ├─> BackgroundOrbs
+       │    ├─> ProjectsModal (components/projects/ProjectsModal.tsx)
+       │    ├─> AuthModal (components/auth/AuthModal.tsx)
+       │    └─> vibecraft components (components/vibecraft/)
+       │         ├─> VCButton
+       │         ├─> VCCard
+       │         ├─> VCBadge
+       │         ├─> VCIconButton
+       │         └─> SectionCard
+       │              ├─> VCCard
+       │              ├─> VCButton
+       │              └─> SectionMoodTag
+       │                   └─> VCBadge
+       ├─> LoginPage.tsx
+       │    └─> useAuth (hooks/useAuth.ts)
+       └─> ProjectsPage.tsx
+            └─> useAuth (hooks/useAuth.ts)
 
 Types:
   UploadPage.tsx
@@ -787,22 +1055,23 @@ Utils:
     ├─> utils/sections.ts
     ├─> utils/status.ts
     ├─> utils/audio.ts
-    └─> utils/waveform.ts
+    ├─> utils/waveform.ts
+    └─> utils/animations.ts
 ```
 
 ---
 
 ### Summary
 
-**Total Frontend Files Analyzed:** ~40 TypeScript/TSX files
+**Total Frontend Files Analyzed:** ~60+ TypeScript/TSX files
 
-**Active Files:** ~40
+**Active Files:** ~60+
 
 - Entry points: 2
-- Pages: 1
-- Components: 24 (vibecraft: 9, upload: 6, song: 7, MainVideoPlayer: 1)
-- Hooks: 4
-- Utilities: 6
+- Pages: 3 (UploadPage, LoginPage, ProjectsPage)
+- Components: 35+ (vibecraft: 9, upload: 12, song: 8, auth: 1, projects: 1, error boundaries: 3, MainVideoPlayer: 1)
+- Hooks: 8
+- Utilities: 7
 - Types: 3
 - Constants: 1
 
@@ -812,30 +1081,41 @@ Utils:
 
 **Key Findings:**
 
-- **Significant refactoring completed:** `UploadPage` reduced from 2,283 lines to ~800 lines
-- **Polling logic extracted:** Custom hooks for reusable polling patterns
-- **Component extraction:** Large components broken into focused sub-components
-- **Utility extraction:** Formatting, validation, and other utilities separated
-- **Constants extraction:** Upload constants centralized
+- **Authentication system:** JWT-based auth with login/register
+- **Routing:** React Router for multi-page navigation
+- **Video type selection:** Support for full_length and short_form videos
+- **Audio selection:** Interactive timeline for selecting song segments
+- **Template characters:** Pre-defined character templates with pose selection
+- **Character consistency:** Custom character images with AI generation
+- **Error boundaries:** Graceful error handling with React error boundaries
+- **React Query:** Server state management with TanStack Query
+- **Animations control:** User preference to disable animations
+- **Projects management:** Projects page for accessing saved songs
 - **Well-structured design system:** Consistent component library
 - **Type-safe API communication:** Full TypeScript coverage
-- **No routing:** Single page application
 
-**Improvements from Previous Version:**
+**New Features Since Last Update:**
 
-1. ✅ Polling logic extracted to custom hooks
-2. ✅ Component extraction (UploadCard, SongProfileView, etc.)
-3. ✅ Utility functions extracted
-4. ✅ Constants extracted
-5. ✅ State management simplified
-6. ✅ Better separation of concerns
+1. ✅ Authentication system (JWT-based)
+2. ✅ Routing (React Router)
+3. ✅ Video type selection (full_length/short_form)
+4. ✅ Audio selection for short_form videos
+5. ✅ Template character system
+6. ✅ Character consistency workflow
+7. ✅ Error boundaries
+8. ✅ React Query integration
+9. ✅ Projects page
+10. ✅ Animations control
+11. ✅ Cost tracking display
+12. ✅ Prompt viewer
 
 **Recommendations:**
 
-1. Consider routing if multiple pages are planned
-2. Consider state management library (Zustand/Redux) if state complexity grows
+1. Consider adding more routes if needed
+2. Consider state management library (Zustand/Redux) if state complexity grows further
 3. Add unit tests for custom hooks
 4. Add integration tests for component interactions
+5. Consider adding E2E tests for critical flows
 
 ---
 
@@ -843,8 +1123,7 @@ Utils:
 
 ### Overview
 
-The backend is a **FastAPI** application built with **Python 3.12+**. It handles audio
-processing, music analysis, video generation, and composition orchestration.
+The backend is a **FastAPI** application built with **Python 3.12+**. It handles audio processing, music analysis, video generation, and composition orchestration with advanced features including authentication, character consistency, video type support, beat-synchronized effects, and cost tracking.
 
 **Tech Stack:**
 
@@ -856,7 +1135,10 @@ processing, music analysis, video generation, and composition orchestration.
 - Librosa (audio analysis)
 - FFmpeg (audio/video processing)
 - Replicate API (video generation)
+- Minimax API (via Replicate - video generation)
 - Audjust API (music structure analysis)
+- OpenAI API (image interrogation for character consistency)
+- PyJWT (JWT authentication)
 
 **Architecture:**
 
@@ -866,6 +1148,9 @@ processing, music analysis, video generation, and composition orchestration.
 - RQ workers for async job processing
 - SQLModel for database models
 - Pydantic schemas for API contracts
+- JWT-based authentication
+- Rate limiting middleware
+- Video provider abstraction (base + Minimax provider)
 
 ---
 
@@ -883,6 +1168,7 @@ processing, music analysis, video generation, and composition orchestration.
 - Sets up lifespan events
 - Includes API router
 - Health check endpoint (`/healthz`)
+- **Rate limiting middleware** - Applies rate limiting to all requests
 
 **Dependencies:**
 
@@ -890,6 +1176,7 @@ processing, music analysis, video generation, and composition orchestration.
 - `app.core.config` - Settings configuration
 - `app.core.database` - Database initialization
 - `app.core.logging` - Logging configuration
+- `app.core.rate_limiting` - Rate limiting middleware
 
 **Used by:** Uvicorn server
 
@@ -899,14 +1186,16 @@ processing, music analysis, video generation, and composition orchestration.
 
 #### `backend/app/api/v1/routes_songs.py`
 
-**Status:** ✅ Active (875 lines - comprehensive song management)  
+**Status:** ✅ Active (1,000+ lines - comprehensive song management)  
 **Usage:** Song-related API endpoints
 
 **Endpoints:**
 
-- `GET /songs/` - List all songs
+- `GET /songs/` - List all songs (authenticated)
 - `POST /songs/` - Upload new song
 - `GET /songs/{song_id}` - Get song details
+- `PATCH /songs/{song_id}/video-type` - Set video type (full_length/short_form)
+- `PATCH /songs/{song_id}/selection` - Set audio selection (start/end times)
 - `POST /songs/{song_id}/analyze` - Enqueue song analysis
 - `GET /songs/{song_id}/analysis` - Get latest analysis
 - `GET /songs/{song_id}/beat-aligned-boundaries` - Get beat-aligned clip boundaries
@@ -932,6 +1221,56 @@ processing, music analysis, video generation, and composition orchestration.
 - `app.services.beat_alignment` - Beat alignment service
 - `app.services.storage` - Storage service
 - `app.services.audio_preprocessing` - Audio preprocessing
+- `app.services.audio_selection` - Audio selection validation
+- `app.core.auth` - Authentication dependencies
+
+#### `backend/app/api/v1/routes_auth.py`
+
+**Status:** ✅ Active  
+**Usage:** Authentication endpoints
+
+**Endpoints:**
+
+- `POST /auth/register` - Register new user
+- `POST /auth/login` - Login user
+- `GET /auth/me` - Get current user info
+- `PATCH /auth/me` - Update current user info
+
+**Dependencies:**
+
+- `app.core.auth` - Authentication utilities
+- `app.models.user` - User model
+
+#### `backend/app/api/v1/routes_template_characters.py`
+
+**Status:** ✅ Active  
+**Usage:** Template character endpoints
+
+**Endpoints:**
+
+- `GET /template-characters/` - List all template characters
+- `GET /template-characters/{character_id}` - Get template character details
+- `GET /template-characters/{character_id}/image/{pose}` - Get template character image
+- `POST /songs/{song_id}/template-character` - Apply template character to song
+
+**Dependencies:**
+
+- `app.services.template_characters` - Template character service
+- `app.services.storage` - Storage service
+- `app.services.image_validation` - Image validation
+
+#### `backend/app/api/v1/routes_config.py`
+
+**Status:** ✅ Active  
+**Usage:** Configuration endpoints
+
+**Endpoints:**
+
+- `GET /config/features` - Get feature flags
+
+**Dependencies:**
+
+- `app.core.config` - Configuration settings
 
 #### `backend/app/api/v1/routes_jobs.py`
 
@@ -980,6 +1319,7 @@ processing, music analysis, video generation, and composition orchestration.
 **Usage:** API router aggregation
 
 - Combines all route modules into main API router
+- Includes: health, auth, songs, jobs, scenes, videos, config, template-characters
 - **Used by:** `app.main`
 
 #### `backend/app/api/deps.py`
@@ -988,6 +1328,7 @@ processing, music analysis, video generation, and composition orchestration.
 **Usage:** FastAPI dependencies
 
 - Database session dependency
+- Authentication dependencies
 - Other shared dependencies
 
 ---
@@ -1002,7 +1343,7 @@ processing, music analysis, video generation, and composition orchestration.
 **Fields:**
 
 - `id` - UUID primary key
-- `user_id` - User foreign key (default: "default-user")
+- `user_id` - User foreign key (indexed, authenticated users)
 - `title` - Song title
 - `original_filename` - Original uploaded filename
 - `original_file_size` - File size in bytes
@@ -1018,23 +1359,36 @@ processing, music analysis, video generation, and composition orchestration.
 - `composed_video_poster_s3_key` - S3 key for video poster
 - `composed_video_duration_sec` - Composed video duration
 - `composed_video_fps` - Composed video FPS
-- `created_at` - Creation timestamp
+- `selected_start_sec` - Audio selection start time (for short_form)
+- `selected_end_sec` - Audio selection end time (for short_form)
+- `video_type` - Video type: "full_length" or "short_form"
+- `template` - Visual style template: "abstract", "environment", "character", "minimal"
+- `character_reference_image_s3_key` - S3 key for user's character reference image
+- `character_pose_b_s3_key` - S3 key for character pose B image
+- `character_selected_pose` - Selected pose: "A" or "B"
+- `character_consistency_enabled` - Whether character consistency is enabled
+- `character_interrogation_prompt` - Prompt extracted from character image
+- `character_generated_image_s3_key` - S3 key for AI-generated consistent character
+- `total_generation_cost_usd` - Total cost in USD for video generation
+- `created_at` - Creation timestamp (indexed)
 - `updated_at` - Update timestamp
 
 #### `backend/app/models/user.py`
 
-**Status:** ✅ Active (Placeholder)  
-**Usage:** User database model (placeholder for future authentication)
+**Status:** ✅ Active  
+**Usage:** User database model
 
 **Fields:**
 
 - `id` - String primary key
-- `email` - Optional email (unique, indexed)
+- `email` - Email (unique, indexed)
+- `password_hash` - Hashed password (SHA-256)
 - `display_name` - Optional display name
+- `animations_disabled` - Whether animations are disabled (user preference)
 - `created_at` - Creation timestamp
 - `updated_at` - Update timestamp
 
-**Note:** Currently unused in MVP. All songs use `DEFAULT_USER_ID`.
+**Note:** Now actively used for authentication. Songs are associated with authenticated users.
 
 #### `backend/app/models/analysis.py`
 
@@ -1104,6 +1458,7 @@ processing, music analysis, video generation, and composition orchestration.
 
 - `get_by_id(song_id)` - Get song by ID
 - `get_all()` - Get all songs
+- `get_by_user_id(user_id)` - Get songs by user ID
 - `create(song)` - Create new song
 - `update(song)` - Update existing song
 
@@ -1174,10 +1529,13 @@ processing, music analysis, video generation, and composition orchestration.
 
 **Features:**
 
-- Generates clips via Replicate API
+- Generates clips via Replicate API (with provider abstraction)
 - Manages clip generation jobs
 - Handles retries and errors
 - Composes final video from clips
+- Supports character consistency
+- Supports video type-specific generation (full_length/short_form)
+- Cost tracking
 
 **Dependencies:**
 
@@ -1185,6 +1543,8 @@ processing, music analysis, video generation, and composition orchestration.
 - `app.services.scene_planner` - Scene planning
 - `app.services.video_composition` - Video composition
 - `app.services.storage` - Storage operations
+- `app.services.character_consistency` - Character consistency
+- `app.services.cost_tracking` - Cost tracking
 
 #### `backend/app/services/clip_planning.py`
 
@@ -1224,23 +1584,51 @@ processing, music analysis, video generation, and composition orchestration.
 #### `backend/app/services/video_generation.py`
 
 **Status:** ✅ Active  
-**Usage:** Video generation via Replicate
+**Usage:** Video generation via Replicate (with provider abstraction)
 
 **Functions:**
 
-- `generate_section_video(scene_spec, seed, num_frames, fps)` - Generate video
+- `generate_section_video(scene_spec, seed, num_frames, fps, video_type, reference_image_url)` - Generate video
 - `poll_video_generation_status(...)` - Poll generation status
 
 **Features:**
 
 - Interfaces with Replicate API
+- Uses video provider abstraction (base + Minimax provider)
 - Handles video generation polling
 - Downloads and stores generated videos
+- Supports image-to-video (for character consistency)
+- Supports video type-specific parameters
 
 **Dependencies:**
 
 - Replicate API client
+- `app.services.video_providers.base` - Video provider base class
+- `app.services.video_providers.minimax_provider` - Minimax provider
 - `app.services.storage` - Storage operations
+
+#### `backend/app/services/video_providers/base.py`
+
+**Status:** ✅ Active  
+**Usage:** Base class for video generation providers
+
+**Features:**
+
+- Abstract base class for video providers
+- Defines interface for text-to-video and image-to-video
+- Provider abstraction for different video generation APIs
+
+#### `backend/app/services/video_providers/minimax_provider.py`
+
+**Status:** ✅ Active  
+**Usage:** Minimax Hailuo 2.3 video generation provider
+
+**Features:**
+
+- Implements Minimax Hailuo 2.3 via Replicate
+- Supports image-to-video via `first_frame_image`
+- Handles video type-specific parameters (resolution, duration)
+- Supports 1080p (short_form) and 768p (full_length)
 
 #### `backend/app/services/scene_planner.py`
 
@@ -1258,6 +1646,31 @@ processing, music analysis, video generation, and composition orchestration.
 - Generates prompts from analysis
 - Incorporates mood, genre, lyrics
 - Creates scene specifications for video generation
+- Uses prompt enhancement for beat synchronization
+- Incorporates character consistency prompts
+
+**Dependencies:**
+
+- `app.services.prompt_enhancement` - Prompt enhancement
+- `app.services.character_consistency` - Character consistency
+
+#### `backend/app/services/prompt_enhancement.py`
+
+**Status:** ✅ Active  
+**Usage:** Prompt enhancement for beat synchronization
+
+**Functions:**
+
+- `enhance_prompt_with_beat_sync(...)` - Enhance prompt with beat-synchronized motion descriptors
+- `get_motion_type_for_bpm(...)` - Get motion type based on BPM
+- `get_tempo_descriptor(...)` - Get tempo descriptor
+
+**Features:**
+
+- Adds rhythmic motion descriptors to prompts
+- BPM-based motion type selection (bouncing, dancing, pulsing, rotating, stepping, looping)
+- Tempo descriptors (slow, medium, fast)
+- Enhances prompts for better beat synchronization
 
 #### `backend/app/services/video_composition.py`
 
@@ -1269,17 +1682,50 @@ processing, music analysis, video generation, and composition orchestration.
 - `concatenate_clips(...)` - Concatenate clips into single video
 - `normalize_clip(...)` - Normalize clip format
 - `generate_video_poster(...)` - Generate video poster image
+- `apply_beat_filters(...)` - Apply beat-synchronized visual effects
 
 **Features:**
 
 - Uses FFmpeg for video composition
 - Handles transitions and normalization
 - Generates poster images
+- Applies beat-synchronized visual effects (flash, color_burst, zoom_pulse, brightness_pulse, glitch)
 
 **Dependencies:**
 
 - FFmpeg
 - `app.services.storage` - Storage operations
+- `app.services.beat_filters` - Beat filter effects
+- `app.services.beat_filter_applicator` - Beat filter application
+
+#### `backend/app/services/beat_filters.py`
+
+**Status:** ✅ Active  
+**Usage:** Beat-reactive FFmpeg filter service
+
+**Functions:**
+
+- `convert_beat_times_to_frames(...)` - Convert beat times to frame indices
+- `build_beat_filter_chain(...)` - Build FFmpeg filter chain for beat effects
+
+**Features:**
+
+- Defines beat-synchronized visual effects (flash, color_burst, zoom_pulse, brightness_pulse, glitch)
+- Converts beat timestamps to frame-accurate indices
+- Builds FFmpeg filter chains for effects
+
+#### `backend/app/services/beat_filter_applicator.py`
+
+**Status:** ✅ Active  
+**Usage:** Applies beat filters to video composition
+
+**Functions:**
+
+- Applies beat-synchronized effects during video composition
+
+**Dependencies:**
+
+- `app.services.beat_filters` - Beat filter definitions
 
 #### `backend/app/services/composition_job.py`
 
@@ -1321,6 +1767,7 @@ processing, music analysis, video generation, and composition orchestration.
 
 - Orchestrates video composition steps
 - Handles clip downloading, normalization, concatenation
+- Applies beat filters if enabled
 
 **Dependencies:**
 
@@ -1347,6 +1794,25 @@ processing, music analysis, video generation, and composition orchestration.
 - FFmpeg
 - Librosa
 
+#### `backend/app/services/audio_selection.py`
+
+**Status:** ✅ Active  
+**Usage:** Audio selection validation service
+
+**Functions:**
+
+- `validate_audio_selection(start_sec, end_sec, song_duration_sec)` - Validate audio selection
+
+**Features:**
+
+- Validates audio selection parameters
+- Checks min/max duration constraints
+- Validates time boundaries
+
+**Dependencies:**
+
+- `app.core.constants` - Audio selection constants
+
 #### `backend/app/services/storage.py`
 
 **Status:** ✅ Active  
@@ -1358,12 +1824,155 @@ processing, music analysis, video generation, and composition orchestration.
 - `download_bytes_from_s3(...)` - Download bytes from S3
 - `generate_presigned_get_url(...)` - Generate presigned URL
 - `check_s3_object_exists(...)` - Check if object exists
+- `get_character_image_s3_key(...)` - Get S3 key for character images
+- `upload_consistent_character_image(...)` - Upload consistent character image
 
 **Features:**
 
 - S3-compatible storage interface
 - Presigned URL generation
 - Error handling
+- Character image storage helpers
+
+#### `backend/app/services/template_characters.py`
+
+**Status:** ✅ Active  
+**Usage:** Template character management service
+
+**Functions:**
+
+- `get_template_characters()` - Get all template characters
+- `get_template_character(character_id)` - Get template character by ID
+- `get_template_character_image(character_id, pose)` - Get template character image
+
+**Features:**
+
+- Manages pre-defined character templates
+- Character definitions with poses (A and B)
+- Image retrieval from S3
+
+**Dependencies:**
+
+- `app.services.storage` - Storage operations
+
+#### `backend/app/services/character_consistency.py`
+
+**Status:** ✅ Active  
+**Usage:** Character consistency orchestration service
+
+**Functions:**
+
+- `generate_character_image_job(song_id)` - RQ job for generating consistent character image
+
+**Features:**
+
+- Downloads user's character reference image
+- Interrogates image to extract detailed prompt
+- Generates consistent character image via AI
+- Uploads consistent image to S3
+- Updates song record
+
+**Dependencies:**
+
+- `app.services.character_image_generation` - Character image generation
+- `app.services.image_interrogation` - Image interrogation
+- `app.services.storage` - Storage operations
+
+#### `backend/app/services/character_image_generation.py`
+
+**Status:** ✅ Active  
+**Usage:** Character image generation service
+
+**Functions:**
+
+- `generate_consistent_character_image(...)` - Generate consistent character image
+
+**Features:**
+
+- Generates character images via Replicate/OpenAI
+- Ensures character consistency across clips
+
+#### `backend/app/services/image_interrogation.py`
+
+**Status:** ✅ Active  
+**Usage:** Image interrogation service
+
+**Functions:**
+
+- `interrogate_reference_image(...)` - Interrogate image to extract prompt
+
+**Features:**
+
+- Uses OpenAI Vision API or Replicate to interrogate images
+- Extracts detailed prompts from character reference images
+
+#### `backend/app/services/image_processing.py`
+
+**Status:** ✅ Active  
+**Usage:** Image processing utilities
+
+**Functions:**
+
+- Image processing and manipulation utilities
+
+#### `backend/app/services/image_validation.py`
+
+**Status:** ✅ Active  
+**Usage:** Image validation service
+
+**Functions:**
+
+- `normalize_image_format(...)` - Normalize image format
+
+**Features:**
+
+- Validates image formats
+- Normalizes images for processing
+
+#### `backend/app/services/clip_model_selector.py`
+
+**Status:** ✅ Active  
+**Usage:** Clip model selection service
+
+**Functions:**
+
+- Selects appropriate video generation model based on video type and features
+
+**Features:**
+
+- Model selection logic
+- Supports different models for different use cases
+
+#### `backend/app/services/cost_tracking.py`
+
+**Status:** ✅ Active  
+**Usage:** Cost tracking service for video generation
+
+**Functions:**
+
+- `estimate_video_generation_cost(...)` - Estimate cost for video generation
+- `track_generation_cost(...)` - Track actual generation cost
+- `update_song_cost(...)` - Update song's total cost
+
+**Features:**
+
+- Tracks costs for video generation
+- Estimates costs per model
+- Tracks character consistency costs
+- Updates song's total cost in database
+
+**Dependencies:**
+
+- `app.repositories.song_repository` - Song repository
+
+#### `backend/app/services/prompt_logger.py`
+
+**Status:** ✅ Active  
+**Usage:** Prompt logging service
+
+**Functions:**
+
+- Logs generation prompts for debugging and analysis
 
 #### `backend/app/services/audjust_client.py`
 
@@ -1449,6 +2058,7 @@ processing, music analysis, video generation, and composition orchestration.
 - Pydantic Settings for configuration
 - Environment variable support
 - Database, Redis, S3, API keys configuration
+- Feature flags (e.g., `is_sections_enabled()`)
 - **Used by:** All services and routes
 
 #### `backend/app/core/database.py`
@@ -1461,12 +2071,54 @@ processing, music analysis, video generation, and composition orchestration.
 - SQLModel engine creation
 - Database session management
 - Schema initialization
-- Default user creation
+- Default user creation (if needed)
 
 **Dependencies:**
 
 - SQLModel
 - PostgreSQL (via psycopg)
+
+#### `backend/app/core/auth.py`
+
+**Status:** ✅ Active  
+**Usage:** Authentication utilities
+
+**Functions:**
+
+- `hash_password(password)` - Hash password (SHA-256)
+- `verify_password(password, hashed)` - Verify password
+- `create_access_token(user_id)` - Create JWT token
+- `decode_access_token(token)` - Decode JWT token
+- `get_current_user(...)` - Get current authenticated user (FastAPI dependency)
+
+**Features:**
+
+- JWT-based authentication
+- Password hashing (SHA-256)
+- Token creation and validation
+- FastAPI dependency for protected routes
+
+**Dependencies:**
+
+- PyJWT
+- `app.models.user` - User model
+
+#### `backend/app/core/rate_limiting.py`
+
+**Status:** ✅ Active  
+**Usage:** Rate limiting middleware
+
+**Features:**
+
+- Rate limiting middleware for FastAPI
+- Sliding window algorithm
+- Per-user or per-IP rate limiting
+- Exempts polling endpoints
+- Configurable limits (per minute, hour, day)
+
+**Dependencies:**
+
+- FastAPI middleware
 
 #### `backend/app/core/queue.py`
 
@@ -1504,6 +2156,8 @@ processing, music analysis, video generation, and composition orchestration.
 - `ALLOWED_CONTENT_TYPES` - Allowed audio MIME types
 - `ACCEPTABLE_ALIGNMENT` - Beat alignment tolerance
 - `DEFAULT_MAX_CONCURRENCY` - Default max parallel jobs
+- `MIN_AUDIO_SELECTION_DURATION_SEC` - Minimum audio selection duration
+- `MAX_AUDIO_SELECTION_DURATION_SEC` - Maximum audio selection duration
 - Queue timeouts
 
 #### `backend/app/core/migrations.py`
@@ -1591,6 +2245,18 @@ processing, music analysis, video generation, and composition orchestration.
 **Status:** ✅ Active  
 **Usage:** Section video Pydantic schemas
 
+#### `backend/app/schemas/template_character.py`
+
+**Status:** ✅ Active  
+**Usage:** Template character Pydantic schemas
+
+**Schemas:**
+
+- `TemplateCharacter` - Template character data
+- `CharacterPose` - Character pose data
+- `TemplateCharacterListResponse` - List response
+- `TemplateCharacterApply` - Apply template request
+
 ---
 
 ### Exceptions
@@ -1640,6 +2306,8 @@ processing, music analysis, video generation, and composition orchestration.
 - **Structure:** Resource-based routes (`/songs/{id}/...`)
 - **Async:** Async endpoints for I/O operations
 - **Error handling:** Custom exceptions with HTTP status codes
+- **Authentication:** JWT-based auth with protected routes
+- **Rate limiting:** Middleware for rate limiting
 
 #### Data Access
 
@@ -1647,6 +2315,7 @@ processing, music analysis, video generation, and composition orchestration.
 - **ORM:** SQLModel (SQLAlchemy + Pydantic)
 - **Sessions:** Context managers for database sessions
 - **Transactions:** Automatic commit/rollback
+- **User isolation:** Songs filtered by user_id
 
 #### Job Processing
 
@@ -1658,15 +2327,24 @@ processing, music analysis, video generation, and composition orchestration.
 #### Service Layer
 
 - **Pattern:** Service functions for business logic
-- **Separation:** Services separated by domain (analysis, generation, composition)
+- **Separation:** Services separated by domain (analysis, generation, composition, auth, characters, etc.)
 - **Dependencies:** Services depend on repositories and other services
 - **Error handling:** Custom exceptions propagated to API layer
+- **Provider abstraction:** Video generation uses provider pattern
 
 #### Configuration
 
 - **Pattern:** Pydantic Settings with environment variables
 - **Validation:** Settings validated at startup
 - **Caching:** Settings cached with `lru_cache`
+- **Feature flags:** Feature flags for gradual rollout
+
+#### Authentication
+
+- **Pattern:** JWT-based authentication
+- **Password hashing:** SHA-256 (simple, not production-grade - should use bcrypt)
+- **Token management:** JWT tokens with expiration
+- **Protected routes:** FastAPI dependencies for authentication
 
 ---
 
@@ -1682,7 +2360,17 @@ main.py
        │    ├─> services/composition_job
        │    ├─> services/beat_alignment
        │    ├─> services/storage
-       │    └─> services/audio_preprocessing
+       │    ├─> services/audio_preprocessing
+       │    ├─> services/audio_selection
+       │    └─> core/auth
+       ├─> routes_auth.py
+       │    └─> core/auth
+       ├─> routes_template_characters.py
+       │    ├─> services/template_characters
+       │    ├─> services/storage
+       │    └─> services/image_validation
+       ├─> routes_config.py
+       │    └─> core/config
        ├─> routes_jobs.py
        │    ├─> services/song_analysis
        │    └─> services/clip_generation
@@ -1704,14 +2392,27 @@ services/clip_generation.py
   ├─> services/video_generation
   ├─> services/scene_planner
   ├─> services/video_composition
+  ├─> services/storage
+  ├─> services/character_consistency
+  └─> services/cost_tracking
+
+services/video_generation.py
+  ├─> services/video_providers/base
+  ├─> services/video_providers/minimax_provider
   └─> services/storage
 
-services/composition_job.py
-  ├─> services/composition_execution
-  └─> services/clip_generation
+services/scene_planner.py
+  ├─> services/prompt_enhancement
+  └─> services/character_consistency
 
-services/composition_execution.py
-  ├─> services/video_composition
+services/video_composition.py
+  ├─> services/beat_filters
+  ├─> services/beat_filter_applicator
+  └─> services/storage
+
+services/character_consistency.py
+  ├─> services/character_image_generation
+  ├─> services/image_interrogation
   └─> services/storage
 
 repositories/
@@ -1720,6 +2421,8 @@ repositories/
 core/
   ├─> config.py (used by all)
   ├─> database.py
+  ├─> auth.py
+  ├─> rate_limiting.py
   ├─> queue.py
   ├─> logging.py
   └─> constants.py
@@ -1729,17 +2432,17 @@ core/
 
 ### Summary
 
-**Total Backend Files Analyzed:** ~50 Python files
+**Total Backend Files Analyzed:** ~70+ Python files
 
-**Active Files:** ~50
+**Active Files:** ~70+
 
 - Entry points: 1
-- API routes: 5
+- API routes: 8
 - Models: 6
 - Repositories: 2
-- Services: 15+
-- Schemas: 6
-- Core: 6
+- Services: 30+
+- Schemas: 7
+- Core: 7
 - Exceptions: 1
 
 **Dead Code Identified:**
@@ -1748,6 +2451,17 @@ core/
 
 **Key Findings:**
 
+- **Authentication system:** JWT-based authentication with user management
+- **Rate limiting:** Middleware for API rate limiting
+- **Video type support:** full_length and short_form video types
+- **Audio selection:** Validation and storage for audio segment selection
+- **Template characters:** Pre-defined character templates with pose selection
+- **Character consistency:** AI-generated character images with consistency
+- **Video provider abstraction:** Base class + Minimax provider
+- **Beat-synchronized effects:** Visual effects synchronized to beats
+- **Prompt enhancement:** Beat-synchronized motion descriptors
+- **Cost tracking:** Track and display generation costs
+- **Image processing:** Image validation, interrogation, and processing
 - **Well-structured architecture:** Clear separation of concerns
 - **Repository pattern:** Clean data access layer
 - **Service layer:** Business logic separated from API routes
@@ -1756,6 +2470,23 @@ core/
 - **Error handling:** Custom exceptions with proper HTTP status codes
 - **Configuration:** Centralized settings management
 - **Database:** SQLModel for type-safe ORM
+
+**New Features Since Last Update:**
+
+1. ✅ Authentication system (JWT-based)
+2. ✅ Rate limiting middleware
+3. ✅ Video type support (full_length/short_form)
+4. ✅ Audio selection validation and storage
+5. ✅ Template character system
+6. ✅ Character consistency workflow
+7. ✅ Video provider abstraction
+8. ✅ Minimax Hailuo 2.3 provider
+9. ✅ Beat-synchronized visual effects
+10. ✅ Prompt enhancement for beat sync
+11. ✅ Cost tracking
+12. ✅ Image interrogation and processing
+13. ✅ Feature flags
+14. ✅ User preferences (animations_disabled)
 
 **Architecture Strengths:**
 
@@ -1766,16 +2497,23 @@ core/
 5. ✅ Service layer for business logic
 6. ✅ Comprehensive error handling
 7. ✅ Configuration management
+8. ✅ Authentication and authorization
+9. ✅ Rate limiting
+10. ✅ Provider abstraction for video generation
+11. ✅ Cost tracking
+12. ✅ Character consistency system
 
 **Recommendations:**
 
 1. Add unit tests for services
 2. Add integration tests for API routes
 3. Add worker health checks
-4. Consider adding API rate limiting
+4. Consider upgrading password hashing to bcrypt (currently SHA-256)
 5. Consider adding request/response logging middleware
 6. Add database migration system (Alembic)
 7. Consider adding caching layer for frequently accessed data
+8. Consider adding API versioning strategy
+9. Consider adding WebSocket support for real-time updates
 
 ---
 
@@ -1783,10 +2521,22 @@ core/
 
 ### System Flow
 
-1. **Upload & Preprocessing:**
+1. **Authentication:**
+   - User registers/logs in → JWT token issued → Token used for authenticated requests
+
+2. **Upload & Preprocessing:**
    - User uploads audio file → API validates → Preprocesses audio → Stores in S3 → Creates Song record
 
-2. **Analysis:**
+3. **Video Type & Audio Selection:**
+   - User selects video type (full_length or short_form)
+   - For short_form: User selects audio segment via timeline
+   - Selection validated and saved to database
+
+4. **Template Character Selection (Optional):**
+   - User selects template character or uploads custom character image
+   - If custom: Image interrogated → Consistent character generated → Stored in S3
+
+5. **Analysis:**
    - User triggers analysis → API enqueues analysis job → RQ worker processes:
      - Fetches structure from Audjust
      - Analyzes BPM/beats with Librosa
@@ -1795,20 +2545,23 @@ core/
      - Infers section types
      - Stores analysis in database
 
-3. **Clip Planning:**
+6. **Clip Planning:**
    - User plans clips → API calculates beat-aligned boundaries → Stores clip plans
 
-4. **Clip Generation:**
+7. **Clip Generation:**
    - User starts generation → API enqueues clip jobs → RQ workers:
-     - Build scene specs from analysis
-     - Generate videos via Replicate
+     - Build scene specs from analysis (with prompt enhancement)
+     - Generate videos via Replicate (using provider abstraction)
+     - Apply character consistency if enabled
      - Store clips in S3
      - Update clip status
+     - Track costs
 
-5. **Composition:**
+8. **Composition:**
    - User composes video → API enqueues composition job → RQ worker:
      - Downloads clips from S3
      - Normalizes clips
+     - Applies beat-synchronized effects (if enabled)
      - Concatenates with FFmpeg
      - Generates poster
      - Stores final video in S3
@@ -1820,6 +2573,8 @@ core/
 
 - React 18 + TypeScript
 - Vite
+- React Router
+- TanStack Query (React Query)
 - Tailwind CSS
 - Axios
 
@@ -1834,21 +2589,36 @@ core/
 - Librosa (audio)
 - FFmpeg (video)
 - Replicate API (video generation)
+- Minimax Hailuo 2.3 (via Replicate)
 - Audjust API (structure analysis)
 - Whisper (lyrics)
+- OpenAI API (image interrogation)
+- PyJWT (authentication)
 
 ### Key Architectural Decisions
 
-1. **Single-page application:** Simple UX, no routing complexity
-2. **Custom polling hooks:** Reusable polling patterns
-3. **Component extraction:** Maintainable, testable components
-4. **Repository pattern:** Clean data access
-5. **Service layer:** Business logic separation
-6. **RQ workers:** Async job processing
-7. **Type safety:** TypeScript + Pydantic throughout
-8. **S3 storage:** Scalable file storage
+1. **Multi-page application:** React Router for navigation
+2. **Authentication:** JWT-based with user management
+3. **Rate limiting:** Middleware for API protection
+4. **Video types:** Support for full_length and short_form videos
+5. **Audio selection:** Interactive timeline for segment selection
+6. **Template characters:** Pre-defined characters with pose selection
+7. **Character consistency:** AI-generated consistent characters
+8. **Video provider abstraction:** Base class + provider implementations
+9. **Beat-synchronized effects:** Visual effects synchronized to beats
+10. **Prompt enhancement:** Beat-synchronized motion descriptors
+11. **Cost tracking:** Track and display generation costs
+12. **Custom polling hooks:** Reusable polling patterns
+13. **Component extraction:** Maintainable, testable components
+14. **Repository pattern:** Clean data access
+15. **Service layer:** Business logic separation
+16. **RQ workers:** Async job processing
+17. **Type safety:** TypeScript + Pydantic throughout
+18. **S3 storage:** Scalable file storage
+19. **React Query:** Server state management
+20. **Error boundaries:** Graceful error handling
 
 ---
 
 **Report Generated:** Based on current codebase state  
-**Last Updated:** Current analysis of refactored codebase
+**Last Updated:** Current analysis with authentication, character consistency, video types, beat effects, and cost tracking features

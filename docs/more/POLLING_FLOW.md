@@ -224,6 +224,148 @@ When loading a song from URL params (lines 387-453 in UploadPage):
 
 ---
 
+## Clip Polling: Problem Analysis & Solution
+
+**Status**: ✅ **OPTIMIZED** - Current implementation is working correctly
+
+### Historical Problem
+
+The clip polling system originally had a check to prevent duplicate polling when an active job exists. However, this check was removed because it prevented individual clip statuses from updating in the UI:
+
+- Clips showed "Awaiting generation" even when they were actively processing
+- The UI couldn't show which specific clip was being generated (e.g., "Generating clip 3 of 8")
+- Users had no visibility into individual clip progress
+
+### Root Cause
+
+The job status endpoint (`/jobs/{jobId}`) **does include individual clip statuses** in its `result` field, but:
+
+1. **Timing Issue**: `useJobPolling` only called `onComplete` when the job status changed to "completed"
+   - While the job was "processing", it only called `onStatusUpdate` with aggregate progress
+   - Individual clip statuses were in `result`, but `onStatusUpdate` didn't receive the full result
+
+2. **Update Frequency**: 
+   - `useJobPolling` polls every 3 seconds
+   - But it only updated `summary` state via `onComplete` callback
+   - `onComplete` was only called when job completes, not during processing
+
+3. **State Management Gap**:
+   - `useJobPolling` manages `status` and `progress` (aggregate)
+   - But `summary` (with individual clip statuses) was only updated on completion
+   - The UI needs `summary.clips[].status` to show individual clip progress
+
+### The Solution (Current Implementation)
+
+**Option 2** was implemented: Modified `useJobPolling` to call `onComplete` with the full result during processing, not just on completion.
+
+#### Implementation Details
+
+1. **`useJobPolling` Enhancement** (`frontend/src/hooks/useJobPolling.ts`, lines 62-66):
+```62:66:frontend/src/hooks/useJobPolling.ts
+        // Update result during processing, not just on completion
+        // This allows the UI to show individual clip statuses in real-time
+        if (response.result) {
+          onComplete?.(response.result)
+        }
+```
+
+2. **Check Restored** (`frontend/src/hooks/useClipPolling.ts`, lines 191-195):
+```191:195:frontend/src/hooks/useClipPolling.ts
+        // CRITICAL: Don't poll at all if there's an active job - useJobPolling handles that
+        // useJobPolling now updates summary during processing via onComplete callback
+        if (jobId && (status === 'queued' || status === 'processing')) {
+          return
+        }
+```
+
+### Why It Works Now
+
+1. **Single Polling Source**: When a job is active, only `/jobs/{jobId}` is polled
+   - `useJobPolling` polls every 3 seconds
+   - On each poll, it calls `onComplete` with the full `ClipGenerationSummary` (if available)
+   - This updates the `summary` state with individual clip statuses in real-time
+
+2. **Fallback Polling**: When no job is active, `pollClipSummary` handles updates
+   - Only polls `/songs/{songId}/clips/status` when there's no active job
+   - Provides redundancy for edge cases where job tracking is unavailable
+
+3. **Individual Clip Status Updates**:
+   - `useJobPolling`'s `onComplete` callback updates `summary` state every 3 seconds during processing
+   - Each clip's status (queued/processing/completed) is immediately reflected
+   - UI can show "Generating clip 3 of 8" accurately
+
+### Benefits
+
+- ✅ Individual clip statuses update in real-time
+- ✅ Better user experience with granular progress visibility
+- ✅ UI accurately reflects which clips are processing
+- ✅ **No duplicate API calls** - optimal performance
+- ✅ **No race conditions** - single source of truth during active jobs
+- ✅ Lower server load - only one endpoint polled when job is active
+
+### How Polling Works Now
+
+#### Active Job Scenario (Most Common)
+
+When a clip generation job is active (`jobId` exists):
+
+1. **`useJobPolling`** polls `/jobs/{jobId}` every 3 seconds
+2. On each poll:
+   - Calls `onStatusUpdate` with aggregate status and progress
+   - **Calls `onComplete` with full `ClipGenerationSummary`** (if `result` is present)
+   - This updates `summary` state with individual clip statuses
+3. **`pollClipSummary`** is skipped (check on line 193 prevents it)
+4. Result: Single polling source, real-time updates, no duplicates
+
+#### No Active Job Scenario
+
+When no job is active (`jobId` is null):
+
+1. **`useJobPolling`** is disabled (no `jobId`)
+2. **`pollClipSummary`** polls `/songs/{songId}/clips/status` every 5 seconds
+3. Provides fallback for cases where job tracking is unavailable
+4. Stops when all clips complete or composed video exists
+
+#### Polling Flow Diagram
+
+```
+Active Job Exists?
+├─ YES → useJobPolling (every 3s)
+│         ├─ Updates status/progress (aggregate)
+│         └─ Updates summary (individual clips) via onComplete
+│         └─ pollClipSummary SKIPPED (check on line 193)
+│
+└─ NO → pollClipSummary (every 5s)
+         └─ Updates summary directly
+         └─ Stops when all clips complete or composed video exists
+```
+
+### Original Design Intent
+
+From commit `9363a8e` - "Refactor polling system and add comprehensive documentation" (Thu Nov 20 11:06:42 2025):
+
+The original design implemented a **dual polling strategy**:
+
+1. **Job-based polling** (`useJobPolling`) - When an active job exists
+   - Polls `/jobs/{jobId}` endpoint
+   - Returns `JobStatusResponse` with `result: ClipGenerationSummary`
+   - Provides overall batch job status (queued/processing/completed/failed)
+   - Provides aggregate progress (completedClips/totalClips)
+
+2. **Summary-based polling** (`pollClipSummary`) - When no job tracking available
+   - Polls `/songs/{songId}/clips/status` endpoint
+   - Returns `ClipGenerationSummary` directly
+   - Provides individual clip statuses
+
+The check was added to **prevent duplicate polling**:
+- When `jobId` exists, `useJobPolling` is already polling `/jobs/{jobId}`
+- The job status endpoint returns the same `ClipGenerationSummary` in its `result` field
+- Polling both endpoints simultaneously would create duplicate API calls, potential race conditions, and unnecessary server load
+
+The original design gap has been fixed: `useJobPolling` now properly updates the `summary` state during processing, allowing the check to prevent duplicate polling while still providing real-time individual clip status updates.
+
+---
+
 ## Composition Polling: `useCompositionPolling`
 
 **Location:** `frontend/src/hooks/useCompositionPolling.ts`
